@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { HomeIcon, BuildingOfficeIcon, PlayIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 
 export const Sidebar = () => {
   return (
@@ -6,18 +7,18 @@ export const Sidebar = () => {
       <div className="text-white font-bold mb-8">GI</div>
       <nav className="flex flex-col gap-6">
         <Link href="/" className="text-gray-400 hover:text-white">
-          <svg className="w-6 h-6" /* Add dashboard icon */ />
+          <HomeIcon className="w-6 h-6" />
         </Link>
         <Link href="/companies" className="text-gray-400 hover:text-white">
-          <svg className="w-6 h-6" /* Add companies icon */ />
+          <BuildingOfficeIcon className="w-6 h-6" />
         </Link>
         <Link href="/games" className="text-gray-400 hover:text-white">
-          <svg className="w-6 h-6" /* Add games icon */ />
+          <PlayIcon className="w-6 h-6" />
         </Link>
         <Link href="/insights" className="text-gray-400 hover:text-white">
-          <svg className="w-6 h-6" /* Add insights icon */ />
+          <ChartBarIcon className="w-6 h-6" />
         </Link>
       </nav>
     </div>
   );
-};
+} 
