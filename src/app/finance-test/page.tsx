@@ -1,6 +1,6 @@
 'use client';
 
-import { yahoo } from '@/lib/yahoo/client';
+import { alpha } from '@/lib/alpha/client';
 import { useState } from 'react';
 
 export default function FinanceTest() {
@@ -12,8 +12,8 @@ export default function FinanceTest() {
     try {
       setLoading(true);
       setError(null);
-      // Testing with Nintendo's ID from our mapping
-      const financials = await yahoo.getFinancials(51);
+      // Testing with EA's ID from our mapping
+      const financials = await alpha.getFinancials(2);
       setResult(financials);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');

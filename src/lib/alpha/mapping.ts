@@ -4,7 +4,6 @@ export interface CompanyMapping {
   yahooId: string;
 }
 
-// Initial mappings for major gaming companies
 const companyMappings: Record<number, CompanyMapping> = {
   51: { igdbId: 51, ticker: "NTDOY", yahooId: "NTDOY" },    // Nintendo
   1: { igdbId: 1, ticker: "SONY", yahooId: "SONY" },        // Sony

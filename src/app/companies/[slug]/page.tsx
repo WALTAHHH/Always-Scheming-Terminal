@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { igdb } from '@/lib/igdb/client';
-import { yahoo } from '@/lib/yahoo/client';
+import { alpha } from '@/lib/alpha/client';
 import { transformCompanyProfile } from '@/lib/igdb/transforms';
 import { CompanyHeader } from '@/components/companies/CompanyHeader';
 import { PerformanceGraph } from '@/components/companies/PerformanceGraph';
@@ -11,7 +11,7 @@ import { IntelligenceFeed } from '@/components/companies/IntelligenceFeed';
 import { KeyMetrics } from '@/components/companies/KeyMetrics';
 import { Pipeline } from '@/components/companies/Pipeline';
 import { IGDBCompany, IGDBGame } from '@/lib/igdb/types';
-import { CompanyFinancials } from '@/lib/yahoo/types';
+import { CompanyFinancials } from '@/lib/alpha/types';
 
 export default function CompanyPage() {
   const params = useParams();
@@ -34,7 +34,7 @@ export default function CompanyPage() {
           if (companyData.id) {
             const [gamesData, financialsData] = await Promise.all([
               igdb.getCompanyGames(companyData.id),
-              yahoo.getFinancials(companyData.id)
+              alpha.getFinancials(companyData.id)
             ]);
             setGames(gamesData);
             setFinancials(financialsData);
