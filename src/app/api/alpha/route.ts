@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
 
-const ALPHA_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
-
 export async function GET(request: Request) {
   try {
+    const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
+    console.log('Environment check:', {
+      nodeEnv: process.env.NODE_ENV,
+      hasApiKey: !!apiKey,
+      apiKeyLength: apiKey?.length
+    });
+
     const { searchParams } = new URL(request.url);
     const symbol = searchParams.get('symbol');
     
     console.log('Alpha Vantage API Request:', { 
       symbol,
-      hasApiKey: !!ALPHA_API_KEY,
-      apiKeyLength: ALPHA_API_KEY?.length
+      hasApiKey: !!apiKey,
+      apiKeyLength: apiKey?.length
     });
     
     if (!symbol) {
@@ -18,7 +23,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
     }
 
-    if (!ALPHA_API_KEY) {
+    if (!apiKey) {
       console.error('Alpha Vantage API Key is missing');
       return NextResponse.json(
         { error: 'API configuration error - Missing API Key' },
@@ -26,8 +31,8 @@ export async function GET(request: Request) {
       );
     }
 
-    const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${ALPHA_API_KEY}`;
-    console.log('Making request to Alpha Vantage:', url.replace(ALPHA_API_KEY, 'REDACTED'));
+    const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${apiKey}`;
+    console.log('Making request to Alpha Vantage:', url.replace(apiKey, 'REDACTED'));
     
     try {
       const response = await fetch(url, {

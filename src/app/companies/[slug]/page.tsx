@@ -11,7 +11,7 @@ import { IntelligenceFeed } from '@/components/companies/IntelligenceFeed';
 import { KeyMetrics } from '@/components/companies/KeyMetrics';
 import { Pipeline } from '@/components/companies/Pipeline';
 import { IGDBCompany, IGDBGame } from '@/lib/igdb/types';
-import { CompanyFinancials } from '@/lib/alpha/types';
+import { CompanyFinancials } from '@/lib/alpha/types';  
 
 export default function CompanyPage() {
   const params = useParams();
@@ -28,6 +28,12 @@ export default function CompanyPage() {
         if (!slug) return;
 
         const companyData = await igdb.getCompanyBySlug(slug);
+        console.log('IGDB Company Data:', {
+          slug,
+          companyData,
+          id: companyData?.id
+        });
+        
         if (companyData) {
           setCompany(companyData);
           
@@ -87,9 +93,9 @@ export default function CompanyPage() {
           <div className="bg-white rounded-lg p-6">
             <h2 className="text-lg font-semibold mb-4">Key Metrics</h2>
             <KeyMetrics 
-              marketCap={formatCurrency(financials?.marketCap)}
-              revenue={formatCurrency(financials?.revenue)}
-              operatingMargin={formatPercentage(financials?.operatingMargin)}
+              marketCap={financials?.marketCap ?? 0}
+              revenue={financials?.revenue ?? 0}
+              operatingMargin={financials?.operatingMargin ?? 0}
             />
           </div>
           

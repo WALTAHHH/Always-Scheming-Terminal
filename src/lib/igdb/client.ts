@@ -51,7 +51,7 @@ class IGDBClient {
     return data.access_token;
   }
 
-  private async fetchFromIGDB(endpoint: string, query: string): Promise<any> {
+  private async fetchFromIGDB<T>(endpoint: string, query: string): Promise<T[]> {
     const response = await fetch('/api/igdb', {
       method: 'POST',
       headers: {
@@ -76,13 +76,26 @@ class IGDBClient {
 
   async getCompany(id: number): Promise<IGDBCompany> {
     const query = `
-      fields name, slug, description, developed.*, published.*,
-             country, website, logo.image_id, logo.url, logo.width, logo.height; 
+      fields 
+        name, 
+        slug, 
+        description, 
+        developed.*, 
+        published.*,
+        country, 
+        website, 
+        logo.alpha_channel,
+        logo.animated,
+        logo.checksum,
+        logo.height,
+        logo.image_id,
+        logo.url,
+        logo.width;
       where id = ${id};
     `;
-    const [company] = await this.fetchFromIGDB('companies', query);
+    const [company] = await this.fetchFromIGDB<IGDBCompany>('companies', query);
     if (company.logo?.image_id) {
-      company.logo.url = `https://images.igdb.com/igdb/image/upload/t_company_logo/${company.logo.image_id}.png`;
+      company.logo.url = `https://images.igdb.com/igdb/image/upload/t_original/${company.logo.image_id}.png`;
     }
     return company;
   }
@@ -93,8 +106,8 @@ class IGDBClient {
       limit 10;
       where name ~ *"${search}"*;
     `;
-    const results = await this.fetchFromIGDB('companies', query);
-    return results.map((company: IGDBCompany) => {
+    const results = await this.fetchFromIGDB<IGDBCompany>('companies', query);
+    return results.map(company => {
       if (company.logo?.image_id) {
         company.logo.url = this.getImageUrl(company.logo.image_id);
       }
@@ -109,25 +122,46 @@ class IGDBClient {
       where involved_companies.company = ${companyId};
       limit 50;
     `;
-    return this.fetchFromIGDB('games', query);
+    return this.fetchFromIGDB<IGDBGame>('games', query);
   }
 
-  async getCompanyBySlug(slug: string): Promise<IGDBCompany | null> {
+  async getCompanyBySlug(slug: string): Promise<IGDBCompany> {
     const query = `
-      fields id, name, slug, description, logo.image_id, logo.url, logo.width, logo.height, developed.*, published.*;
+      fields name, slug, id, description, logo.*, developed.*, published.*;
       where slug = "${slug}";
-      limit 1;
     `;
-    const results = await this.fetchFromIGDB('companies', query);
-    if (results.length > 0) {
-      const company = results[0];
-      if (company.logo?.image_id) {
-        company.logo.url = this.getImageUrl(company.logo.image_id);
-      }
-      return company;
+    const [company] = await this.fetchFromIGDB<IGDBCompany>('companies', query);
+    if (company.logo?.image_id) {
+      company.logo.url = `https://images.igdb.com/igdb/image/upload/t_original/${company.logo.image_id}.png`;
     }
-    return null;
+    return company;
+  }
+
+  async getTopCompanies(): Promise<IGDBCompany[]> {
+    const query = `
+      fields name, slug, id, description, logo.*, developed.*, published.*;
+      where logo != null & developed != null;
+      sort developed.length desc;
+      limit 500;
+    `;
+    
+    const companies = await this.fetchFromIGDB<IGDBCompany>('companies', query);
+    
+    // Sort companies by number of developed games client-side
+    const sortedCompanies = companies
+      .sort((a, b) => (b.developed?.length || 0) - (a.developed?.length || 0))
+      .slice(0, 12)
+      .map(company => {
+        if (company.logo?.image_id) {
+          // Use original image dimensions from the API
+          company.logo.url = `https://images.igdb.com/igdb/image/upload/t_original/${company.logo.image_id}.png`;
+        }
+        return company;
+      });
+
+    return sortedCompanies;
   }
 }
 
-export const igdb = IGDBClient.getInstance(); 
+// Export a singleton instance
+export const igdb = IGDBClient.getInstance();

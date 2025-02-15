@@ -3,8 +3,22 @@ import { getCompanyMapping } from '@/lib/alpha/mapping';
 
 class AlphaVantageClient {
   private static instance: AlphaVantageClient;
+  private lastRequestTime: number = 0;
+  private readonly MIN_REQUEST_INTERVAL = 12000; // 12 seconds between requests (5 requests per minute)
   
   private constructor() {}
+
+  private async waitForRateLimit() {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    
+    if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL) {
+      const waitTime = this.MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastRequestTime = Date.now();
+  }
 
   static getInstance(): AlphaVantageClient {
     if (!AlphaVantageClient.instance) {
@@ -15,8 +29,13 @@ class AlphaVantageClient {
 
   async getFinancials(igdbId: number): Promise<CompanyFinancials | null> {
     try {
+      await this.waitForRateLimit();
       const mapping = getCompanyMapping(igdbId);
-      console.log('Company mapping:', { igdbId, mapping });
+      console.log('Company mapping lookup:', { 
+        igdbId, 
+        mapping,
+        allMappings: require('@/lib/alpha/mapping').companyMappings 
+      });
       
       if (!mapping) {
         console.warn(`No mapping found for IGDB ID: ${igdbId}`);

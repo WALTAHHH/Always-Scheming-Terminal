@@ -23,11 +23,17 @@ export const CompanyHeader = ({ name, ticker, logo, metrics, performance = 'Stro
     <div className="bg-white rounded-lg p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
+          <div className="w-32 h-32 bg-gray-100 rounded-lg flex items-center justify-center">
             {logo ? (
-              <img src={logo} alt={name} className="w-12 h-12 object-contain" />
+              <div className="h-[120px] flex items-center justify-center">
+                <img 
+                  src={logo} 
+                  alt={name} 
+                  className="max-h-[120px] w-auto"
+                />
+              </div>
             ) : (
-              name.charAt(0)
+              <span className="text-4xl text-gray-400">{name.charAt(0)}</span>
             )}
           </div>
           <div>
@@ -37,7 +43,7 @@ export const CompanyHeader = ({ name, ticker, logo, metrics, performance = 'Stro
                 {performance} Performance
               </span>
             </div>
-            <p className="text-gray-500">NASDAQ: {ticker}</p>
+            {ticker && <p className="text-gray-500">NASDAQ: {ticker}</p>}
           </div>
         </div>
         <div className="flex gap-3">

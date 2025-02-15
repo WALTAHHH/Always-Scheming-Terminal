@@ -1,5 +1,6 @@
 import { IGDBCompany, IGDBGame } from './types';
-import { CompanyFinancials } from '@/lib/yahoo/types';
+import { CompanyFinancials } from '@/lib/alpha/types';
+import { getCompanyMapping } from '@/lib/alpha/mapping';
 
 export interface CompanyProfile {
   id: number;
@@ -19,6 +20,7 @@ export function transformCompanyProfile(
   games: IGDBGame[],
   financials?: CompanyFinancials | null
 ): CompanyProfile {
+  const mapping = getCompanyMapping(company.id);
   const activeGames = games.length;
   
   // This is a placeholder calculation - we'd need real data for better metrics
@@ -31,7 +33,7 @@ export function transformCompanyProfile(
   return {
     id: company.id,
     name: company.name,
-    ticker: financials?.ticker,
+    ticker: mapping?.ticker || financials?.ticker,
     logo: company.logo?.url,
     metrics: {
       activeGames,

@@ -13,9 +13,14 @@ export interface IGDBCompany {
   description?: string;
   country?: number;
   website?: string;
+  url?: string;
+  websites?: IGDBWebsite[];
   logo?: IGDBImage;
   developed?: IGDBGame[];
   published?: IGDBGame[];
+  parent_company?: number;
+  changed_company_id?: number;
+  start_date?: number;
 }
 
 export interface IGDBGame {
@@ -47,4 +52,10 @@ export interface IGDBInvolvedCompany {
   company: IGDBCompany;
   developer: boolean;
   publisher: boolean;
+}
+
+export interface IGDBWebsite {
+  id: number;
+  url: string;
+  category: number;
 }

@@ -3,7 +3,7 @@
 import { alpha } from '@/lib/alpha/client';
 import { useState } from 'react';
 
-export default function FinanceTest() {
+const FinanceTest = () => {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export default function FinanceTest() {
         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         disabled={loading}
       >
-        Test Yahoo Finance API
+        Test Alpha Vantage API
       </button>
 
       {loading && <p className="mt-4">Loading...</p>}
@@ -41,4 +41,6 @@ export default function FinanceTest() {
       )}
     </div>
   );
-} 
+};
+
+export default FinanceTest; 
