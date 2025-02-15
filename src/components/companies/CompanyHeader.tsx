@@ -50,7 +50,7 @@ export const CompanyHeader = ({ name, ticker, logo, metrics, performance = 'Stro
         </div>
       </div>
       
-      <div className="flex gap-12 mt-6">
+      <div className="grid grid-cols-3 gap-6 mt-6">
         <MetricItem 
           icon="game"
           label="Active Games" 

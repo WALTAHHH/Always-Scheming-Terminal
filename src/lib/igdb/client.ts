@@ -70,26 +70,36 @@ class IGDBClient {
     return response.json();
   }
 
+  private getImageUrl(imageId: string, size: string = 'logo_med'): string {
+    return `https://images.igdb.com/igdb/image/upload/t_${size}/${imageId}.jpg`;
+  }
+
   async getCompany(id: number): Promise<IGDBCompany> {
     const query = `
       fields name, slug, description, developed.*, published.*,
-             country, website, logo.*; 
+             country, website, logo.image_id, logo.url, logo.width, logo.height; 
       where id = ${id};
     `;
     const [company] = await this.fetchFromIGDB('companies', query);
+    if (company.logo?.image_id) {
+      company.logo.url = `https://images.igdb.com/igdb/image/upload/t_company_logo/${company.logo.image_id}.png`;
+    }
     return company;
   }
 
   async searchCompanies(search: string): Promise<IGDBCompany[]> {
     const query = `
-      fields id, name, slug, description;
+      fields id, name, slug, description, logo.image_id, logo.url, logo.width, logo.height, developed.*, published.*;
       limit 10;
       where name ~ *"${search}"*;
     `;
-    console.log('IGDB Query:', query);
     const results = await this.fetchFromIGDB('companies', query);
-    console.log('Raw IGDB Response:', results);
-    return results;
+    return results.map((company: IGDBCompany) => {
+      if (company.logo?.image_id) {
+        company.logo.url = this.getImageUrl(company.logo.image_id);
+      }
+      return company;
+    });
   }
 
   async getCompanyGames(companyId: number): Promise<IGDBGame[]> {
@@ -100,6 +110,23 @@ class IGDBClient {
       limit 50;
     `;
     return this.fetchFromIGDB('games', query);
+  }
+
+  async getCompanyBySlug(slug: string): Promise<IGDBCompany | null> {
+    const query = `
+      fields id, name, slug, description, logo.image_id, logo.url, logo.width, logo.height, developed.*, published.*;
+      where slug = "${slug}";
+      limit 1;
+    `;
+    const results = await this.fetchFromIGDB('companies', query);
+    if (results.length > 0) {
+      const company = results[0];
+      if (company.logo?.image_id) {
+        company.logo.url = this.getImageUrl(company.logo.image_id);
+      }
+      return company;
+    }
+    return null;
   }
 }
 

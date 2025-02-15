@@ -34,6 +34,10 @@ export const SearchBar = () => {
     }
   };
 
+  const handleCompanySelect = (company: IGDBCompany) => {
+    router.push(`/companies/${company.slug}`);
+  };
+
   return (
     <div className="relative flex-1 max-w-2xl">
       <input
@@ -52,7 +56,7 @@ export const SearchBar = () => {
           {results.map((company) => (
             <div
               key={company.id}
-              onClick={() => router.push(`/companies/${company.slug}`)}
+              onClick={() => handleCompanySelect(company)}
               className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
             >
               {company.name}

@@ -1,4 +1,5 @@
 import { IGDBCompany, IGDBGame } from './types';
+import { CompanyFinancials } from '@/lib/yahoo/types';
 
 export interface CompanyProfile {
   id: number;
@@ -15,7 +16,8 @@ export interface CompanyProfile {
 
 export function transformCompanyProfile(
   company: IGDBCompany, 
-  games: IGDBGame[]
+  games: IGDBGame[],
+  financials?: CompanyFinancials | null
 ): CompanyProfile {
   const activeGames = games.length;
   
@@ -29,7 +31,7 @@ export function transformCompanyProfile(
   return {
     id: company.id,
     name: company.name,
-    ticker: 'TBD',  // Add default ticker
+    ticker: financials?.ticker,
     logo: company.logo?.url,
     metrics: {
       activeGames,
