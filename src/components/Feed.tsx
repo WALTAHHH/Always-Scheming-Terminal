@@ -43,48 +43,41 @@ function computeTagCounts(items: FeedItem[]): Record<string, Record<string, numb
 
 function matchesFilter(item: FeedItem, filters: FilterState): boolean {
   const tags = (item.tags as Record<string, string[]>) || {};
+  const sourceName = item.sources?.name || "";
+
+  // Collect all individual checks (one per selected value)
   const checks: boolean[] = [];
 
-  // Source filter
-  if (filters.sources.length > 0) {
-    checks.push(
-      filters.sources.includes(item.sources?.name || "")
-    );
+  // Source checks
+  for (const s of filters.sources) {
+    checks.push(sourceName === s);
   }
 
-  // Category filter
-  if (filters.categories.length > 0) {
-    const itemCats = tags.category || [];
-    checks.push(
-      filters.categories.some((c) => itemCats.includes(c))
-    );
+  // Category checks
+  const itemCats = tags.category || [];
+  for (const c of filters.categories) {
+    checks.push(itemCats.includes(c));
   }
 
-  // Platform filter
-  if (filters.platforms.length > 0) {
-    const itemPlats = tags.platform || [];
-    checks.push(
-      filters.platforms.some((p) => itemPlats.includes(p))
-    );
+  // Platform checks
+  const itemPlats = tags.platform || [];
+  for (const p of filters.platforms) {
+    checks.push(itemPlats.includes(p));
   }
 
-  // Theme filter
-  if (filters.themes.length > 0) {
-    const itemThemes = tags.theme || [];
-    checks.push(
-      filters.themes.some((t) => itemThemes.includes(t))
-    );
+  // Theme checks
+  const itemThemes = tags.theme || [];
+  for (const t of filters.themes) {
+    checks.push(itemThemes.includes(t));
   }
 
-  // Company filter
-  if (filters.companies.length > 0) {
-    const itemCompanies = tags.company || [];
-    checks.push(
-      filters.companies.some((c) => itemCompanies.includes(c))
-    );
+  // Company checks
+  const itemCompanies = tags.company || [];
+  for (const c of filters.companies) {
+    checks.push(itemCompanies.includes(c));
   }
 
-  // Text search
+  // Text search (always AND — you always want search to apply)
   if (filters.search) {
     const q = filters.search.toLowerCase();
     checks.push(
@@ -95,6 +88,8 @@ function matchesFilter(item: FeedItem, filters: FilterState): boolean {
 
   if (checks.length === 0) return true;
 
+  // AND = item must match EVERY selected value
+  // OR = item must match ANY selected value
   return filters.mode === "and"
     ? checks.every(Boolean)
     : checks.some(Boolean);
