@@ -261,39 +261,43 @@ PhoenixNews (phoenixnews.io) — dark terminal aesthetic, high information densi
 
 ## Build Phases
 
-### Phase 1: Foundation (Week 1-2)
-- [ ] Project setup (Next.js 15, TypeScript, Tailwind, Supabase)
-- [ ] Database schema (sources, items, item_tags, companies)
-- [ ] Seed sources table with v1 source list
-- [ ] RSS ingestion pipeline (fetch → dedupe → store)
-- [ ] Basic feed UI (chronological list, dark theme, source labels)
-- [ ] Deploy to Vercel
+### Phase 1: Foundation ✅
+- [x] Project setup (Next.js 15, TypeScript, Tailwind, Supabase)
+- [x] Database schema (sources, items, item_tags, companies)
+- [x] Seed sources table with v1 source list (9 sources)
+- [x] RSS ingestion pipeline (fetch → dedupe → store)
+- [x] Basic feed UI (chronological list, dark theme, source labels)
+- [x] Deploy to Vercel
 
-**Done when:** Real articles from real sources appear in a dark terminal UI.
+### Phase 2: Intelligence ✅
+- [x] Hybrid tagging (rule-based categories/platforms/themes + AI company extraction)
+- [x] Tag extraction on ingestion
+- [x] Filter UI (top bar dropdowns per dimension)
+- [x] AND/OR filter logic
+- [x] Text search
+- [x] Scheduled ingestion (Vercel Cron — daily at 8am UTC)
+- [x] Story clustering (Jaccard similarity, 72h window, multi-source detection)
+- [x] Rule-based importance scoring (category, source authority, company density, financial signals, tag richness, cluster bonuses)
+- [x] Sort toggle (Signal / Latest)
+- [x] Visual importance indicators (HOT / HIGH tiers using AS palette)
 
-### Phase 2: Intelligence (Week 3-4)
-- [ ] OpenAI integration for auto-tagging
-- [ ] Tag extraction on ingestion
-- [ ] Filter UI (top bar dropdowns per dimension)
-- [ ] AND/OR filter logic
-- [ ] Text search
-- [ ] Scheduled ingestion (Vercel Cron or Supabase Edge Function)
-
-**Done when:** Matt can filter the feed by company + theme and find relevant content faster than checking sources individually.
-
-### Phase 3: Polish (Week 5-6)
-- [ ] Auto-refresh with "new items" indicator
+### Phase 3: Polish (current)
+- [x] Auto-refresh with "new items" banner
+- [x] Keyboard navigation (j/k, Enter, ?)
+- [x] AS design palette applied consistently across all components
 - [ ] Draft company list (50+ companies)
 - [ ] Source management page (add/remove/pause sources)
 - [ ] Ingestion health monitoring (last fetch time, error tracking)
 - [ ] Performance optimization (pagination, caching)
+- [ ] Increase ingestion frequency (every 30 min during business hours)
 
 **Done when:** Matt uses this daily instead of checking sources individually. Hypothesis validation begins.
 
-### Phase 4: Users & Growth (Week 7-8+)
+### Phase 4: Users & Growth
 - [ ] Supabase Auth (email/password)
 - [ ] Private beta invites
 - [ ] User preferences (saved filters, default view)
+- [ ] Personalized importance scoring (per-user weights)
 - [ ] Mobile-responsive layout
 - [ ] Analytics (page views, filter usage, return visits)
 - [ ] Free/paid tier structure (TBD)
@@ -310,10 +314,11 @@ If by week 8 of active use, nobody (including Matt) returns to the terminal unpr
 
 ## Open Tasks
 
-- [ ] Create Supabase project and share credentials
 - [ ] Draft 50+ company list (Clawd to draft, Matt to verify)
-- [ ] Verify RSS feed URLs for all v1 sources
 - [ ] Determine OpenAI API budget for tagging
+- [ ] Source management UI
+- [ ] Ingestion health dashboard
+- [ ] Increase cron frequency to 30-min intervals
 
 ---
 
@@ -323,5 +328,6 @@ If by week 8 of active use, nobody (including Matt) returns to the terminal unpr
 - **Strategic context:** Clawd Constitution (Notion)
 - **Hypothesis:** Constitution → Current working hypotheses → #1
 - **Target personas:** Victor Venture, Frank Founder, Annie Analyst
+- **Live URL:** https://always-scheming-terminal.vercel.app
 
-*Last updated: 2026-01-30*
+*Last updated: 2026-01-31*
