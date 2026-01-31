@@ -5,24 +5,21 @@ import type { FeedItem } from "@/lib/database.types";
 function formatTime(dateStr: string | null): string {
   if (!dateStr) return "--:--";
   const d = new Date(dateStr);
-  return d.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
   const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
 
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // Within the last hour: "12m ago"
+  if (diffMins < 60) return `${diffMins}m`;
+  // Within the last 24h: "3h ago"
+  if (diffHours < 24) return `${diffHours}h`;
+  // Otherwise just show the time
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 function truncate(text: string | null, maxLen: number): string {
@@ -94,9 +91,8 @@ export function FeedRow({ item }: FeedRowProps) {
     >
       <div className="flex items-start gap-3">
         {/* Timestamp */}
-        <div className="flex-shrink-0 w-[52px] text-ast-muted text-xs pt-0.5">
-          <div>{formatTime(item.published_at)}</div>
-          <div className="text-[10px]">{formatDate(item.published_at)}</div>
+        <div className="flex-shrink-0 w-[40px] text-ast-muted text-xs pt-0.5 text-right">
+          {formatTime(item.published_at)}
         </div>
 
         {/* Content */}
