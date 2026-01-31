@@ -15,7 +15,7 @@ async function getItems(): Promise<FeedItem[]> {
     .from("items")
     .select("*, sources(name, url, source_type)")
     .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(100);
+    .limit(200);
 
   if (error) {
     console.error("Failed to fetch items:", error.message);
@@ -25,25 +25,38 @@ async function getItems(): Promise<FeedItem[]> {
   return (data as FeedItem[]) ?? [];
 }
 
+async function getSources(): Promise<{ name: string }[]> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return [];
+  }
+
+  const supabase = createServerClient();
+  const { data } = await supabase
+    .from("sources")
+    .select("name")
+    .eq("active", true)
+    .order("name");
+
+  return data ?? [];
+}
+
 export default async function Home() {
-  const items = await getItems();
+  const [items, sources] = await Promise.all([getItems(), getSources()]);
 
   return (
     <main className="min-h-screen">
       <Header />
-      <div className="max-w-5xl mx-auto px-4 py-4">
-        {items.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-ast-muted text-lg">No items yet.</p>
-            <p className="text-ast-muted text-sm mt-2">
-              Run <code className="text-ast-accent">npm run ingest</code> or hit{" "}
-              <code className="text-ast-accent">POST /api/ingest</code> to pull feeds.
-            </p>
-          </div>
-        ) : (
-          <Feed items={items} />
-        )}
-      </div>
+      {items.length === 0 ? (
+        <div className="text-center py-20">
+          <p className="text-ast-muted text-lg">No items yet.</p>
+          <p className="text-ast-muted text-sm mt-2">
+            Run <code className="text-ast-accent">npm run ingest</code> or hit{" "}
+            <code className="text-ast-accent">POST /api/ingest</code> to pull feeds.
+          </p>
+        </div>
+      ) : (
+        <Feed items={items} sources={sources} />
+      )}
     </main>
   );
 }

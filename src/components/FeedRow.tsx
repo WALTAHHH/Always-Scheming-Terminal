@@ -32,6 +32,44 @@ function truncate(text: string | null, maxLen: number): string {
   return clean.slice(0, maxLen).trimEnd() + "…";
 }
 
+const TAG_DIMENSION_COLORS: Record<string, string> = {
+  company: "border-l-yellow-500 text-yellow-400",
+  platform: "border-l-blue-400 text-blue-400",
+  theme: "border-l-purple-400 text-purple-400",
+  category: "border-l-emerald-400 text-emerald-400",
+};
+
+function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
+  if (!tags) return null;
+
+  const allTags: { dimension: string; value: string }[] = [];
+  for (const [dim, values] of Object.entries(tags)) {
+    if (Array.isArray(values)) {
+      for (const v of values) {
+        allTags.push({ dimension: dim, value: v });
+      }
+    }
+  }
+
+  if (allTags.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {allTags.map((tag, i) => {
+        const colors = TAG_DIMENSION_COLORS[tag.dimension] || "border-l-ast-muted text-ast-muted";
+        return (
+          <span
+            key={`${tag.dimension}-${tag.value}-${i}`}
+            className={`px-1.5 py-0.5 text-[10px] bg-ast-tag border-l-2 rounded-sm ${colors}`}
+          >
+            {tag.value}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 const SOURCE_COLORS: Record<string, string> = {
   newsletter: "border-l-emerald-500",
   news: "border-l-blue-500",
@@ -81,6 +119,7 @@ export function FeedRow({ item }: FeedRowProps) {
               {truncate(item.content, 180)}
             </p>
           )}
+          <TagChips tags={item.tags as Record<string, string[]> | null} />
         </div>
 
         {/* External link indicator */}

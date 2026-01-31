@@ -1,5 +1,6 @@
 import Parser from "rss-parser";
 import { createClient } from "@supabase/supabase-js";
+import { tagItem, tagItemWithAI } from "./tagger";
 
 const parser = new Parser({
   timeout: 15000,
@@ -68,12 +69,47 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
     const { data, error } = await supabase
       .from("items")
       .upsert(rows, { onConflict: "source_id,external_id", ignoreDuplicates: true })
-      .select("id");
+      .select("id, title, content");
 
     if (error) {
       result.errors.push(`DB: ${error.message}`);
     } else {
       result.inserted = data?.length ?? 0;
+
+      // Tag newly inserted items
+      if (data?.length) {
+        for (const item of data) {
+          const ruleTags = tagItem(item.title, item.content, source.source_type);
+          const aiTags = await tagItemWithAI(item.title, item.content);
+
+          // Merge rule-based + AI tags
+          const allTags = {
+            category: ruleTags.category,
+            platform: ruleTags.platform,
+            theme: [...new Set([...ruleTags.theme, ...aiTags.theme])],
+            company: aiTags.company,
+          };
+
+          // Store in items.tags jsonb
+          await supabase
+            .from("items")
+            .update({ tags: allTags })
+            .eq("id", item.id);
+
+          // Store in item_tags (normalized for filtering)
+          const tagRows: { item_id: string; dimension: string; value: string; manual: boolean }[] = [];
+          for (const [dimension, values] of Object.entries(allTags)) {
+            for (const value of values) {
+              tagRows.push({ item_id: item.id, dimension, value, manual: false });
+            }
+          }
+          if (tagRows.length > 0) {
+            await supabase
+              .from("item_tags")
+              .upsert(tagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
+          }
+        }
+      }
     }
 
     // Update last_fetched_at
