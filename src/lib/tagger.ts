@@ -152,10 +152,8 @@ export function tagItem(
 ): TagResult {
   const text = `${title} ${content || ""}`;
 
-  // Category: start with source type, then check for specific content categories
+  // Category: only tag specific content types (not generic "analysis"/"article")
   const categories = new Set<string>();
-  const baseCategory = SOURCE_TYPE_TO_CATEGORY[sourceType] || "article";
-  categories.add(baseCategory);
 
   // Full text matching (title + content) for specific categories
   for (const [cat, keywords] of Object.entries(CATEGORY_RULES_FULL)) {
