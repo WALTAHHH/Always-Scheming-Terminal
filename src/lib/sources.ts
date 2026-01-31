@@ -54,4 +54,52 @@ export const V1_SOURCES = [
     feed_url: "https://superjoost.substack.com/feed",
     source_type: "newsletter",
   },
+  {
+    name: "Game Developer",
+    url: "https://www.gamedeveloper.com",
+    feed_url: "https://www.gamedeveloper.com/rss.xml",
+    source_type: "news",
+  },
+  {
+    name: "Hit Points",
+    url: "https://hitpoints.substack.com",
+    feed_url: "https://hitpoints.substack.com/feed",
+    source_type: "newsletter",
+  },
+  {
+    name: "GameMakers",
+    url: "https://gamemakers.substack.com",
+    feed_url: "https://gamemakers.substack.com/feed",
+    source_type: "analysis",
+  },
+  {
+    name: "PocketGamer.biz",
+    url: "https://www.pocketgamer.biz",
+    feed_url: "https://www.pocketgamer.biz/rss/",
+    source_type: "news",
+  },
+  {
+    name: "Video Games Chronicle",
+    url: "https://www.videogameschronicle.com",
+    feed_url: "https://www.videogameschronicle.com/feed",
+    source_type: "news",
+  },
+  {
+    name: "GameRefinery",
+    url: "https://www.gamerefinery.com",
+    feed_url: "https://www.gamerefinery.com/blog/feed/",
+    source_type: "analysis",
+  },
+  {
+    name: "80 Level",
+    url: "https://80.lv",
+    feed_url: "https://80.lv/feed",
+    source_type: "news",
+  },
+  {
+    name: "Eurogamer",
+    url: "https://www.eurogamer.net",
+    feed_url: "https://www.eurogamer.net/feed",
+    source_type: "news",
+  },
 ] as const;
