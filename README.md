@@ -1,36 +1,327 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Always Scheming Terminal — Product Requirements Document
 
-## Getting Started
+## Overview
 
-First, run the development server:
+The Always Scheming Terminal (AST) is a real-time gaming industry news aggregation and intelligence platform. It consolidates headlines, analysis, earnings reports, and fundraising announcements from curated industry sources into a single, filterable, terminal-style interface.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+AST exists to validate the following hypothesis:
+
+> "We believe aggregating qualitative data sources (Substacks, podcasts, interviews, etc.) together with broadly accepted quantitative data (earnings, publicly available KPIs, sales figures, etc.) will simplify and streamline the research process for Victor Venture and Annie Analyst, as measured by engagement with the aggregation platform (site visitors, link CTRs, accounts created, etc.)."
+
+## What This Is
+
+A decision-support intelligence layer for gaming industry professionals. Think Bloomberg Terminal meets gaming — opinionated curation, high signal density, low noise.
+
+## What This Isn't
+
+- A general news aggregator (gaming industry only)
+- A social media dashboard (no Twitter/X in v1)
+- A financial terminal (no stock data in v1)
+- A content treadmill (automated ingestion, not manual publishing)
+
+## Target Users
+
+**V1:** Matt (internal dogfooding)
+**V2:** Private beta (5-10 industry contacts)
+**V3:** Public launch with free + paid tiers (TBD)
+
+See the Clawd Constitution for full persona definitions (Victor Venture, Frank Founder, Annie Analyst).
+
+---
+
+## V1 Scope
+
+### Core Experience
+
+A single-panel, real-time news feed displaying content from curated gaming industry sources. Dark terminal aesthetic. Top bar filtering by source, company, platform, investing theme, and content category. Chronological sort. Auto-refresh.
+
+### Content Sources (V1)
+
+| Source | Type | URL |
+|--------|------|-----|
+| Naavik | Newsletter/Analysis | naavik.co |
+| Deconstructor of Fun | Newsletter/Analysis | deconstructoroffun.com |
+| GameDiscoverCo | Newsletter/Analysis | gamediscover.co |
+| MobileGamer.biz | News | mobilegamer.biz |
+| GamesIndustry.biz | News | gamesindustry.biz |
+| Game File (Stephen Totilo) | Newsletter | gamefile.news |
+| InvestGame | Investment/Analysis | investgame.net |
+| Elite Game Developers (Joakim Achren) | Newsletter/Analysis | elitegamedevelopers.com |
+
+**Excluded:** Kotaku, Polygon, and similar consumer/casual outlets.
+
+**Content types ingested:** Headlines, long-form articles, earnings reports, fundraising/M&A announcements, podcast episode links.
+
+**Paywalled sources:** Ingest whatever the RSS feed provides (title + excerpt). Full text only if freely available.
+
+### Content Tagging
+
+All ingested content is automatically tagged by AI. Tags are extracted, not matched against a fixed list (verify/curate later). Manual override available.
+
+**Tag dimensions:**
+
+| Dimension | Examples |
+|-----------|----------|
+| Company | EA, Epic Games, Tencent, Supercell, etc. |
+| Platform | Console, PC, Mobile, VR, Web |
+| Investing Theme | AI, UGC, Live Services, Cloud Gaming, VR/AR, Blockchain |
+| Content Category | Article, Earnings, M&A, Fundraising, Podcast, Analysis |
+
+### Feed Behavior
+
+- **Sort:** Chronological (newest first)
+- **Refresh:** Auto-refresh (new items appear without page reload)
+- **Filtering:** Top bar with AND/OR logic across all tag dimensions
+- **Data retention:** Everything — all ingested content is stored permanently
+- **Read/unread:** Not tracked in v1
+- **Search:** Text search across titles and content
+- **Notifications:** None in v1
+
+### Company List
+
+50+ public and private gaming companies. To be drafted and maintained as a living document. Not a hard filter for v1 — AI extracts company mentions from content freely. The list serves as a reference for verification and future features (company profiles, financial data).
+
+---
+
+## Technical Architecture
+
+### Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 15 (App Router) |
+| Language | TypeScript |
+| Styling | Tailwind CSS |
+| Database | Supabase (PostgreSQL) |
+| Auth (v2+) | Supabase Auth |
+| AI/Tagging | OpenAI API (gpt-4o-mini for cost efficiency) |
+| RSS Parsing | rss-parser |
+| Hosting | Vercel |
+| Repo | github.com/WALTAHHH/Always-Scheming-Terminal |
+
+### Database Schema
+
+```sql
+-- RSS feed sources
+create table sources (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  url text not null unique,
+  feed_url text not null,
+  source_type text not null, -- 'newsletter', 'news', 'analysis', 'podcast'
+  active boolean default true,
+  last_fetched_at timestamptz,
+  created_at timestamptz default now()
+);
+
+-- Ingested content items
+create table items (
+  id uuid primary key default gen_random_uuid(),
+  source_id uuid references sources(id),
+  external_id text, -- guid/link for deduplication
+  title text not null,
+  content text, -- excerpt or full text
+  url text not null,
+  author text,
+  published_at timestamptz,
+  ingested_at timestamptz default now(),
+  tags jsonb default '{}', -- AI-generated tags
+  unique(source_id, external_id)
+);
+
+-- Tag extractions (normalized for filtering)
+create table item_tags (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid references items(id) on delete cascade,
+  dimension text not null, -- 'company', 'platform', 'theme', 'category'
+  value text not null,
+  confidence float, -- AI confidence score
+  manual boolean default false, -- manually added/verified
+  unique(item_id, dimension, value)
+);
+
+-- Company reference list (for future features)
+create table companies (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text unique,
+  ticker text, -- null for private companies
+  is_public boolean default false,
+  sector text, -- 'publisher', 'developer', 'platform', 'services', 'hardware'
+  created_at timestamptz default now()
+);
+
+-- Indexes
+create index idx_items_published on items(published_at desc);
+create index idx_items_source on items(source_id);
+create index idx_item_tags_dimension on item_tags(dimension, value);
+create index idx_item_tags_item on item_tags(item_id);
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Ingestion Pipeline
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Scheduler:** Supabase Edge Function or Vercel Cron
+   - Every 30 minutes during business hours (6am-8pm PT)
+   - Every 60 minutes off-hours
+2. **Fetch:** Pull RSS feeds for all active sources
+3. **Deduplicate:** Check `external_id` (guid or URL) against existing items
+4. **Store:** Insert new items into `items` table
+5. **Tag:** Send title + excerpt to OpenAI for tag extraction
+6. **Store tags:** Insert into `item_tags` table
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### AI Tagging Prompt (Draft)
 
-## Learn More
+```
+Extract tags from this gaming industry article.
 
-To learn more about Next.js, take a look at the following resources:
+Title: {title}
+Content: {excerpt}
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Return JSON with these dimensions:
+- companies: company names mentioned (array of strings)
+- platforms: gaming platforms relevant (console/PC/mobile/VR/web)
+- themes: investing themes (AI/UGC/live-services/cloud-gaming/VR-AR/blockchain/esports/indie)
+- category: content type (article/earnings/m-and-a/fundraising/podcast/analysis/opinion)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Return only what's clearly present. Omit dimensions with no matches.
+```
 
-## Deploy on Vercel
+### API Routes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+GET  /api/items          — Paginated feed with tag filters
+GET  /api/items/[id]     — Single item detail
+GET  /api/sources        — List all sources
+POST /api/ingest         — Trigger ingestion (cron endpoint, secured)
+GET  /api/tags           — All unique tags by dimension (for filter UI)
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Frontend Pages
+
+```
+/                        — Main feed (single page app feel)
+```
+
+That's it for v1. One page. The feed IS the product.
+
+---
+
+## UI Specification
+
+### Visual Reference
+
+PhoenixNews (phoenixnews.io) — dark terminal aesthetic, high information density, clean typography.
+
+### Layout
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ ⚡ Always Scheming Terminal        [filters]  [search]  │
+├─────────────────────────────────────────────────────────┤
+│ Filter: [Source ▾] [Company ▾] [Platform ▾] [Theme ▾]  │
+│         [Category ▾]                      [AND/OR toggle]│
+├─────────────────────────────────────────────────────────┤
+│ 17:23  GamesIndustry.biz                                │
+│  EA reports Q4 live services revenue up 15% YoY         │
+│  [EA] [earnings] [console] [PC] [live-services]         │
+│─────────────────────────────────────────────────────────│
+│ 17:15  Naavik                                           │
+│  The UGC Monetization Playbook: What Roblox Got Right   │
+│  [Roblox] [UGC] [analysis] [PC] [mobile]               │
+│─────────────────────────────────────────────────────────│
+│ 16:58  InvestGame                                       │
+│  Lightspeed leads $30M Series B in Seoul-based studio   │
+│  [fundraising] [mobile] [indie]                         │
+│─────────────────────────────────────────────────────────│
+│                    ... auto-refreshing ...               │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Design Tokens
+
+- **Background:** #0a0a0f (near-black)
+- **Surface:** #12121a (card/row background)
+- **Border:** #1e1e2e (subtle dividers)
+- **Text primary:** #e0e0e0
+- **Text secondary:** #888888 (timestamps, source names)
+- **Accent:** #77c4d9 (AS brand cyan — links, active filters)
+- **Tag chips:** Dark background (#1a1a2e) with colored left border per dimension
+- **Font:** JetBrains Mono or similar monospace for terminal feel
+- **Information density:** High — minimal padding, compact rows
+
+### Interactions
+
+- Click article → opens source URL in new tab (we're an aggregator, not a reader)
+- Filter chips are toggleable — click to add/remove from active filters
+- AND/OR toggle switches filter logic globally
+- Auto-refresh: new items slide in at top with subtle animation
+- Scroll position preserved during refresh (new items badge: "12 new items ↑")
+
+---
+
+## Build Phases
+
+### Phase 1: Foundation (Week 1-2)
+- [ ] Project setup (Next.js 15, TypeScript, Tailwind, Supabase)
+- [ ] Database schema (sources, items, item_tags, companies)
+- [ ] Seed sources table with v1 source list
+- [ ] RSS ingestion pipeline (fetch → dedupe → store)
+- [ ] Basic feed UI (chronological list, dark theme, source labels)
+- [ ] Deploy to Vercel
+
+**Done when:** Real articles from real sources appear in a dark terminal UI.
+
+### Phase 2: Intelligence (Week 3-4)
+- [ ] OpenAI integration for auto-tagging
+- [ ] Tag extraction on ingestion
+- [ ] Filter UI (top bar dropdowns per dimension)
+- [ ] AND/OR filter logic
+- [ ] Text search
+- [ ] Scheduled ingestion (Vercel Cron or Supabase Edge Function)
+
+**Done when:** Matt can filter the feed by company + theme and find relevant content faster than checking sources individually.
+
+### Phase 3: Polish (Week 5-6)
+- [ ] Auto-refresh with "new items" indicator
+- [ ] Draft company list (50+ companies)
+- [ ] Source management page (add/remove/pause sources)
+- [ ] Ingestion health monitoring (last fetch time, error tracking)
+- [ ] Performance optimization (pagination, caching)
+
+**Done when:** Matt uses this daily instead of checking sources individually. Hypothesis validation begins.
+
+### Phase 4: Users & Growth (Week 7-8+)
+- [ ] Supabase Auth (email/password)
+- [ ] Private beta invites
+- [ ] User preferences (saved filters, default view)
+- [ ] Mobile-responsive layout
+- [ ] Analytics (page views, filter usage, return visits)
+- [ ] Free/paid tier structure (TBD)
+
+**Done when:** 3+ external users engaging >3x/week.
+
+---
+
+## Kill Signal
+
+If by week 8 of active use, nobody (including Matt) returns to the terminal unprompted and regularly, the hypothesis is dead. Pivot or kill.
+
+---
+
+## Open Tasks
+
+- [ ] Create Supabase project and share credentials
+- [ ] Draft 50+ company list (Clawd to draft, Matt to verify)
+- [ ] Verify RSS feed URLs for all v1 sources
+- [ ] Determine OpenAI API budget for tagging
+
+---
+
+## References
+
+- **Visual comp:** PhoenixNews (phoenixnews.io)
+- **Strategic context:** Clawd Constitution (Notion)
+- **Hypothesis:** Constitution → Current working hypotheses → #1
+- **Target personas:** Victor Venture, Frank Founder, Annie Analyst
+
+*Last updated: 2026-01-30*
