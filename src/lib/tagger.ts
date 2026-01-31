@@ -105,7 +105,8 @@ const SOURCE_TYPE_TO_CATEGORY: Record<string, string> = {
 };
 
 // ── Content category keywords (supplements source-based) ───────────
-const CATEGORY_RULES: Record<string, string[]> = {
+// These check BOTH title and content
+const CATEGORY_RULES_FULL: Record<string, string[]> = {
   earnings: [
     "earnings", "revenue report", "quarterly results", "quarterly report",
     "fiscal year", "financial results", "operating profit",
@@ -122,8 +123,12 @@ const CATEGORY_RULES: Record<string, string[]> = {
     "investment round", "venture capital",
     "raised \\$", "raises \\$", "secures \\$",
   ],
+};
+
+// These check TITLE ONLY (too noisy in body text — cross-promos, etc.)
+const CATEGORY_RULES_TITLE_ONLY: Record<string, string[]> = {
   podcast: [
-    "podcast", "episode",
+    "podcast", "on the pod",
   ],
   opinion: [
     "opinion", "editorial", "| opinion",
@@ -152,8 +157,16 @@ export function tagItem(
   const baseCategory = SOURCE_TYPE_TO_CATEGORY[sourceType] || "article";
   categories.add(baseCategory);
 
-  for (const [cat, keywords] of Object.entries(CATEGORY_RULES)) {
+  // Full text matching (title + content) for specific categories
+  for (const [cat, keywords] of Object.entries(CATEGORY_RULES_FULL)) {
     if (matchesAny(text, keywords)) {
+      categories.add(cat);
+    }
+  }
+
+  // Title-only matching for categories prone to false positives in body text
+  for (const [cat, keywords] of Object.entries(CATEGORY_RULES_TITLE_ONLY)) {
+    if (matchesAny(title, keywords)) {
       categories.add(cat);
     }
   }
