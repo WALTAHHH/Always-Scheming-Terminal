@@ -87,6 +87,7 @@ export function FeedRow({ item }: FeedRowProps) {
       href={item.url}
       target="_blank"
       rel="noopener noreferrer"
+      data-feed-item
       className={`block py-3 px-3 border-l-2 ${borderColor} hover:bg-ast-surface/50 transition-colors group`}
     >
       <div className="flex items-start gap-3">
