@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface TagOption {
   value: string;
@@ -9,6 +9,7 @@ interface TagOption {
 
 interface FilterBarProps {
   sources: { name: string }[];
+  tagCounts: Record<string, Record<string, number>>;
   onFilterChange: (filters: FilterState) => void;
 }
 
@@ -36,21 +37,25 @@ function FilterDropdown({
   label,
   options,
   selected,
-  onToggle,
+  isOpen,
+  onToggleOpen,
+  onToggleValue,
 }: {
   label: string;
   options: TagOption[];
   selected: string[];
-  onToggle: (value: string) => void;
+  isOpen: boolean;
+  onToggleOpen: () => void;
+  onToggleValue: (value: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   if (options.length === 0) return null;
 
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen(!open)}
+        onClick={onToggleOpen}
         className={`px-3 py-1.5 text-xs rounded border transition-colors ${
           selected.length > 0
             ? "border-ast-accent text-ast-accent bg-ast-accent/10"
@@ -66,55 +71,53 @@ function FilterDropdown({
         <span className="ml-1">▾</span>
       </button>
 
-      {open && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-          />
-          <div className="absolute top-full mt-1 left-0 z-50 bg-ast-surface border border-ast-border rounded-lg shadow-xl min-w-[180px] max-h-[300px] overflow-y-auto">
-            {options.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => onToggle(opt.value)}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-ast-bg/50 flex items-center justify-between transition-colors ${
-                  selected.includes(opt.value) ? "text-ast-accent" : "text-ast-text"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <span
-                    className={`w-3 h-3 rounded-sm border flex items-center justify-center ${
-                      selected.includes(opt.value)
-                        ? "border-ast-accent bg-ast-accent/20"
-                        : "border-ast-border"
-                    }`}
-                  >
-                    {selected.includes(opt.value) && (
-                      <span className="text-ast-accent text-[8px]">✓</span>
-                    )}
-                  </span>
-                  {opt.value}
+      {isOpen && (
+        <div className="absolute top-full mt-1 left-0 z-50 bg-ast-surface border border-ast-border rounded-lg shadow-xl min-w-[180px] max-h-[300px] overflow-y-auto">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onToggleValue(opt.value)}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-ast-bg/50 flex items-center justify-between transition-colors ${
+                selected.includes(opt.value) ? "text-ast-accent" : "text-ast-text"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  className={`w-3 h-3 rounded-sm border flex items-center justify-center ${
+                    selected.includes(opt.value)
+                      ? "border-ast-accent bg-ast-accent/20"
+                      : "border-ast-border"
+                  }`}
+                >
+                  {selected.includes(opt.value) && (
+                    <span className="text-ast-accent text-[8px]">✓</span>
+                  )}
                 </span>
-                <span className="text-ast-muted text-[10px]">{opt.count}</span>
-              </button>
-            ))}
-          </div>
-        </>
+                {opt.value}
+              </span>
+              <span className="text-ast-muted text-[10px]">{opt.count}</span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-export function FilterBar({ sources, onFilterChange }: FilterBarProps) {
+export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps) {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
-  const [tags, setTags] = useState<Record<string, TagOption[]>>({});
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const barRef = useRef<HTMLDivElement>(null);
 
-  // Fetch available tags
+  // Close dropdown when clicking outside
   useEffect(() => {
-    fetch("/api/tags")
-      .then((r) => r.json())
-      .then((data) => setTags(data.tags || {}))
-      .catch(console.error);
+    function handleClickOutside(e: MouseEvent) {
+      if (barRef.current && !barRef.current.contains(e.target as Node)) {
+        setOpenDropdown(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const updateFilters = useCallback(
@@ -137,53 +140,73 @@ export function FilterBar({ sources, onFilterChange }: FilterBarProps) {
     filters.companies.length > 0 ||
     filters.search.length > 0;
 
+  // Build tag options from actual item counts
+  const toOptions = (dim: string): TagOption[] => {
+    const counts = tagCounts[dim] || {};
+    return Object.entries(counts)
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count);
+  };
+
   const sourceOptions: TagOption[] = sources.map((s) => ({
     value: s.name,
-    count: 0,
-  }));
+    count: tagCounts._sources?.[s.name] || 0,
+  })).sort((a, b) => b.count - a.count);
+
+  const companyOptions = toOptions("company");
 
   return (
     <div className="border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm sticky top-[53px] z-40">
-      <div className="max-w-5xl mx-auto px-4 py-2 flex items-center gap-2 flex-wrap">
+      <div className="max-w-5xl mx-auto px-4 py-2 flex items-center gap-2 flex-wrap" ref={barRef}>
         {/* Filter dropdowns */}
         <FilterDropdown
           label="Source"
           options={sourceOptions}
           selected={filters.sources}
-          onToggle={(v) =>
+          isOpen={openDropdown === "source"}
+          onToggleOpen={() => setOpenDropdown(openDropdown === "source" ? null : "source")}
+          onToggleValue={(v) =>
             updateFilters({ sources: toggleInArray(filters.sources, v) })
           }
         />
         <FilterDropdown
           label="Category"
-          options={tags.category || []}
+          options={toOptions("category")}
           selected={filters.categories}
-          onToggle={(v) =>
+          isOpen={openDropdown === "category"}
+          onToggleOpen={() => setOpenDropdown(openDropdown === "category" ? null : "category")}
+          onToggleValue={(v) =>
             updateFilters({ categories: toggleInArray(filters.categories, v) })
           }
         />
         <FilterDropdown
           label="Platform"
-          options={tags.platform || []}
+          options={toOptions("platform")}
           selected={filters.platforms}
-          onToggle={(v) =>
+          isOpen={openDropdown === "platform"}
+          onToggleOpen={() => setOpenDropdown(openDropdown === "platform" ? null : "platform")}
+          onToggleValue={(v) =>
             updateFilters({ platforms: toggleInArray(filters.platforms, v) })
           }
         />
         <FilterDropdown
           label="Theme"
-          options={tags.theme || []}
+          options={toOptions("theme")}
           selected={filters.themes}
-          onToggle={(v) =>
+          isOpen={openDropdown === "theme"}
+          onToggleOpen={() => setOpenDropdown(openDropdown === "theme" ? null : "theme")}
+          onToggleValue={(v) =>
             updateFilters({ themes: toggleInArray(filters.themes, v) })
           }
         />
-        {(tags.company?.length ?? 0) > 0 && (
+        {companyOptions.length > 0 && (
           <FilterDropdown
             label="Company"
-            options={tags.company || []}
+            options={companyOptions}
             selected={filters.companies}
-            onToggle={(v) =>
+            isOpen={openDropdown === "company"}
+            onToggleOpen={() => setOpenDropdown(openDropdown === "company" ? null : "company")}
+            onToggleValue={(v) =>
               updateFilters({ companies: toggleInArray(filters.companies, v) })
             }
           />
@@ -231,10 +254,11 @@ export function FilterBar({ sources, onFilterChange }: FilterBarProps) {
             onClick={() => {
               setFilters(EMPTY_FILTERS);
               onFilterChange(EMPTY_FILTERS);
+              setOpenDropdown(null);
             }}
-            className="text-ast-muted hover:text-ast-accent text-xs transition-colors"
+            className="px-3 py-1.5 text-xs rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors"
           >
-            Clear
+            ✕ Clear All
           </button>
         )}
       </div>

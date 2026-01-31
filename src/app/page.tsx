@@ -15,7 +15,7 @@ async function getItems(): Promise<FeedItem[]> {
     .from("items")
     .select("*, sources(name, url, source_type)")
     .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(200);
+    .limit(500);
 
   if (error) {
     console.error("Failed to fetch items:", error.message);

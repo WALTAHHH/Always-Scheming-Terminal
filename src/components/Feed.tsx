@@ -11,6 +11,36 @@ interface FeedProps {
   sources: { name: string }[];
 }
 
+/**
+ * Compute tag counts from the actual loaded items.
+ * This ensures dropdown counts match what filtering will return.
+ */
+function computeTagCounts(items: FeedItem[]): Record<string, Record<string, number>> {
+  const counts: Record<string, Record<string, number>> = {
+    _sources: {},
+  };
+
+  for (const item of items) {
+    // Count by source
+    const sourceName = item.sources?.name;
+    if (sourceName) {
+      counts._sources[sourceName] = (counts._sources[sourceName] || 0) + 1;
+    }
+
+    // Count by tag dimensions
+    const tags = (item.tags as Record<string, string[]>) || {};
+    for (const [dim, values] of Object.entries(tags)) {
+      if (!Array.isArray(values)) continue;
+      if (!counts[dim]) counts[dim] = {};
+      for (const v of values) {
+        counts[dim][v] = (counts[dim][v] || 0) + 1;
+      }
+    }
+  }
+
+  return counts;
+}
+
 function matchesFilter(item: FeedItem, filters: FilterState): boolean {
   const tags = (item.tags as Record<string, string[]>) || {};
   const checks: boolean[] = [];
@@ -73,6 +103,9 @@ function matchesFilter(item: FeedItem, filters: FilterState): boolean {
 export function Feed({ items, sources }: FeedProps) {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
 
+  // Compute tag counts from loaded items so counts match filter results
+  const tagCounts = useMemo(() => computeTagCounts(items), [items]);
+
   const filtered = useMemo(
     () => items.filter((item) => matchesFilter(item, filters)),
     [items, filters]
@@ -88,7 +121,7 @@ export function Feed({ items, sources }: FeedProps) {
 
   return (
     <>
-      <FilterBar sources={sources} onFilterChange={setFilters} />
+      <FilterBar sources={sources} tagCounts={tagCounts} onFilterChange={setFilters} />
       <div className="max-w-5xl mx-auto px-4 py-4">
         {hasActiveFilters && (
           <div className="text-ast-muted text-xs mb-3">
