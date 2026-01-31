@@ -30,10 +30,10 @@ function truncate(text: string | null, maxLen: number): string {
 }
 
 const TAG_DIMENSION_COLORS: Record<string, string> = {
-  company: "border-l-[#f2cb05] text-[#f2cb05]",
-  platform: "border-l-[#77c4d9] text-[#77c4d9]",
-  theme: "border-l-[#dd72dd] text-[#dd72dd]",
-  category: "border-l-[#6decb9] text-[#6decb9]",
+  company: "border-l-ast-gold text-ast-gold",
+  platform: "border-l-ast-accent text-ast-accent",
+  theme: "border-l-ast-pink text-ast-pink",
+  category: "border-l-ast-mint text-ast-mint",
 };
 
 function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
@@ -68,10 +68,10 @@ function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  newsletter: "border-l-emerald-500",
-  news: "border-l-blue-500",
-  analysis: "border-l-purple-500",
-  podcast: "border-l-orange-500",
+  newsletter: "border-l-ast-mint",
+  news: "border-l-ast-accent",
+  analysis: "border-l-ast-pink",
+  podcast: "border-l-ast-gold",
 };
 
 interface FeedRowProps {

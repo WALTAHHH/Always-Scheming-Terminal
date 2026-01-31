@@ -14,34 +14,33 @@ export function ClusterRow({ cluster }: ClusterRowProps) {
   const tier = getImportanceTier(cluster.importanceScore ?? 0);
   const tierStyle = TIER_STYLES[tier];
 
+  const importanceBadge = tier !== "low" ? (
+    <div className="absolute top-3 right-3 flex items-center gap-1.5" title={`Importance: ${((cluster.importanceScore ?? 0) * 100).toFixed(0)}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${tierStyle.dotColor}`} />
+      {tierStyle.label && (
+        <span className={`text-[9px] font-semibold tracking-wider ${tierStyle.color}`}>
+          {tierStyle.label}
+        </span>
+      )}
+    </div>
+  ) : null;
+
   // Single item — render with importance indicator if noteworthy
   if (cluster.related.length === 0) {
     return (
       <div className="relative">
         <FeedRow item={cluster.lead} />
-        {tier !== "low" && (
-          <div className="absolute top-3 right-3 flex items-center gap-1">
-            <span className={`text-[10px] ${tierStyle.color}`} title={`Importance: ${((cluster.importanceScore ?? 0) * 100).toFixed(0)}`}>
-              {tierStyle.label}
-            </span>
-          </div>
-        )}
+        {importanceBadge}
       </div>
     );
   }
 
   return (
-    <div className={`${cluster.isMultiSource ? "border-l-2 border-l-[#f2cb05]" : ""}`}>
+    <div className={`${cluster.isMultiSource ? "border-l-2 border-l-ast-gold" : ""}`}>
       {/* Lead article */}
       <div className="relative">
         <FeedRow item={cluster.lead} />
-        {tier !== "low" && (
-          <div className="absolute top-3 right-3 flex items-center gap-1">
-            <span className={`text-[10px] ${tierStyle.color}`} title={`Importance: ${((cluster.importanceScore ?? 0) * 100).toFixed(0)}`}>
-              {tierStyle.label}
-            </span>
-          </div>
-        )}
+        {importanceBadge}
 
         {/* Cluster indicator bar */}
         <div className="px-3 pb-2 flex items-center gap-2">
@@ -53,7 +52,7 @@ export function ClusterRow({ cluster }: ClusterRowProps) {
             className="flex items-center gap-2 text-[10px] text-ast-muted hover:text-ast-accent transition-colors"
           >
             {cluster.isMultiSource && (
-              <span className="px-1.5 py-0.5 bg-[#f2cb05]/10 text-[#f2cb05] rounded text-[10px] font-semibold">
+              <span className="px-1.5 py-0.5 bg-ast-gold/10 text-ast-gold rounded text-[10px] font-semibold">
                 {cluster.sourceCount} sources
               </span>
             )}

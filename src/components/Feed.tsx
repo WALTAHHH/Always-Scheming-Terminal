@@ -234,32 +234,33 @@ export function Feed({ items, sources }: FeedProps) {
             {totalArticles} articles → {totalStories} stories
           </span>
           {multiSourceCount > 0 && (
-            <span className="text-[#f2cb05]">
+            <span className="text-ast-gold">
               {multiSourceCount} multi-source
             </span>
           )}
           <div className="flex-1" />
           {/* Sort toggle */}
-          <div className="flex items-center gap-1 border border-ast-border rounded overflow-hidden">
+          <div className="flex items-center border border-ast-border rounded overflow-hidden">
             <button
               onClick={() => setSortMode("importance")}
-              className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+              className={`px-2.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
                 sortMode === "importance"
-                  ? "bg-ast-accent/15 text-ast-accent"
+                  ? "bg-ast-gold/15 text-ast-gold"
                   : "text-ast-muted hover:text-ast-text"
               }`}
             >
-              ⚡ Important
+              SIGNAL
             </button>
+            <div className="w-px h-4 bg-ast-border" />
             <button
               onClick={() => setSortMode("recent")}
-              className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+              className={`px-2.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
                 sortMode === "recent"
                   ? "bg-ast-accent/15 text-ast-accent"
                   : "text-ast-muted hover:text-ast-text"
               }`}
             >
-              🕐 Recent
+              LATEST
             </button>
           </div>
         </div>

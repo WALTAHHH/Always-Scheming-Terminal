@@ -135,9 +135,9 @@ export function getImportanceTier(score: number): ImportanceTier {
   return "low";
 }
 
-export const TIER_STYLES: Record<ImportanceTier, { label: string; color: string; bgColor: string }> = {
-  critical: { label: "🔴", color: "text-red-400", bgColor: "bg-red-400/10" },
-  high:     { label: "🟠", color: "text-orange-400", bgColor: "bg-orange-400/10" },
-  medium:   { label: "🟡", color: "text-yellow-400", bgColor: "bg-yellow-400/10" },
-  low:      { label: "",   color: "text-ast-muted", bgColor: "" },
+export const TIER_STYLES: Record<ImportanceTier, { label: string; color: string; bgColor: string; dotColor: string }> = {
+  critical: { label: "HOT",  color: "text-ast-pink",   bgColor: "bg-ast-pink/10",   dotColor: "bg-ast-pink" },
+  high:     { label: "HIGH", color: "text-ast-gold",   bgColor: "bg-ast-gold/10",   dotColor: "bg-ast-gold" },
+  medium:   { label: "",     color: "text-ast-accent",  bgColor: "bg-ast-accent/10", dotColor: "bg-ast-accent" },
+  low:      { label: "",     color: "text-ast-muted",   bgColor: "",                  dotColor: "" },
 };

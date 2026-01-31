@@ -26,12 +26,12 @@ export function KeyboardNav() {
     function setActive(items: HTMLAnchorElement[], index: number) {
       // Remove highlight from all
       items.forEach((el) => {
-        el.classList.remove("ring-1", "ring-[#77c4d9]/50", "bg-ast-surface/30");
+        el.classList.remove("ring-1", "ring-ast-accent/50", "bg-ast-surface/30");
       });
 
       if (index >= 0 && index < items.length) {
         const el = items[index];
-        el.classList.add("ring-1", "ring-[#77c4d9]/50", "bg-ast-surface/30");
+        el.classList.add("ring-1", "ring-ast-accent/50", "bg-ast-surface/30");
         el.scrollIntoView({ block: "nearest", behavior: "smooth" });
       }
     }
