@@ -4,7 +4,8 @@ import { useState, useMemo } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import type { FilterState } from "./FilterBar";
 import { FilterBar, EMPTY_FILTERS } from "./FilterBar";
-import { FeedRow } from "./FeedRow";
+import { ClusterRow } from "./ClusterRow";
+import { clusterItems, type StoryCluster } from "@/lib/cluster";
 
 interface FeedProps {
   items: FeedItem[];
@@ -84,65 +85,84 @@ function matchesFilter(item: FeedItem, filters: FilterState): boolean {
 }
 
 /**
- * Group items by date label (Today, Yesterday, or formatted date).
+ * Group clusters by date label.
  */
-function groupByDate(items: FeedItem[]): { label: string; items: FeedItem[] }[] {
+function groupByDate(
+  clusters: StoryCluster[]
+): { label: string; clusters: StoryCluster[] }[] {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
-  const groups: Map<string, FeedItem[]> = new Map();
+  const groups: Map<string, StoryCluster[]> = new Map();
 
-  for (const item of items) {
-    const pubDate = item.published_at ? new Date(item.published_at) : null;
+  for (const cluster of clusters) {
+    const pubDate = cluster.lead.published_at
+      ? new Date(cluster.lead.published_at)
+      : null;
     let label: string;
 
     if (!pubDate) {
       label = "Unknown Date";
     } else {
-      const itemDate = new Date(pubDate.getFullYear(), pubDate.getMonth(), pubDate.getDate());
+      const itemDate = new Date(
+        pubDate.getFullYear(),
+        pubDate.getMonth(),
+        pubDate.getDate()
+      );
 
       if (itemDate.getTime() === today.getTime()) {
         label = "Today";
       } else if (itemDate.getTime() === yesterday.getTime()) {
         label = "Yesterday";
+      } else if (itemDate.getFullYear() === now.getFullYear()) {
+        label = pubDate.toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "short",
+          day: "numeric",
+        });
       } else {
-        // Check if same year
-        if (itemDate.getFullYear() === now.getFullYear()) {
-          label = pubDate.toLocaleDateString("en-US", {
-            weekday: "long",
-            month: "short",
-            day: "numeric",
-          });
-        } else {
-          label = pubDate.toLocaleDateString("en-US", {
-            weekday: "long",
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          });
-        }
+        label = pubDate.toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
       }
     }
 
     if (!groups.has(label)) {
       groups.set(label, []);
     }
-    groups.get(label)!.push(item);
+    groups.get(label)!.push(cluster);
   }
 
-  return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+  return Array.from(groups.entries()).map(([label, clusters]) => ({
+    label,
+    clusters,
+  }));
 }
 
-function DateGroupHeader({ label, count }: { label: string; count: number }) {
+function DateGroupHeader({
+  label,
+  storyCount,
+  articleCount,
+}: {
+  label: string;
+  storyCount: number;
+  articleCount: number;
+}) {
   return (
     <div className="sticky top-[93px] z-30 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border px-3 py-2 flex items-center justify-between">
       <span className="text-ast-accent text-xs font-semibold tracking-wide uppercase">
         {label}
       </span>
       <span className="text-ast-muted text-[10px]">
-        {count} {count === 1 ? "item" : "items"}
+        {storyCount} {storyCount === 1 ? "story" : "stories"}
+        {articleCount > storyCount && (
+          <span> · {articleCount} articles</span>
+        )}
       </span>
     </div>
   );
@@ -158,7 +178,25 @@ export function Feed({ items, sources }: FeedProps) {
     [items, filters]
   );
 
-  const groups = useMemo(() => groupByDate(filtered), [filtered]);
+  // Cluster filtered items
+  const clusters = useMemo(() => clusterItems(filtered), [filtered]);
+
+  // Group by date
+  const groups = useMemo(() => groupByDate(clusters), [clusters]);
+
+  // Sort: multi-source clusters first within each group
+  const sortedGroups = useMemo(
+    () =>
+      groups.map((g) => ({
+        ...g,
+        clusters: [...g.clusters].sort((a, b) => {
+          if (a.isMultiSource && !b.isMultiSource) return -1;
+          if (!a.isMultiSource && b.isMultiSource) return 1;
+          return 0;
+        }),
+      })),
+    [groups]
+  );
 
   const hasActiveFilters =
     filters.sources.length > 0 ||
@@ -168,25 +206,53 @@ export function Feed({ items, sources }: FeedProps) {
     filters.companies.length > 0 ||
     filters.search.length > 0;
 
+  const totalArticles = filtered.length;
+  const totalStories = clusters.length;
+  const multiSourceCount = clusters.filter((c) => c.isMultiSource).length;
+
   return (
     <>
       <FilterBar sources={sources} tagCounts={tagCounts} onFilterChange={setFilters} />
       <div className="max-w-5xl mx-auto px-4 py-2">
-        {hasActiveFilters && (
-          <div className="text-ast-muted text-xs mb-2 px-3">
-            Showing {filtered.length} of {items.length} items
-          </div>
-        )}
-        {groups.map((group) => (
-          <div key={group.label} className="mb-2">
-            <DateGroupHeader label={group.label} count={group.items.length} />
-            <div className="divide-y divide-ast-border">
-              {group.items.map((item) => (
-                <FeedRow key={item.id} item={item} />
-              ))}
+        {/* Stats bar */}
+        <div className="text-ast-muted text-xs mb-2 px-3 flex items-center gap-3">
+          {hasActiveFilters && (
+            <span>
+              {totalArticles} articles → {totalStories} stories
+            </span>
+          )}
+          {!hasActiveFilters && (
+            <span>
+              {totalArticles} articles → {totalStories} stories
+            </span>
+          )}
+          {multiSourceCount > 0 && (
+            <span className="text-[#f2cb05]">
+              {multiSourceCount} multi-source
+            </span>
+          )}
+        </div>
+
+        {sortedGroups.map((group) => {
+          const articleCount = group.clusters.reduce(
+            (sum, c) => sum + 1 + c.related.length,
+            0
+          );
+          return (
+            <div key={group.label} className="mb-2">
+              <DateGroupHeader
+                label={group.label}
+                storyCount={group.clusters.length}
+                articleCount={articleCount}
+              />
+              <div className="divide-y divide-ast-border">
+                {group.clusters.map((cluster) => (
+                  <ClusterRow key={cluster.id} cluster={cluster} />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {filtered.length === 0 && (
           <div className="text-center py-16 text-ast-muted">
             No items match your filters.
