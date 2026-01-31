@@ -256,7 +256,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
               onFilterChange(EMPTY_FILTERS);
               setOpenDropdown(null);
             }}
-            className="px-3 py-1.5 text-xs rounded border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors"
+            className="px-3 py-1.5 text-xs rounded border border-ast-pink/40 text-ast-pink hover:bg-ast-pink/10 transition-colors"
           >
             ✕ Clear All
           </button>

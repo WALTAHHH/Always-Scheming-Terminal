@@ -48,4 +48,10 @@ export const V1_SOURCES = [
     feed_url: "https://elitegamedevelopers.substack.com/feed",
     source_type: "newsletter",
   },
+  {
+    name: "SuperJoost Playlist",
+    url: "https://superjoost.substack.com",
+    feed_url: "https://superjoost.substack.com/feed",
+    source_type: "newsletter",
+  },
 ] as const;

@@ -10,21 +10,21 @@
   background: #0a0a0f;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e1e2e;
+  background: #2a2a2a;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2e2e3e;
+  background: #3a3a3a;
 }
 
-/* Selection */
+/* Selection — AS blue */
 ::selection {
   background: rgba(119, 196, 217, 0.3);
-  color: #e0e0e0;
+  color: #d4d4d4;
 }
 
-/* Focus styles */
+/* Focus styles — AS pink */
 *:focus-visible {
-  outline: 1px solid #77c4d9;
+  outline: 1px solid #dd72dd;
   outline-offset: 2px;
 }

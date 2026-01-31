@@ -30,10 +30,10 @@ function truncate(text: string | null, maxLen: number): string {
 }
 
 const TAG_DIMENSION_COLORS: Record<string, string> = {
-  company: "border-l-yellow-500 text-yellow-400",
-  platform: "border-l-blue-400 text-blue-400",
-  theme: "border-l-purple-400 text-purple-400",
-  category: "border-l-emerald-400 text-emerald-400",
+  company: "border-l-[#f2cb05] text-[#f2cb05]",
+  platform: "border-l-[#77c4d9] text-[#77c4d9]",
+  theme: "border-l-[#dd72dd] text-[#dd72dd]",
+  category: "border-l-[#6decb9] text-[#6decb9]",
 };
 
 function TagChips({ tags }: { tags: Record<string, string[]> | null }) {

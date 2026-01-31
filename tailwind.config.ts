@@ -11,11 +11,15 @@ const config: Config = {
       colors: {
         ast: {
           bg: "#0a0a0f",
-          surface: "#12121a",
-          border: "#1e1e2e",
-          text: "#e0e0e0",
+          surface: "#1e1e1e",
+          border: "#2a2a2a",
+          text: "#d4d4d4",
           muted: "#888888",
           accent: "#77c4d9",
+          pink: "#dd72dd",
+          mint: "#6decb9",
+          gold: "#f2cb05",
+          pale: "#f3ece9",
           tag: "#1a1a2e",
         },
       },
