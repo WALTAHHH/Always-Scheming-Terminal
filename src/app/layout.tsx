@@ -1,29 +1,26 @@
-import { Sidebar } from '@/components/layout/Sidebar';
-import { Header } from '@/components/layout/Header';
-import { Geist } from "next/font/google";
+import type { Metadata } from "next";
 import "./globals.css";
 
-const geist = Geist({
-  subsets: ["latin"],
-});
+export const metadata: Metadata = {
+  title: "Always Scheming Terminal",
+  description: "Gaming industry intelligence, real-time.",
+};
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en">
-      <body className={geist.className}>
-        <div className="flex h-screen">
-          <Sidebar />
-          <div className="flex-1 flex flex-col">
-            <Header />
-            <main className="flex-1 overflow-auto p-6 bg-gray-50">
-              {children}
-            </main>
-          </div>
-        </div>
+    <html lang="en" className="dark">
+      <head>
+        <link
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="bg-ast-bg text-ast-text font-mono antialiased min-h-screen">
+        {children}
       </body>
     </html>
   );

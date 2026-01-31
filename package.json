@@ -1,30 +1,32 @@
 {
-  "name": "news-terminal",
+  "name": "always-scheming-terminal",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "ingest": "npx tsx scripts/ingest.ts"
   },
   "dependencies": {
-    "@heroicons/react": "^2.2.0",
-    "chart.js": "^4.4.7",
-    "next": "15.1.7",
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^17.2.3",
+    "next": "^15.1.0",
     "react": "^19.0.0",
-    "react-chartjs-2": "^5.3.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
-    "@types/node": "^20",
+    "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.24",
     "eslint": "^9",
-    "eslint-config-next": "15.1.7",
+    "eslint-config-next": "^15.1.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.19.0",
     "typescript": "^5"
   }
 }
