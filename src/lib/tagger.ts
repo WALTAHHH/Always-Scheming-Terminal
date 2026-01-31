@@ -1,29 +1,99 @@
 /**
  * Hybrid tagging system
- * - Category: rule-based (derived from source type)
- * - Platform: rule-based (keyword matching)
- * - Company + Theme: AI (OpenAI gpt-4o-mini) — stubbed until key is provided
+ * - Category: rule-based (derived from source type + keyword detection)
+ * - Platform: rule-based (keyword matching with word boundaries)
+ * - Theme: rule-based (keyword matching with word boundaries)
+ * - Company: AI (OpenAI gpt-4o-mini) — activates when OPENAI_API_KEY set
  */
 
+// ── Helpers ────────────────────────────────────────────────────────
+
+/**
+ * Check if ANY keyword matches in the text using word boundaries.
+ * This prevents "ar" matching inside "year" or "vr" inside "every".
+ */
+function matchesAny(text: string, keywords: string[]): boolean {
+  return keywords.some((kw) => {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`\\b${escaped}\\b`, "i");
+    return re.test(text);
+  });
+}
+
 // ── Rule-based: Platform keywords ──────────────────────────────────
-const PLATFORM_KEYWORDS: Record<string, string[]> = {
-  mobile: ["mobile", "ios", "android", "iphone", "ipad", "app store", "google play", "smartphone"],
-  console: ["console", "playstation", "ps5", "ps4", "xbox", "nintendo", "switch", "switch 2"],
-  pc: ["pc", "steam", "epic games store", "gog", "desktop", "windows"],
-  vr: ["vr", "virtual reality", "quest", "meta quest", "psvr", "vision pro", "mixed reality", "xr"],
-  web: ["web", "browser", "html5", "webgl"],
+const PLATFORM_RULES: Record<string, string[]> = {
+  mobile: [
+    "mobile", "mobile game", "mobile gaming", "ios", "android",
+    "iphone", "ipad", "app store", "google play", "smartphone",
+    "mobile-first",
+  ],
+  console: [
+    "console", "playstation", "ps5", "ps4", "ps3",
+    "xbox", "xbox series", "nintendo", "switch", "switch 2",
+    "game boy", "handheld",
+  ],
+  pc: [
+    "pc gaming", "pc game", "steam", "epic games store",
+    "gog", "windows gaming", "pc and console",
+    // standalone "pc" is tricky — use word boundary but it's only 2 chars
+    // we rely on the regex word boundary to handle this
+    "pc",
+  ],
+  vr: [
+    "virtual reality", "meta quest", "quest 2", "quest 3",
+    "quest pro", "psvr", "vision pro", "mixed reality headset",
+    // standalone "VR" — word boundary protects against "every", "over" etc.
+    "vr",
+  ],
+  web: [
+    "browser game", "browser-based", "html5", "webgl",
+    "web game", "web gaming",
+  ],
 };
 
 // ── Rule-based: Theme keywords ─────────────────────────────────────
-const THEME_KEYWORDS: Record<string, string[]> = {
-  ai: ["artificial intelligence", " ai ", "machine learning", "generative ai", "llm", "chatgpt", "copilot"],
-  ugc: ["ugc", "user-generated", "user generated", "roblox", "fortnite creative", "modding", "mod support"],
-  "live-services": ["live service", "live-service", "gaas", "games as a service", "battle pass", "season pass", "live ops"],
-  "cloud-gaming": ["cloud gaming", "game streaming", "geforce now", "xbox cloud", "luna"],
-  "vr-ar": ["vr", "ar", "virtual reality", "augmented reality", "mixed reality", "metaverse", "spatial computing"],
-  blockchain: ["blockchain", "nft", "web3", "crypto", "play-to-earn", "p2e", "token"],
-  esports: ["esports", "e-sports", "competitive gaming", "tournament", "league"],
-  indie: ["indie", "independent developer", "solo dev", "small studio"],
+const THEME_RULES: Record<string, string[]> = {
+  ai: [
+    "artificial intelligence", "machine learning", "generative ai",
+    "llm", "chatgpt", "copilot", "ai-powered", "ai-first",
+    "ai agent", "ai tool", "ai model",
+    // standalone "AI" — word boundary handles it (won't match "said", "fair")
+    "ai",
+  ],
+  ugc: [
+    "ugc", "user-generated content", "user generated content",
+    "roblox", "fortnite creative", "modding community",
+    "mod support", "creator economy", "user-generated",
+  ],
+  "live-services": [
+    "live service", "live-service", "live services", "live ops",
+    "games as a service", "gaas", "battle pass", "season pass",
+    "live game", "recurring revenue",
+  ],
+  "cloud-gaming": [
+    "cloud gaming", "game streaming", "geforce now",
+    "xbox cloud gaming", "luna", "cloud-based gaming",
+  ],
+  "vr-ar": [
+    "virtual reality", "augmented reality", "mixed reality",
+    "metaverse", "spatial computing", "xr",
+    // Only match standalone VR/AR with word boundaries
+    "vr", "ar",
+  ],
+  blockchain: [
+    "blockchain", "nft", "web3", "crypto gaming",
+    "play-to-earn", "play to earn", "p2e", "token",
+    "on-chain",
+  ],
+  esports: [
+    "esports", "e-sports", "esport", "competitive gaming",
+    "tournament", "pro league", "competitive scene",
+  ],
+  indie: [
+    "indie game", "indie developer", "indie studio",
+    "independent developer", "solo dev", "small studio",
+    "indie hit", "indie dev",
+  ],
 };
 
 // ── Rule-based: Category from source type ──────────────────────────
@@ -35,12 +105,29 @@ const SOURCE_TYPE_TO_CATEGORY: Record<string, string> = {
 };
 
 // ── Content category keywords (supplements source-based) ───────────
-const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  earnings: ["earnings", "revenue", "quarterly", "q1", "q2", "q3", "q4", "fiscal", "financial results", "profit", "operating income"],
-  "m-and-a": ["acquisition", "acquired", "merger", "buyout", "takeover", "purchase"],
-  fundraising: ["funding", "fundrais", "series a", "series b", "series c", "seed round", "investment round", "raised", "venture capital", "led by"],
-  podcast: ["podcast", "episode", "listen"],
-  opinion: ["opinion", "editorial", "take", "hot take", "perspective"],
+const CATEGORY_RULES: Record<string, string[]> = {
+  earnings: [
+    "earnings", "revenue report", "quarterly results", "quarterly report",
+    "fiscal year", "financial results", "operating profit",
+    "operating income", "operating loss", "net income",
+    "year-on-year", "year-over-year", "yoy",
+  ],
+  "m-and-a": [
+    "acquisition", "acquired", "acquires", "merger",
+    "buyout", "takeover", "purchase agreement",
+  ],
+  fundraising: [
+    "funding round", "fundraising", "series a", "series b",
+    "series c", "series d", "seed round", "seed funding",
+    "investment round", "venture capital",
+    "raised \\$", "raises \\$", "secures \\$",
+  ],
+  podcast: [
+    "podcast", "episode",
+  ],
+  opinion: [
+    "opinion", "editorial", "| opinion",
+  ],
 };
 
 export interface TagResult {
@@ -51,39 +138,38 @@ export interface TagResult {
 }
 
 /**
- * Extract tags from an item using rule-based matching.
- * Company extraction is minimal (rule-based only) — AI handles the heavy lifting.
+ * Extract tags from an item using rule-based matching with word boundaries.
  */
 export function tagItem(
   title: string,
   content: string | null,
   sourceType: string
 ): TagResult {
-  const text = `${title} ${content || ""}`.toLowerCase();
+  const text = `${title} ${content || ""}`;
 
   // Category: start with source type, then check for specific content categories
   const categories = new Set<string>();
   const baseCategory = SOURCE_TYPE_TO_CATEGORY[sourceType] || "article";
   categories.add(baseCategory);
 
-  for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-    if (keywords.some((kw) => text.includes(kw))) {
+  for (const [cat, keywords] of Object.entries(CATEGORY_RULES)) {
+    if (matchesAny(text, keywords)) {
       categories.add(cat);
     }
   }
 
-  // Platform: keyword matching
+  // Platform: keyword matching with word boundaries
   const platforms = new Set<string>();
-  for (const [platform, keywords] of Object.entries(PLATFORM_KEYWORDS)) {
-    if (keywords.some((kw) => text.includes(kw))) {
+  for (const [platform, keywords] of Object.entries(PLATFORM_RULES)) {
+    if (matchesAny(text, keywords)) {
       platforms.add(platform);
     }
   }
 
-  // Theme: keyword matching (supplements AI later)
+  // Theme: keyword matching with word boundaries
   const themes = new Set<string>();
-  for (const [theme, keywords] of Object.entries(THEME_KEYWORDS)) {
-    if (keywords.some((kw) => text.includes(kw))) {
+  for (const [theme, keywords] of Object.entries(THEME_RULES)) {
+    if (matchesAny(text, keywords)) {
       themes.add(theme);
     }
   }
