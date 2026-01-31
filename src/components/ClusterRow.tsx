@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { StoryCluster } from "@/lib/cluster";
 import { FeedRow } from "./FeedRow";
+import { getImportanceTier, TIER_STYLES } from "@/lib/importance";
 
 interface ClusterRowProps {
   cluster: StoryCluster;
@@ -10,10 +11,23 @@ interface ClusterRowProps {
 
 export function ClusterRow({ cluster }: ClusterRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const tier = getImportanceTier(cluster.importanceScore ?? 0);
+  const tierStyle = TIER_STYLES[tier];
 
-  // Single item — just render normally
+  // Single item — render with importance indicator if noteworthy
   if (cluster.related.length === 0) {
-    return <FeedRow item={cluster.lead} />;
+    return (
+      <div className="relative">
+        <FeedRow item={cluster.lead} />
+        {tier !== "low" && (
+          <div className="absolute top-3 right-3 flex items-center gap-1">
+            <span className={`text-[10px] ${tierStyle.color}`} title={`Importance: ${((cluster.importanceScore ?? 0) * 100).toFixed(0)}`}>
+              {tierStyle.label}
+            </span>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -21,6 +35,13 @@ export function ClusterRow({ cluster }: ClusterRowProps) {
       {/* Lead article */}
       <div className="relative">
         <FeedRow item={cluster.lead} />
+        {tier !== "low" && (
+          <div className="absolute top-3 right-3 flex items-center gap-1">
+            <span className={`text-[10px] ${tierStyle.color}`} title={`Importance: ${((cluster.importanceScore ?? 0) * 100).toFixed(0)}`}>
+              {tierStyle.label}
+            </span>
+          </div>
+        )}
 
         {/* Cluster indicator bar */}
         <div className="px-3 pb-2 flex items-center gap-2">

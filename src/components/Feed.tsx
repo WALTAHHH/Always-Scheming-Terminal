@@ -6,6 +6,9 @@ import type { FilterState } from "./FilterBar";
 import { FilterBar, EMPTY_FILTERS } from "./FilterBar";
 import { ClusterRow } from "./ClusterRow";
 import { clusterItems, type StoryCluster } from "@/lib/cluster";
+import { scoreCluster } from "@/lib/importance";
+
+export type SortMode = "recent" | "importance";
 
 interface FeedProps {
   items: FeedItem[];
@@ -170,6 +173,7 @@ function DateGroupHeader({
 
 export function Feed({ items, sources }: FeedProps) {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const [sortMode, setSortMode] = useState<SortMode>("importance");
 
   const tagCounts = useMemo(() => computeTagCounts(items), [items]);
 
@@ -178,24 +182,34 @@ export function Feed({ items, sources }: FeedProps) {
     [items, filters]
   );
 
-  // Cluster filtered items
-  const clusters = useMemo(() => clusterItems(filtered), [filtered]);
+  // Cluster filtered items and compute importance scores
+  const clusters = useMemo(() => {
+    const raw = clusterItems(filtered);
+    return raw.map((c) => ({
+      ...c,
+      importanceScore: scoreCluster(c),
+    }));
+  }, [filtered]);
 
   // Group by date
   const groups = useMemo(() => groupByDate(clusters), [clusters]);
 
-  // Sort: multi-source clusters first within each group
+  // Sort within each date group
   const sortedGroups = useMemo(
     () =>
       groups.map((g) => ({
         ...g,
         clusters: [...g.clusters].sort((a, b) => {
+          if (sortMode === "importance") {
+            return (b.importanceScore ?? 0) - (a.importanceScore ?? 0);
+          }
+          // "recent" — multi-source first, then chronological (default)
           if (a.isMultiSource && !b.isMultiSource) return -1;
           if (!a.isMultiSource && b.isMultiSource) return 1;
           return 0;
         }),
       })),
-    [groups]
+    [groups, sortMode]
   );
 
   const hasActiveFilters =
@@ -216,21 +230,38 @@ export function Feed({ items, sources }: FeedProps) {
       <div className="max-w-5xl mx-auto px-4 py-2">
         {/* Stats bar */}
         <div className="text-ast-muted text-xs mb-2 px-3 flex items-center gap-3">
-          {hasActiveFilters && (
-            <span>
-              {totalArticles} articles → {totalStories} stories
-            </span>
-          )}
-          {!hasActiveFilters && (
-            <span>
-              {totalArticles} articles → {totalStories} stories
-            </span>
-          )}
+          <span>
+            {totalArticles} articles → {totalStories} stories
+          </span>
           {multiSourceCount > 0 && (
             <span className="text-[#f2cb05]">
               {multiSourceCount} multi-source
             </span>
           )}
+          <div className="flex-1" />
+          {/* Sort toggle */}
+          <div className="flex items-center gap-1 border border-ast-border rounded overflow-hidden">
+            <button
+              onClick={() => setSortMode("importance")}
+              className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+                sortMode === "importance"
+                  ? "bg-ast-accent/15 text-ast-accent"
+                  : "text-ast-muted hover:text-ast-text"
+              }`}
+            >
+              ⚡ Important
+            </button>
+            <button
+              onClick={() => setSortMode("recent")}
+              className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+                sortMode === "recent"
+                  ? "bg-ast-accent/15 text-ast-accent"
+                  : "text-ast-muted hover:text-ast-text"
+              }`}
+            >
+              🕐 Recent
+            </button>
+          </div>
         </div>
 
         {sortedGroups.map((group) => {

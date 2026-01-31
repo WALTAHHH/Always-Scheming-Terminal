@@ -87,6 +87,7 @@ export interface StoryCluster {
   sourceCount: number;
   sourceNames: string[];
   isMultiSource: boolean;
+  importanceScore?: number;
 }
 
 /**
