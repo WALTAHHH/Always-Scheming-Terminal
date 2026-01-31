@@ -1,5 +1,5 @@
 import { createServerClient } from "@/lib/supabase";
-import { Feed } from "@/components/Feed";
+import { LiveFeed } from "@/components/LiveFeed";
 import { Header } from "@/components/Header";
 import type { FeedItem } from "@/lib/database.types";
 
@@ -55,7 +55,7 @@ export default async function Home() {
           </p>
         </div>
       ) : (
-        <Feed items={items} sources={sources} />
+        <LiveFeed initialItems={items} sources={sources} />
       )}
     </main>
   );
