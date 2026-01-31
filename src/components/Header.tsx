@@ -1,3 +1,5 @@
+import { ShortcutsHelp } from "./ShortcutsHelp";
+
 export function Header() {
   return (
     <header className="border-b border-ast-border sticky top-0 z-50 bg-ast-bg/95 backdrop-blur-sm">
@@ -10,8 +12,9 @@ export function Header() {
             <span className="text-ast-text">Terminal</span>
           </h1>
         </div>
-        <div className="text-ast-muted text-xs">
-          v0.1
+        <div className="flex items-center gap-3">
+          <ShortcutsHelp />
+          <span className="text-ast-muted text-xs">v0.1</span>
         </div>
       </div>
     </header>
