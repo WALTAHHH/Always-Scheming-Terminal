@@ -201,12 +201,17 @@ export function Feed({ items, sources }: FeedProps) {
         ...g,
         clusters: [...g.clusters].sort((a, b) => {
           if (sortMode === "importance") {
-            return (b.importanceScore ?? 0) - (a.importanceScore ?? 0);
+            const diff = (b.importanceScore ?? 0) - (a.importanceScore ?? 0);
+            if (diff !== 0) return diff;
+            // Fall back to chronological for same importance
+            const aTime = a.lead.published_at ? new Date(a.lead.published_at).getTime() : 0;
+            const bTime = b.lead.published_at ? new Date(b.lead.published_at).getTime() : 0;
+            return bTime - aTime;
           }
-          // "recent" — multi-source first, then chronological (default)
-          if (a.isMultiSource && !b.isMultiSource) return -1;
-          if (!a.isMultiSource && b.isMultiSource) return 1;
-          return 0;
+          // "recent" — chronological within date group (newest first)
+          const aTime = a.lead.published_at ? new Date(a.lead.published_at).getTime() : 0;
+          const bTime = b.lead.published_at ? new Date(b.lead.published_at).getTime() : 0;
+          return bTime - aTime;
         }),
       })),
     [groups, sortMode]

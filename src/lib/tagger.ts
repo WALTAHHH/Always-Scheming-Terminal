@@ -111,7 +111,7 @@ interface CompanyDef {
 
 const COMPANY_LIST: CompanyDef[] = [
   // ── Platform Holders & Big Tech ──
-  { name: "Microsoft Gaming", segment: "platform", aliases: ["microsoft gaming", "xbox", "xbox game studios"] },
+  { name: "Microsoft", segment: "platform", aliases: ["microsoft gaming", "microsoft", "xbox", "xbox game studios", "xbox series"] },
   { name: "Sony Interactive", segment: "platform", aliases: ["sony interactive", "playstation", "sie", "sony gaming"] },
   { name: "Nintendo", segment: "platform", aliases: ["nintendo", "switch 2"] },
   { name: "Apple", segment: "platform", aliases: ["apple arcade", "app store"] },
@@ -166,8 +166,8 @@ const COMPANY_LIST: CompanyDef[] = [
   { name: "Tripledot Studios", segment: "mobile", aliases: ["tripledot"] },
 
   // ── PC/Console Studios ──
-  { name: "Activision Blizzard", segment: "studio", aliases: ["activision blizzard", "activision", "blizzard", "call of duty", "world of warcraft", "diablo", "king digital", "candy crush"], alsoTag: ["Microsoft Gaming"] },
-  { name: "Bethesda", segment: "studio", aliases: ["bethesda", "zenimax", "starfield", "elder scrolls", "fallout"], alsoTag: ["Microsoft Gaming"] },
+  { name: "Activision Blizzard", segment: "studio", aliases: ["activision blizzard", "activision", "blizzard", "call of duty", "world of warcraft", "diablo", "king digital", "candy crush"], alsoTag: ["Microsoft"] },
+  { name: "Bethesda", segment: "studio", aliases: ["bethesda", "zenimax", "starfield", "elder scrolls", "fallout"], alsoTag: ["Microsoft"] },
   { name: "Bungie", segment: "studio", aliases: ["bungie", "destiny 2", "marathon"], alsoTag: ["Sony Interactive"] },
   { name: "Riot Games", segment: "studio", aliases: ["riot games", "riot", "league of legends", "valorant"], alsoTag: ["Tencent"] },
   { name: "Larian Studios", segment: "studio", aliases: ["larian", "baldur's gate 3", "baldurs gate"] },
