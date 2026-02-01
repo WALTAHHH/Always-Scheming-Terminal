@@ -14,14 +14,21 @@ export function ClusterRow({ cluster }: ClusterRowProps) {
   const tier = getImportanceTier(cluster.importanceScore ?? 0);
   const tierStyle = TIER_STYLES[tier];
 
+  const scorePercent = ((cluster.importanceScore ?? 0) * 100).toFixed(0);
   const importanceBadge = tier !== "low" ? (
-    <div className="absolute top-3 right-3 flex items-center gap-1.5" title={`Importance: ${((cluster.importanceScore ?? 0) * 100).toFixed(0)}`}>
+    <div className="absolute top-3 right-3 flex items-center gap-1.5 group/tip cursor-default">
       <span className={`w-1.5 h-1.5 rounded-full ${tierStyle.dotColor}`} />
       {tierStyle.label && (
         <span className={`text-[9px] font-semibold tracking-wider ${tierStyle.color}`}>
           {tierStyle.label}
         </span>
       )}
+      {/* Tooltip */}
+      <div className="absolute right-0 top-full mt-1 hidden group-hover/tip:block z-50">
+        <div className={`px-2.5 py-1.5 rounded text-[10px] whitespace-nowrap border border-ast-border bg-ast-surface shadow-lg ${tierStyle.color}`}>
+          {tierStyle.tooltip} <span className="text-ast-muted">({scorePercent})</span>
+        </div>
+      </div>
     </div>
   ) : null;
 
