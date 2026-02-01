@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 
 interface SourceRow {
@@ -17,6 +17,8 @@ interface SourceRow {
 }
 
 type Tab = "sources" | "health";
+type SortField = "name" | "type" | "articles" | "last_fetch" | "latest_article" | "status";
+type SortDir = "asc" | "desc";
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return "never";
@@ -177,96 +179,6 @@ function AddSourceForm({ onAdded }: { onAdded: () => void }) {
   );
 }
 
-// ── Source Row ──────────────────────────────────────────────────────
-
-function SourceCard({
-  source,
-  onToggle,
-  onDelete,
-}: {
-  source: SourceRow;
-  onToggle: () => void;
-  onDelete: () => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-
-  return (
-    <div
-      className={`border rounded-lg p-3 transition-colors ${
-        source.active
-          ? "border-ast-border bg-ast-surface"
-          : "border-ast-border/50 bg-ast-bg/50 opacity-60"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot(source.last_fetched_at)}`} />
-            <h4 className="text-sm font-medium text-ast-text truncate">{source.name}</h4>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-ast-bg border border-ast-border text-ast-muted">
-              {source.source_type}
-            </span>
-            {!source.active && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-ast-pink/10 border border-ast-pink/30 text-ast-pink">
-                disabled
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4 text-[11px] text-ast-muted">
-            <span>{source.article_count} articles</span>
-            <span>Last fetch: <span className={healthColor(source.last_fetched_at)}>{timeAgo(source.last_fetched_at)}</span></span>
-            {source.latest_article_at && (
-              <span>Latest article: {timeAgo(source.latest_article_at)}</span>
-            )}
-          </div>
-
-          <div className="mt-1 text-[10px] text-ast-muted truncate">
-            {source.feed_url}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={onToggle}
-            className={`px-2 py-1 text-[10px] rounded border transition-colors ${
-              source.active
-                ? "border-ast-gold/30 text-ast-gold hover:bg-ast-gold/10"
-                : "border-ast-mint/30 text-ast-mint hover:bg-ast-mint/10"
-            }`}
-          >
-            {source.active ? "Disable" : "Enable"}
-          </button>
-
-          {confirming ? (
-            <div className="flex gap-1">
-              <button
-                onClick={() => { onDelete(); setConfirming(false); }}
-                className="px-2 py-1 text-[10px] rounded border border-ast-pink text-ast-pink hover:bg-ast-pink/10 transition-colors"
-              >
-                Confirm
-              </button>
-              <button
-                onClick={() => setConfirming(false)}
-                className="px-2 py-1 text-[10px] rounded border border-ast-border text-ast-muted hover:text-ast-text transition-colors"
-              >
-                No
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirming(true)}
-              className="px-2 py-1 text-[10px] rounded border border-ast-border text-ast-muted hover:border-ast-pink hover:text-ast-pink transition-colors"
-            >
-              Delete
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Health Dashboard ───────────────────────────────────────────────
 
 function HealthDashboard({ sources }: { sources: SourceRow[] }) {
@@ -348,12 +260,47 @@ function HealthDashboard({ sources }: { sources: SourceRow[] }) {
   );
 }
 
+// ── Sortable Column Header ──────────────────────────────────────────
+
+function SortHeader({
+  label,
+  field,
+  currentField,
+  currentDir,
+  onSort,
+  className = "",
+}: {
+  label: string;
+  field: SortField;
+  currentField: SortField;
+  currentDir: SortDir;
+  onSort: (field: SortField) => void;
+  className?: string;
+}) {
+  const isActive = currentField === field;
+  return (
+    <button
+      onClick={() => onSort(field)}
+      className={`flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold transition-colors ${
+        isActive ? "text-ast-accent" : "text-ast-muted hover:text-ast-text"
+      } ${className}`}
+    >
+      {label}
+      {isActive && (
+        <span className="text-ast-accent">{currentDir === "asc" ? "↑" : "↓"}</span>
+      )}
+    </button>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────
 
 export default function AdminPage() {
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("sources");
+  const [sortField, setSortField] = useState<SortField>("articles");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const fetchSources = useCallback(async () => {
     try {
@@ -370,6 +317,43 @@ export default function AdminPage() {
   useEffect(() => {
     fetchSources();
   }, [fetchSources]);
+
+  function handleSort(field: SortField) {
+    if (field === sortField) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir(field === "name" || field === "type" ? "asc" : "desc");
+    }
+  }
+
+  const sortedSources = useMemo(() => {
+    const mul = sortDir === "asc" ? 1 : -1;
+    return [...sources].sort((a, b) => {
+      switch (sortField) {
+        case "name":
+          return mul * a.name.localeCompare(b.name);
+        case "type":
+          return mul * a.source_type.localeCompare(b.source_type);
+        case "articles":
+          return mul * (a.article_count - b.article_count);
+        case "last_fetch": {
+          const aT = a.last_fetched_at ? new Date(a.last_fetched_at).getTime() : 0;
+          const bT = b.last_fetched_at ? new Date(b.last_fetched_at).getTime() : 0;
+          return mul * (aT - bT);
+        }
+        case "latest_article": {
+          const aT = a.latest_article_at ? new Date(a.latest_article_at).getTime() : 0;
+          const bT = b.latest_article_at ? new Date(b.latest_article_at).getTime() : 0;
+          return mul * (aT - bT);
+        }
+        case "status":
+          return mul * (Number(a.active) - Number(b.active));
+        default:
+          return 0;
+      }
+    });
+  }, [sources, sortField, sortDir]);
 
   async function toggleSource(id: string, active: boolean) {
     await fetch("/api/sources", {
@@ -444,27 +428,121 @@ export default function AdminPage() {
               <AddSourceForm onAdded={fetchSources} />
             </div>
 
-            <div className="space-y-2">
-              {sources
-                .sort((a, b) => {
-                  // Active first, then by name
-                  if (a.active !== b.active) return a.active ? -1 : 1;
-                  return a.name.localeCompare(b.name);
-                })
-                .map((source) => (
-                  <SourceCard
+            {/* Sortable table header */}
+            <div className="border border-ast-border rounded-lg overflow-hidden">
+              <div className="bg-ast-surface px-3 py-2 border-b border-ast-border flex items-center gap-3">
+                <div className="w-5" /> {/* health dot */}
+                <SortHeader label="Name" field="name" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="flex-1 min-w-0" />
+                <SortHeader label="Type" field="type" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-20" />
+                <SortHeader label="Articles" field="articles" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-20 justify-end" />
+                <SortHeader label="Last Fetch" field="last_fetch" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-24 justify-end" />
+                <SortHeader label="Latest Article" field="latest_article" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-28 justify-end" />
+                <SortHeader label="Status" field="status" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-16 justify-center" />
+                <div className="w-[120px]" /> {/* actions */}
+              </div>
+
+              <div className="divide-y divide-ast-border/50">
+                {sortedSources.map((source) => (
+                  <SourceTableRow
                     key={source.id}
                     source={source}
                     onToggle={() => toggleSource(source.id, source.active)}
                     onDelete={() => deleteSource(source.id)}
                   />
                 ))}
+              </div>
             </div>
           </div>
         ) : (
           <HealthDashboard sources={sources} />
         )}
       </main>
+    </div>
+  );
+}
+
+// ── Source Table Row ────────────────────────────────────────────────
+
+function SourceTableRow({
+  source,
+  onToggle,
+  onDelete,
+}: {
+  source: SourceRow;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <div
+      className={`px-3 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors ${
+        !source.active ? "opacity-50" : ""
+      }`}
+    >
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot(source.last_fetched_at)}`} />
+
+      <div className="flex-1 min-w-0">
+        <div className="text-sm text-ast-text truncate">{source.name}</div>
+        <div className="text-[10px] text-ast-muted truncate">{source.feed_url}</div>
+      </div>
+
+      <span className="text-[10px] text-ast-muted w-20">{source.source_type}</span>
+
+      <span className="text-xs text-ast-text w-20 text-right tabular-nums">{source.article_count}</span>
+
+      <span className={`text-xs w-24 text-right ${healthColor(source.last_fetched_at)}`}>
+        {timeAgo(source.last_fetched_at)}
+      </span>
+
+      <span className="text-xs text-ast-muted w-28 text-right">
+        {source.latest_article_at ? timeAgo(source.latest_article_at) : "—"}
+      </span>
+
+      <span className="w-16 text-center">
+        {source.active ? (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-ast-mint/10 border border-ast-mint/30 text-ast-mint">on</span>
+        ) : (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-ast-pink/10 border border-ast-pink/30 text-ast-pink">off</span>
+        )}
+      </span>
+
+      <div className="w-[120px] flex items-center justify-end gap-1">
+        <button
+          onClick={onToggle}
+          className={`px-2 py-1 text-[10px] rounded border transition-colors ${
+            source.active
+              ? "border-ast-gold/30 text-ast-gold hover:bg-ast-gold/10"
+              : "border-ast-mint/30 text-ast-mint hover:bg-ast-mint/10"
+          }`}
+        >
+          {source.active ? "Disable" : "Enable"}
+        </button>
+
+        {confirming ? (
+          <div className="flex gap-1">
+            <button
+              onClick={() => { onDelete(); setConfirming(false); }}
+              className="px-2 py-1 text-[10px] rounded border border-ast-pink text-ast-pink hover:bg-ast-pink/10 transition-colors"
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              className="px-2 py-1 text-[10px] rounded border border-ast-border text-ast-muted transition-colors"
+            >
+              No
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirming(true)}
+            className="px-2 py-1 text-[10px] rounded border border-ast-border text-ast-muted hover:border-ast-pink hover:text-ast-pink transition-colors"
+          >
+            ✕
+          </button>
+        )}
+      </div>
     </div>
   );
 }
