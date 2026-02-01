@@ -27,7 +27,6 @@
 | Ubisoft | UBI.PA | Assassin's Creed, Rainbow Six, Far Cry |
 | Embracer Group | EMBRACB.ST | THQ Nordic, Gearbox, Crystal Dynamics, massive M&A spree then restructuring |
 | CD Projekt | CDR.WA | Cyberpunk 2077, The Witcher, GOG.com |
-| Plaion (Koch Media) | — | Embracer subsidiary, Deep Silver, publishing |
 | Devolver Digital | DEVO.L | Indie publisher, cult following |
 
 ## 3. Major Asian Publishers
@@ -105,14 +104,6 @@
 | CVC Capital Partners | — | Private equity, Voodoo investor |
 | Access Industries | Private | Warner Bros Games (via Warner Bros Discovery) |
 
-## 8. Esports / Content / Adjacent
-
-| Company | Ticker | Notes |
-|---------|--------|-------|
-| FaZe Holdings | — | Esports/content org |
-| LOUD | Private | Brazilian esports, massive Latin American audience |
-| Team Liquid / aXiomatic | Private | Esports, venture portfolio |
-
 ---
 
 ## Summary
@@ -120,14 +111,13 @@
 | Segment | Count |
 |---------|-------|
 | Platform Holders & Big Tech | 9 |
-| Major Western Publishers | 7 |
+| Major Western Publishers | 6 |
 | Major Asian Publishers | 19 |
 | Mobile-First / F2P | 13 |
 | PC/Console Studios & Indies | 8 |
 | Infrastructure / Middleware | 6 |
 | Investment / Holding | 4 |
-| Esports / Content | 3 |
-| **Total** | **69** |
+| **Total** | **65** |
 
 ## Notes for AST Implementation
 
