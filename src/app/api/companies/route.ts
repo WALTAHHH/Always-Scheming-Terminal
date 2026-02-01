@@ -11,7 +11,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("item_tags")
     .select("value")
-    .eq("dimension", "company");
+    .eq("dimension", "company") as { data: { value: string }[] | null; error: any };
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
