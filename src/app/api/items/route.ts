@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
   const offset = Number(searchParams.get("offset")) || 0;
   const source = searchParams.get("source");
   const search = searchParams.get("q");
+  const company = searchParams.get("company");
 
   const supabase = createServerClient();
 
@@ -24,6 +25,11 @@ export async function GET(req: NextRequest) {
   // Text search
   if (search) {
     query = query.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
+  }
+
+  // Company filter — uses jsonb containment on tags.company array
+  if (company) {
+    query = query.contains("tags", { company: [company] });
   }
 
   const { data, error, count } = await query;
