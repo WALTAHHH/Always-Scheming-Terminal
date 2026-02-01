@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 
 export function Header() {
@@ -14,6 +15,12 @@ export function Header() {
         </div>
         <div className="flex items-center gap-3">
           <ShortcutsHelp />
+          <Link
+            href="/admin"
+            className="text-ast-muted hover:text-ast-accent text-xs transition-colors"
+          >
+            ⚙ Admin
+          </Link>
           <span className="text-ast-muted text-xs">v0.1</span>
         </div>
       </div>
