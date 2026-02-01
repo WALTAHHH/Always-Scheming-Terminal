@@ -82,12 +82,12 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
           const ruleTags = tagItem(item.title, item.content, source.source_type);
           const aiTags = await tagItemWithAI(item.title, item.content);
 
-          // Merge rule-based + AI tags
+          // Merge rule-based + AI tags (deduplicate companies and themes)
           const allTags = {
             category: ruleTags.category,
             platform: ruleTags.platform,
             theme: [...new Set([...ruleTags.theme, ...aiTags.theme])],
-            company: aiTags.company,
+            company: [...new Set([...ruleTags.company, ...aiTags.company])],
           };
 
           // Store in items.tags jsonb

@@ -3,7 +3,7 @@
  * - Category: rule-based (derived from source type + keyword detection)
  * - Platform: rule-based (keyword matching with word boundaries)
  * - Theme: rule-based (keyword matching with word boundaries)
- * - Company: AI (OpenAI gpt-4o-mini) — activates when OPENAI_API_KEY set
+ * - Company: rule-based (name/alias matching) + AI fallback (OpenAI gpt-4o-mini)
  */
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -96,6 +96,128 @@ const THEME_RULES: Record<string, string[]> = {
   ],
 };
 
+// ── Rule-based: Company matching ────────────────────────────────────
+
+interface CompanyDef {
+  /** Canonical display name */
+  name: string;
+  /** All matchable names/aliases (lowercase matching via word boundary) */
+  aliases: string[];
+  /** Segment for grouping */
+  segment: string;
+  /** If tagging this company, also tag these parent companies */
+  alsoTag?: string[];
+}
+
+const COMPANY_LIST: CompanyDef[] = [
+  // ── Platform Holders & Big Tech ──
+  { name: "Microsoft Gaming", segment: "platform", aliases: ["microsoft gaming", "xbox", "xbox game studios"] },
+  { name: "Sony Interactive", segment: "platform", aliases: ["sony interactive", "playstation", "sie", "sony gaming"] },
+  { name: "Nintendo", segment: "platform", aliases: ["nintendo", "switch 2"] },
+  { name: "Apple", segment: "platform", aliases: ["apple arcade", "app store"] },
+  { name: "Google", segment: "platform", aliases: ["google play", "youtube gaming"] },
+  { name: "Valve", segment: "platform", aliases: ["valve", "steam"] },
+  { name: "Epic Games", segment: "platform", aliases: ["epic games", "unreal engine", "epic games store", "fortnite"] },
+  { name: "Roblox", segment: "platform", aliases: ["roblox"] },
+  { name: "Meta", segment: "platform", aliases: ["meta quest", "reality labs", "horizon worlds", "quest 3", "quest pro"] },
+
+  // ── Major Western Publishers ──
+  { name: "Electronic Arts", segment: "western-pub", aliases: ["electronic arts", "ea sports", "ea fc", "apex legends"] },
+  { name: "Take-Two Interactive", segment: "western-pub", aliases: ["take-two", "take two", "rockstar games", "2k games", "2k sports", "zynga"] },
+  { name: "Ubisoft", segment: "western-pub", aliases: ["ubisoft"] },
+  { name: "Embracer Group", segment: "western-pub", aliases: ["embracer", "thq nordic", "gearbox", "crystal dynamics"] },
+  { name: "CD Projekt", segment: "western-pub", aliases: ["cd projekt", "cdpr", "gog.com"] },
+  { name: "Devolver Digital", segment: "western-pub", aliases: ["devolver digital", "devolver"] },
+
+  // ── Major Asian Publishers ──
+  { name: "Tencent", segment: "asian-pub", aliases: ["tencent", "tencent games", "tencent holdings"] },
+  { name: "NetEase", segment: "asian-pub", aliases: ["netease"] },
+  { name: "Nexon", segment: "asian-pub", aliases: ["nexon", "maplestory", "dungeon fighter"] },
+  { name: "Krafton", segment: "asian-pub", aliases: ["krafton", "pubg"] },
+  { name: "Bandai Namco", segment: "asian-pub", aliases: ["bandai namco", "bandai"] },
+  { name: "Capcom", segment: "asian-pub", aliases: ["capcom"] },
+  { name: "Square Enix", segment: "asian-pub", aliases: ["square enix"] },
+  { name: "Sega", segment: "asian-pub", aliases: ["sega"] },
+  { name: "Konami", segment: "asian-pub", aliases: ["konami"] },
+  { name: "miHoYo", segment: "asian-pub", aliases: ["mihoyo", "hoyoverse", "genshin impact", "honkai star rail"] },
+  { name: "Netmarble", segment: "asian-pub", aliases: ["netmarble"] },
+  { name: "Pearl Abyss", segment: "asian-pub", aliases: ["pearl abyss", "black desert", "crimson desert"] },
+  { name: "Shift Up", segment: "asian-pub", aliases: ["shift up", "stellar blade", "nikke"] },
+  { name: "NCSoft", segment: "asian-pub", aliases: ["ncsoft", "throne and liberty"] },
+  { name: "Com2uS", segment: "asian-pub", aliases: ["com2us", "summoners war"] },
+  { name: "Sea Limited", segment: "asian-pub", aliases: ["sea limited", "garena", "free fire"] },
+  { name: "Lilith Games", segment: "asian-pub", aliases: ["lilith games", "lilith"] },
+  { name: "ByteDance", segment: "asian-pub", aliases: ["bytedance", "nuverse"] },
+  { name: "Kakao Games", segment: "asian-pub", aliases: ["kakao games", "kakao"] },
+
+  // ── Mobile-First / F2P ──
+  { name: "Supercell", segment: "mobile", aliases: ["supercell", "clash of clans", "brawl stars"], alsoTag: ["Tencent"] },
+  { name: "Playtika", segment: "mobile", aliases: ["playtika"] },
+  { name: "AppLovin", segment: "mobile", aliases: ["applovin"] },
+  { name: "Scopely", segment: "mobile", aliases: ["scopely", "monopoly go"], alsoTag: ["Savvy Games Group"] },
+  { name: "Moon Active", segment: "mobile", aliases: ["moon active", "coin master"] },
+  { name: "Dream Games", segment: "mobile", aliases: ["dream games", "royal match"] },
+  { name: "Habby", segment: "mobile", aliases: ["habby", "archero", "survivor.io"] },
+  { name: "Jam City", segment: "mobile", aliases: ["jam city"] },
+  { name: "Rovio", segment: "mobile", aliases: ["rovio", "angry birds"], alsoTag: ["Sega"] },
+  { name: "Niantic", segment: "mobile", aliases: ["niantic", "pokemon go", "pokémon go"] },
+  { name: "Miniclip", segment: "mobile", aliases: ["miniclip"], alsoTag: ["Tencent"] },
+  { name: "Voodoo", segment: "mobile", aliases: ["voodoo"] },
+  { name: "Tripledot Studios", segment: "mobile", aliases: ["tripledot"] },
+
+  // ── PC/Console Studios ──
+  { name: "Activision Blizzard", segment: "studio", aliases: ["activision blizzard", "activision", "blizzard", "call of duty", "world of warcraft", "diablo", "king digital", "candy crush"], alsoTag: ["Microsoft Gaming"] },
+  { name: "Bethesda", segment: "studio", aliases: ["bethesda", "zenimax", "starfield", "elder scrolls", "fallout"], alsoTag: ["Microsoft Gaming"] },
+  { name: "Bungie", segment: "studio", aliases: ["bungie", "destiny 2", "marathon"], alsoTag: ["Sony Interactive"] },
+  { name: "Riot Games", segment: "studio", aliases: ["riot games", "riot", "league of legends", "valorant"], alsoTag: ["Tencent"] },
+  { name: "Larian Studios", segment: "studio", aliases: ["larian", "baldur's gate 3", "baldurs gate"] },
+  { name: "FromSoftware", segment: "studio", aliases: ["fromsoftware", "from software", "elden ring", "dark souls", "armored core"], alsoTag: ["Kadokawa"] },
+  { name: "Annapurna Interactive", segment: "studio", aliases: ["annapurna interactive", "annapurna games"] },
+  { name: "11 bit studios", segment: "studio", aliases: ["11 bit studios", "11 bit", "frostpunk"] },
+
+  // ── Infrastructure / Middleware ──
+  { name: "Unity Technologies", segment: "infra", aliases: ["unity technologies", "unity engine", "unity gaming"] },
+  { name: "Xsolla", segment: "infra", aliases: ["xsolla"] },
+  { name: "Overwolf", segment: "infra", aliases: ["overwolf", "curseforge"] },
+  { name: "Discord", segment: "infra", aliases: ["discord"] },
+  { name: "Twitch", segment: "infra", aliases: ["twitch"] },
+
+  // ── Investment / Holding ──
+  { name: "Savvy Games Group", segment: "investment", aliases: ["savvy games", "savvy gaming"] },
+  { name: "Kadokawa", segment: "investment", aliases: ["kadokawa"] },
+  { name: "CVC Capital Partners", segment: "investment", aliases: ["cvc capital"] },
+  { name: "Access Industries", segment: "investment", aliases: ["access industries"] },
+];
+
+/**
+ * Build a fast lookup: lowercased alias → CompanyDef.
+ * Pre-compile regexes for each alias.
+ */
+const COMPANY_MATCHERS: { re: RegExp; def: CompanyDef }[] = COMPANY_LIST.flatMap(
+  (def) =>
+    def.aliases.map((alias) => ({
+      re: new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"),
+      def,
+    }))
+);
+
+/**
+ * Match companies mentioned in text. Returns canonical company names.
+ * Handles parent tagging (e.g. Riot Games → also tag Tencent).
+ */
+function matchCompanies(text: string): string[] {
+  const matched = new Set<string>();
+  for (const { re, def } of COMPANY_MATCHERS) {
+    if (re.test(text)) {
+      matched.add(def.name);
+      if (def.alsoTag) {
+        for (const parent of def.alsoTag) matched.add(parent);
+      }
+    }
+  }
+  return [...matched];
+}
+
 // ── Rule-based: Category from source type ──────────────────────────
 const SOURCE_TYPE_TO_CATEGORY: Record<string, string> = {
   newsletter: "analysis",
@@ -185,11 +307,14 @@ export function tagItem(
     }
   }
 
+  // Company: rule-based matching with word boundaries + parent tagging
+  const companies = matchCompanies(text);
+
   return {
     category: [...categories],
     platform: [...platforms],
     theme: [...themes],
-    company: [], // AI fills this in
+    company: companies,
   };
 }
 
