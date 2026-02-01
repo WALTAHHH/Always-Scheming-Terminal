@@ -52,6 +52,14 @@ function healthDot(lastFetched: string | null): string {
   return "bg-ast-pink";
 }
 
+function healthTooltip(lastFetched: string | null): string {
+  if (!lastFetched) return "Never fetched";
+  const hours = (Date.now() - new Date(lastFetched).getTime()) / 3600000;
+  if (hours < 2) return "Healthy — fetched recently";
+  if (hours < 24) return "Stale — last fetch was 2-24h ago";
+  return "Dead — no fetch in 24h+";
+}
+
 // ── Add Source Form ────────────────────────────────────────────────
 
 function AddSourceForm({ onAdded }: { onAdded: () => void }) {
@@ -241,7 +249,10 @@ function HealthDashboard({ sources }: { sources: SourceRow[] }) {
         <div className="divide-y divide-ast-border/50">
           {sorted.map((source) => (
             <div key={source.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot(source.last_fetched_at)}`} />
+              <span
+                className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot(source.last_fetched_at)}`}
+                title={healthTooltip(source.last_fetched_at)}
+              />
               <span className="text-sm text-ast-text w-48 truncate">{source.name}</span>
               <span className="text-[10px] text-ast-muted w-16">{source.source_type}</span>
               <span className="text-xs text-ast-muted w-24 text-right">{source.article_count} articles</span>
@@ -365,7 +376,17 @@ export default function AdminPage() {
   }
 
   async function deleteSource(id: string) {
-    await fetch(`/api/sources?id=${id}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/sources?id=${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`Delete failed: ${data.error}`);
+        return;
+      }
+    } catch (err) {
+      alert("Delete failed — network error");
+      return;
+    }
     fetchSources();
   }
 
@@ -480,7 +501,10 @@ function SourceTableRow({
         !source.active ? "opacity-50" : ""
       }`}
     >
-      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot(source.last_fetched_at)}`} />
+      <span
+        className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot(source.last_fetched_at)}`}
+        title={healthTooltip(source.last_fetched_at)}
+      />
 
       <div className="flex-1 min-w-0">
         <div className="text-sm text-ast-text truncate">{source.name}</div>

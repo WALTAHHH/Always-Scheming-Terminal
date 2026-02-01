@@ -134,6 +134,16 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
+  // Delete related items first (foreign key constraint)
+  const { error: itemsError } = await supabase
+    .from("items")
+    .delete()
+    .eq("source_id", id);
+
+  if (itemsError) {
+    return NextResponse.json({ error: `Failed to delete articles: ${itemsError.message}` }, { status: 500 });
+  }
+
   const { error } = await supabase.from("sources").delete().eq("id", id);
 
   if (error) {
