@@ -24,6 +24,9 @@ interface SourceRow {
   source_type: string;
   active: boolean;
   last_fetched_at: string | null;
+  last_error: string | null;
+  consecutive_errors: number;
+  last_success_at: string | null;
   created_at: string;
 }
 
@@ -38,8 +41,10 @@ function getSupabase() {
 /**
  * Fetch and ingest RSS items for a single source.
  * Deduplicates on (source_id, external_id).
+ * Logs results to ingestion_logs and tracks errors on sources.
  */
 async function ingestSource(source: SourceRow): Promise<IngestResult> {
+  const startTime = Date.now();
   const result: IngestResult = {
     source: source.name,
     fetched: 0,
@@ -47,13 +52,19 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
     errors: [],
   };
 
+  const supabase = getSupabase();
+
   try {
     const feed = await parser.parseURL(source.feed_url);
     result.fetched = feed.items?.length ?? 0;
 
-    if (!feed.items?.length) return result;
+    if (!feed.items?.length) {
+      // Successful fetch but empty feed — still counts as success
+      await logIngestion(supabase, source.id, result, startTime, true);
+      await updateSourceHealth(supabase, source.id, null);
+      return result;
+    }
 
-    const supabase = getSupabase();
     const rows = feed.items.map((item) => ({
       source_id: source.id,
       external_id: item.guid || item.link || item.title || "",
@@ -117,12 +128,91 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
       .from("sources")
       .update({ last_fetched_at: new Date().toISOString() })
       .eq("id", source.id);
+
+    const success = result.errors.length === 0;
+    await logIngestion(supabase, source.id, result, startTime, success);
+    await updateSourceHealth(supabase, source.id, success ? null : result.errors.join("; "));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     result.errors.push(`Fetch: ${msg}`);
+    await logIngestion(supabase, source.id, result, startTime, false);
+    await updateSourceHealth(supabase, source.id, msg);
   }
 
   return result;
+}
+
+/**
+ * Log ingestion result to ingestion_logs table.
+ */
+async function logIngestion(
+  supabase: ReturnType<typeof getSupabase>,
+  sourceId: string,
+  result: IngestResult,
+  startTime: number,
+  success: boolean
+) {
+  try {
+    await supabase.from("ingestion_logs").insert({
+      source_id: sourceId,
+      fetched: result.fetched,
+      inserted: result.inserted,
+      errors: result.errors,
+      success,
+      duration_ms: Date.now() - startTime,
+    });
+  } catch {
+    // Don't let logging failures break ingestion
+  }
+}
+
+/**
+ * Update source health tracking columns.
+ * On success: clear error, reset consecutive count, update last_success_at.
+ * On failure: set error message, increment consecutive count.
+ */
+async function updateSourceHealth(
+  supabase: ReturnType<typeof getSupabase>,
+  sourceId: string,
+  errorMsg: string | null
+) {
+  try {
+    if (errorMsg) {
+      // Failure — increment consecutive errors
+      await supabase.rpc("increment_source_errors", {
+        sid: sourceId,
+        err: errorMsg,
+      }).then(async (res) => {
+        // Fallback if RPC doesn't exist yet
+        if (res.error) {
+          const { data: source } = await supabase
+            .from("sources")
+            .select("consecutive_errors")
+            .eq("id", sourceId)
+            .single();
+          await supabase
+            .from("sources")
+            .update({
+              last_error: errorMsg,
+              consecutive_errors: (source?.consecutive_errors || 0) + 1,
+            })
+            .eq("id", sourceId);
+        }
+      });
+    } else {
+      // Success — clear errors
+      await supabase
+        .from("sources")
+        .update({
+          last_error: null,
+          consecutive_errors: 0,
+          last_success_at: new Date().toISOString(),
+        })
+        .eq("id", sourceId);
+    }
+  } catch {
+    // Don't let health tracking break ingestion
+  }
 }
 
 /**

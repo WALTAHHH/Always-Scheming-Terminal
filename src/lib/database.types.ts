@@ -18,6 +18,9 @@ export interface Database {
           source_type: string;
           active: boolean;
           last_fetched_at: string | null;
+          last_error: string | null;
+          consecutive_errors: number;
+          last_success_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -28,6 +31,9 @@ export interface Database {
           source_type: string;
           active?: boolean;
           last_fetched_at?: string | null;
+          last_error?: string | null;
+          consecutive_errors?: number;
+          last_success_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -38,6 +44,9 @@ export interface Database {
           source_type?: string;
           active?: boolean;
           last_fetched_at?: string | null;
+          last_error?: string | null;
+          consecutive_errors?: number;
+          last_success_at?: string | null;
           created_at?: string;
         };
       };
@@ -134,6 +143,38 @@ export interface Database {
           created_at?: string;
         };
       };
+      ingestion_logs: {
+        Row: {
+          id: string;
+          source_id: string | null;
+          started_at: string;
+          fetched: number;
+          inserted: number;
+          errors: string[];
+          success: boolean;
+          duration_ms: number;
+        };
+        Insert: {
+          id?: string;
+          source_id?: string | null;
+          started_at?: string;
+          fetched?: number;
+          inserted?: number;
+          errors?: string[];
+          success?: boolean;
+          duration_ms?: number;
+        };
+        Update: {
+          id?: string;
+          source_id?: string | null;
+          started_at?: string;
+          fetched?: number;
+          inserted?: number;
+          errors?: string[];
+          success?: boolean;
+          duration_ms?: number;
+        };
+      };
     };
   };
 }
@@ -143,6 +184,7 @@ export type Source = Database["public"]["Tables"]["sources"]["Row"];
 export type Item = Database["public"]["Tables"]["items"]["Row"];
 export type ItemTag = Database["public"]["Tables"]["item_tags"]["Row"];
 export type Company = Database["public"]["Tables"]["companies"]["Row"];
+export type IngestionLog = Database["public"]["Tables"]["ingestion_logs"]["Row"];
 
 // Extended item with source info for the feed
 export type FeedItem = Item & {

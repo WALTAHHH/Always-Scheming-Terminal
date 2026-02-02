@@ -11,9 +11,23 @@ interface SourceRow {
   source_type: string;
   active: boolean;
   last_fetched_at: string | null;
+  last_error: string | null;
+  consecutive_errors: number;
+  last_success_at: string | null;
   created_at: string;
   article_count: number;
   latest_article_at: string | null;
+}
+
+interface IngestionLogRow {
+  id: string;
+  source_id: string | null;
+  started_at: string;
+  fetched: number;
+  inserted: number;
+  errors: string[];
+  success: boolean;
+  duration_ms: number;
 }
 
 type Tab = "sources" | "health";
@@ -36,28 +50,33 @@ function timeAgo(dateStr: string | null): string {
   return d.toLocaleDateString();
 }
 
+// Health thresholds — tuned for daily ingestion (cron runs once/day at 8am UTC)
+const HEALTHY_HOURS = 26; // fetched within ~1 day + buffer
+const STALE_HOURS = 50;   // missed one run (~2 days)
+// Beyond STALE_HOURS = dead (missed 2+ runs)
+
 function healthColor(lastFetched: string | null): string {
   if (!lastFetched) return "text-ast-pink";
   const hours = (Date.now() - new Date(lastFetched).getTime()) / 3600000;
-  if (hours < 2) return "text-ast-mint";
-  if (hours < 24) return "text-ast-gold";
+  if (hours < HEALTHY_HOURS) return "text-ast-mint";
+  if (hours < STALE_HOURS) return "text-ast-gold";
   return "text-ast-pink";
 }
 
 function healthDot(lastFetched: string | null): string {
   if (!lastFetched) return "bg-ast-pink";
   const hours = (Date.now() - new Date(lastFetched).getTime()) / 3600000;
-  if (hours < 2) return "bg-ast-mint";
-  if (hours < 24) return "bg-ast-gold";
+  if (hours < HEALTHY_HOURS) return "bg-ast-mint";
+  if (hours < STALE_HOURS) return "bg-ast-gold";
   return "bg-ast-pink";
 }
 
 function healthTooltip(lastFetched: string | null): string {
   if (!lastFetched) return "Never fetched";
   const hours = (Date.now() - new Date(lastFetched).getTime()) / 3600000;
-  if (hours < 2) return "Healthy — fetched recently";
-  if (hours < 24) return "Stale — last fetch was 2-24h ago";
-  return "Dead — no fetch in 24h+";
+  if (hours < HEALTHY_HOURS) return `Healthy — fetched ${Math.round(hours)}h ago`;
+  if (hours < STALE_HOURS) return `Stale — last fetch was ${Math.round(hours)}h ago`;
+  return `Dead — no fetch in ${Math.round(hours)}h`;
 }
 
 // ── Add Source Form ────────────────────────────────────────────────
@@ -189,35 +208,48 @@ function AddSourceForm({ onAdded }: { onAdded: () => void }) {
 
 // ── Health Dashboard ───────────────────────────────────────────────
 
-function HealthDashboard({ sources }: { sources: SourceRow[] }) {
+function HealthDashboard({ sources, logs }: { sources: SourceRow[]; logs: IngestionLogRow[] }) {
+  const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const activeSources = sources.filter((s) => s.active);
   const totalArticles = sources.reduce((sum, s) => sum + s.article_count, 0);
 
   const healthy = activeSources.filter((s) => {
     if (!s.last_fetched_at) return false;
-    return (Date.now() - new Date(s.last_fetched_at).getTime()) < 2 * 3600000;
+    return (Date.now() - new Date(s.last_fetched_at).getTime()) < HEALTHY_HOURS * 3600000;
   });
   const stale = activeSources.filter((s) => {
-    if (!s.last_fetched_at) return true;
+    if (!s.last_fetched_at) return false;
     const hours = (Date.now() - new Date(s.last_fetched_at).getTime()) / 3600000;
-    return hours >= 2 && hours < 24;
+    return hours >= HEALTHY_HOURS && hours < STALE_HOURS;
   });
   const dead = activeSources.filter((s) => {
     if (!s.last_fetched_at) return true;
-    return (Date.now() - new Date(s.last_fetched_at).getTime()) >= 24 * 3600000;
+    return (Date.now() - new Date(s.last_fetched_at).getTime()) >= STALE_HOURS * 3600000;
   });
+  const erroring = activeSources.filter((s) => s.consecutive_errors > 0);
 
-  // Sort by stalest first
+  // Sort: erroring first, then by stalest
   const sorted = [...activeSources].sort((a, b) => {
+    // Erroring sources float to top
+    if (a.consecutive_errors > 0 && b.consecutive_errors === 0) return -1;
+    if (b.consecutive_errors > 0 && a.consecutive_errors === 0) return 1;
     const aTime = a.last_fetched_at ? new Date(a.last_fetched_at).getTime() : 0;
     const bTime = b.last_fetched_at ? new Date(b.last_fetched_at).getTime() : 0;
     return aTime - bTime;
   });
 
+  // Recent run stats
+  const recentErrors = logs.filter((l) => !l.success);
+  const lastRunTime = logs.length > 0 ? logs[0].started_at : null;
+
+  // Get logs for a specific source
+  const logsForSource = (sourceId: string) =>
+    logs.filter((l) => l.source_id === sourceId).slice(0, 10);
+
   return (
     <div className="space-y-4">
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <div className="border border-ast-border rounded-lg p-3 bg-ast-surface">
           <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">Sources</div>
           <div className="text-2xl font-bold text-ast-text">{activeSources.length}</div>
@@ -230,15 +262,39 @@ function HealthDashboard({ sources }: { sources: SourceRow[] }) {
         <div className="border border-ast-border rounded-lg p-3 bg-ast-surface">
           <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">Healthy</div>
           <div className="text-2xl font-bold text-ast-mint">{healthy.length}</div>
-          <div className="text-[10px] text-ast-muted">fetched &lt;2h ago</div>
+          <div className="text-[10px] text-ast-muted">fetched &lt;{HEALTHY_HOURS}h ago</div>
         </div>
         <div className="border border-ast-border rounded-lg p-3 bg-ast-surface">
-          <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">Needs Attention</div>
-          <div className={`text-2xl font-bold ${stale.length + dead.length > 0 ? "text-ast-pink" : "text-ast-mint"}`}>
+          <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">Stale / Dead</div>
+          <div className={`text-2xl font-bold ${stale.length + dead.length > 0 ? "text-ast-gold" : "text-ast-mint"}`}>
             {stale.length + dead.length}
           </div>
-          <div className="text-[10px] text-ast-muted">stale or dead</div>
+          <div className="text-[10px] text-ast-muted">{stale.length} stale, {dead.length} dead</div>
         </div>
+        <div className="border border-ast-border rounded-lg p-3 bg-ast-surface">
+          <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">Errors</div>
+          <div className={`text-2xl font-bold ${erroring.length > 0 ? "text-ast-pink" : "text-ast-mint"}`}>
+            {erroring.length}
+          </div>
+          <div className="text-[10px] text-ast-muted">consecutive failures</div>
+        </div>
+      </div>
+
+      {/* Last run info */}
+      <div className="flex items-center gap-4 text-xs text-ast-muted px-1">
+        <span>
+          Last run: {lastRunTime ? (
+            <span className={healthColor(lastRunTime)}>{timeAgo(lastRunTime)}</span>
+          ) : (
+            <span className="text-ast-pink">never</span>
+          )}
+        </span>
+        {logs.length > 0 && (
+          <>
+            <span>•</span>
+            <span>Recent logs: {logs.length} runs, {recentErrors.length} failures</span>
+          </>
+        )}
       </div>
 
       {/* Source health list */}
@@ -248,21 +304,84 @@ function HealthDashboard({ sources }: { sources: SourceRow[] }) {
         </div>
         <div className="divide-y divide-ast-border/50">
           {sorted.map((source) => (
-            <div key={source.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors">
-              <span
-                className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot(source.last_fetched_at)}`}
-                title={healthTooltip(source.last_fetched_at)}
-              />
-              <span className="text-sm text-ast-text w-48 truncate">{source.name}</span>
-              <span className="text-[10px] text-ast-muted w-16">{source.source_type}</span>
-              <span className="text-xs text-ast-muted w-24 text-right">{source.article_count} articles</span>
-              <span className={`text-xs w-28 text-right ${healthColor(source.last_fetched_at)}`}>
-                {timeAgo(source.last_fetched_at)}
-              </span>
-              <div className="flex-1" />
-              <span className="text-[10px] text-ast-muted">
-                Latest: {source.latest_article_at ? timeAgo(source.latest_article_at) : "—"}
-              </span>
+            <div key={source.id}>
+              <button
+                onClick={() => setExpandedSource(expandedSource === source.id ? null : source.id)}
+                className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors text-left"
+              >
+                <span
+                  className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot(source.last_fetched_at)}`}
+                  title={healthTooltip(source.last_fetched_at)}
+                />
+                <span className="text-sm text-ast-text w-48 truncate">
+                  {source.name}
+                  {source.consecutive_errors > 0 && (
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-ast-pink/10 border border-ast-pink/30 text-ast-pink">
+                      {source.consecutive_errors}× fail
+                    </span>
+                  )}
+                </span>
+                <span className="text-[10px] text-ast-muted w-16">{source.source_type}</span>
+                <span className="text-xs text-ast-muted w-24 text-right">{source.article_count} articles</span>
+                <span className={`text-xs w-28 text-right ${healthColor(source.last_fetched_at)}`}>
+                  {timeAgo(source.last_fetched_at)}
+                </span>
+                <div className="flex-1" />
+                <span className="text-[10px] text-ast-muted">
+                  Latest: {source.latest_article_at ? timeAgo(source.latest_article_at) : "—"}
+                </span>
+                <span className="text-ast-muted text-xs ml-2">
+                  {expandedSource === source.id ? "▾" : "▸"}
+                </span>
+              </button>
+
+              {/* Expanded detail: error info + recent logs */}
+              {expandedSource === source.id && (
+                <div className="px-4 pb-3 pt-1 bg-ast-surface/20 border-t border-ast-border/30">
+                  {source.last_error && (
+                    <div className="mb-2 p-2 rounded bg-ast-pink/5 border border-ast-pink/20">
+                      <div className="text-[10px] text-ast-pink uppercase tracking-wider font-semibold mb-1">Last Error</div>
+                      <div className="text-xs text-ast-text font-mono break-all">{source.last_error}</div>
+                    </div>
+                  )}
+
+                  <div className="text-[10px] text-ast-muted uppercase tracking-wider font-semibold mb-1.5">
+                    Recent Runs
+                  </div>
+                  {logsForSource(source.id).length === 0 ? (
+                    <div className="text-xs text-ast-muted italic">No ingestion logs yet</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {logsForSource(source.id).map((log) => (
+                        <div key={log.id} className="flex items-center gap-3 text-xs">
+                          <span className={`w-1.5 h-1.5 rounded-full ${log.success ? "bg-ast-mint" : "bg-ast-pink"}`} />
+                          <span className="text-ast-muted w-24">{timeAgo(log.started_at)}</span>
+                          <span className="text-ast-text tabular-nums w-20">
+                            {log.fetched} fetched
+                          </span>
+                          <span className="text-ast-accent tabular-nums w-20">
+                            {log.inserted} new
+                          </span>
+                          <span className="text-ast-muted tabular-nums w-16">
+                            {log.duration_ms}ms
+                          </span>
+                          {log.errors.length > 0 && (
+                            <span className="text-ast-pink truncate flex-1" title={log.errors.join("; ")}>
+                              {log.errors[0]}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {source.last_success_at && (
+                    <div className="mt-2 text-[10px] text-ast-muted">
+                      Last successful fetch: {timeAgo(source.last_success_at)}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -308,6 +427,7 @@ function SortHeader({
 
 export default function AdminPage() {
   const [sources, setSources] = useState<SourceRow[]>([]);
+  const [logs, setLogs] = useState<IngestionLogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("sources");
   const [sortField, setSortField] = useState<SortField>("articles");
@@ -325,9 +445,20 @@ export default function AdminPage() {
     }
   }, []);
 
+  const fetchLogs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/health/logs");
+      const data = await res.json();
+      setLogs(data.logs || []);
+    } catch (err) {
+      console.error("Failed to fetch logs:", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchSources();
-  }, [fetchSources]);
+    fetchLogs();
+  }, [fetchSources, fetchLogs]);
 
   function handleSort(field: SortField) {
     if (field === sortField) {
@@ -475,7 +606,7 @@ export default function AdminPage() {
             </div>
           </div>
         ) : (
-          <HealthDashboard sources={sources} />
+          <HealthDashboard sources={sources} logs={logs} />
         )}
       </main>
     </div>

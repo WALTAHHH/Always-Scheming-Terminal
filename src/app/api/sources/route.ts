@@ -17,6 +17,9 @@ interface SourceRow {
   source_type: string;
   active: boolean;
   last_fetched_at: string | null;
+  last_error: string | null;
+  consecutive_errors: number;
+  last_success_at: string | null;
   created_at: string;
 }
 
