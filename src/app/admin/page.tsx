@@ -31,7 +31,7 @@ interface IngestionLogRow {
 }
 
 type Tab = "sources" | "health";
-type SortField = "name" | "type" | "articles" | "last_fetch" | "latest_article" | "status";
+type SortField = "name" | "type" | "articles" | "last_fetch" | "latest_article" | "status" | "errors";
 type SortDir = "asc" | "desc";
 
 function timeAgo(dateStr: string | null): string {
@@ -210,6 +210,8 @@ function AddSourceForm({ onAdded }: { onAdded: () => void }) {
 
 function HealthDashboard({ sources, logs }: { sources: SourceRow[]; logs: IngestionLogRow[] }) {
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
+  const [hSortField, setHSortField] = useState<SortField>("last_fetch");
+  const [hSortDir, setHSortDir] = useState<SortDir>("asc");
   const activeSources = sources.filter((s) => s.active);
   const totalArticles = sources.reduce((sum, s) => sum + s.article_count, 0);
 
@@ -228,15 +230,44 @@ function HealthDashboard({ sources, logs }: { sources: SourceRow[]; logs: Ingest
   });
   const erroring = activeSources.filter((s) => s.consecutive_errors > 0);
 
-  // Sort: erroring first, then by stalest
-  const sorted = [...activeSources].sort((a, b) => {
-    // Erroring sources float to top
-    if (a.consecutive_errors > 0 && b.consecutive_errors === 0) return -1;
-    if (b.consecutive_errors > 0 && a.consecutive_errors === 0) return 1;
-    const aTime = a.last_fetched_at ? new Date(a.last_fetched_at).getTime() : 0;
-    const bTime = b.last_fetched_at ? new Date(b.last_fetched_at).getTime() : 0;
-    return aTime - bTime;
-  });
+  function handleHealthSort(field: SortField) {
+    if (field === hSortField) {
+      setHSortDir(hSortDir === "asc" ? "desc" : "asc");
+    } else {
+      setHSortField(field);
+      setHSortDir(field === "name" || field === "type" ? "asc" : "desc");
+    }
+  }
+
+  const sorted = useMemo(() => {
+    const mul = hSortDir === "asc" ? 1 : -1;
+    return [...activeSources].sort((a, b) => {
+      switch (hSortField) {
+        case "name":
+          return mul * a.name.localeCompare(b.name);
+        case "type":
+          return mul * a.source_type.localeCompare(b.source_type);
+        case "articles":
+          return mul * (a.article_count - b.article_count);
+        case "last_fetch": {
+          const aT = a.last_fetched_at ? new Date(a.last_fetched_at).getTime() : 0;
+          const bT = b.last_fetched_at ? new Date(b.last_fetched_at).getTime() : 0;
+          return mul * (aT - bT);
+        }
+        case "latest_article": {
+          const aT = a.latest_article_at ? new Date(a.latest_article_at).getTime() : 0;
+          const bT = b.latest_article_at ? new Date(b.latest_article_at).getTime() : 0;
+          return mul * (aT - bT);
+        }
+        case "errors":
+          return mul * (a.consecutive_errors - b.consecutive_errors);
+        case "status":
+          return mul * (Number(a.active) - Number(b.active));
+        default:
+          return 0;
+      }
+    });
+  }, [activeSources, hSortField, hSortDir]);
 
   // Recent run stats
   const recentErrors = logs.filter((l) => !l.success);
@@ -299,38 +330,50 @@ function HealthDashboard({ sources, logs }: { sources: SourceRow[]; logs: Ingest
 
       {/* Source health list */}
       <div className="border border-ast-border rounded-lg overflow-hidden">
-        <div className="bg-ast-surface px-4 py-2 border-b border-ast-border">
-          <h3 className="text-xs font-semibold text-ast-muted uppercase tracking-wider">Ingestion Status</h3>
+        <div className="bg-ast-surface px-3 py-2 border-b border-ast-border flex items-center gap-3">
+          <div className="w-5" /> {/* health dot */}
+          <SortHeader label="Name" field="name" currentField={hSortField} currentDir={hSortDir} onSort={handleHealthSort} className="flex-1 min-w-0" />
+          <SortHeader label="Type" field="type" currentField={hSortField} currentDir={hSortDir} onSort={handleHealthSort} className="w-16" />
+          <SortHeader label="Articles" field="articles" currentField={hSortField} currentDir={hSortDir} onSort={handleHealthSort} className="w-24 justify-end" />
+          <SortHeader label="Last Fetch" field="last_fetch" currentField={hSortField} currentDir={hSortDir} onSort={handleHealthSort} className="w-28 justify-end" />
+          <div className="flex-1" />
+          <SortHeader label="Latest Article" field="latest_article" currentField={hSortField} currentDir={hSortDir} onSort={handleHealthSort} className="w-28 justify-end" />
+          <SortHeader label="Errors" field="errors" currentField={hSortField} currentDir={hSortDir} onSort={handleHealthSort} className="w-14 justify-end" />
+          <div className="w-5" /> {/* expand arrow */}
         </div>
         <div className="divide-y divide-ast-border/50">
           {sorted.map((source) => (
             <div key={source.id}>
               <button
                 onClick={() => setExpandedSource(expandedSource === source.id ? null : source.id)}
-                className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors text-left"
+                className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors text-left"
               >
                 <span
                   className={`w-2 h-2 rounded-full flex-shrink-0 ${healthDot(source.last_fetched_at)}`}
                   title={healthTooltip(source.last_fetched_at)}
                 />
-                <span className="text-sm text-ast-text w-48 truncate">
+                <span className="text-sm text-ast-text flex-1 min-w-0 truncate">
                   {source.name}
-                  {source.consecutive_errors > 0 && (
-                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-ast-pink/10 border border-ast-pink/30 text-ast-pink">
-                      {source.consecutive_errors}× fail
-                    </span>
-                  )}
                 </span>
                 <span className="text-[10px] text-ast-muted w-16">{source.source_type}</span>
-                <span className="text-xs text-ast-muted w-24 text-right">{source.article_count} articles</span>
+                <span className="text-xs text-ast-muted w-24 text-right tabular-nums">{source.article_count}</span>
                 <span className={`text-xs w-28 text-right ${healthColor(source.last_fetched_at)}`}>
                   {timeAgo(source.last_fetched_at)}
                 </span>
                 <div className="flex-1" />
-                <span className="text-[10px] text-ast-muted">
-                  Latest: {source.latest_article_at ? timeAgo(source.latest_article_at) : "—"}
+                <span className="text-[10px] text-ast-muted w-28 text-right">
+                  {source.latest_article_at ? timeAgo(source.latest_article_at) : "—"}
                 </span>
-                <span className="text-ast-muted text-xs ml-2">
+                <span className="w-14 text-right">
+                  {source.consecutive_errors > 0 ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-ast-pink/10 border border-ast-pink/30 text-ast-pink">
+                      {source.consecutive_errors}×
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-ast-muted">—</span>
+                  )}
+                </span>
+                <span className="text-ast-muted text-xs w-5 text-center">
                   {expandedSource === source.id ? "▾" : "▸"}
                 </span>
               </button>
