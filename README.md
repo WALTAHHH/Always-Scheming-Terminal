@@ -288,8 +288,11 @@ PhoenixNews (phoenixnews.io) — dark terminal aesthetic, high information densi
 - [x] Draft company list (76 companies, 9 segments)
 - [x] Source management page (add/remove/pause sources, sortable table)
 - [x] Ingestion health monitoring (logs, error tracking, per-source history, manual fetch)
-- [ ] Performance optimization (pagination, caching)
+- [x] Performance optimization (infinite scroll pagination, cursor-based API)
 - [ ] Increase ingestion frequency (every 30 min during business hours) — deferred
+- [x] Hide articles from disabled sources in feed
+- [x] Manual fetch per source (admin)
+- [x] Sortable columns on health dashboard
 
 **Done when:** Matt uses this daily instead of checking sources individually. Hypothesis validation begins.
 
@@ -330,4 +333,4 @@ If by week 8 of active use, nobody (including Matt) returns to the terminal unpr
 - **Target personas:** Victor Venture, Frank Founder, Annie Analyst
 - **Live URL:** https://always-scheming-terminal.vercel.app
 
-*Last updated: 2026-01-31*
+*Last updated: 2026-02-02*
