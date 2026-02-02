@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import { TimeAgo } from "./TimeAgo";
+import Image from "next/image";
 
 function truncate(text: string | null, maxLen: number): string {
   if (!text) return "";
@@ -61,6 +62,31 @@ const SOURCE_COLORS: Record<string, string> = {
   podcast: "border-l-ast-gold",
 };
 
+// ── Favicon ────────────────────────────────────────────────────────
+
+function getFaviconUrl(siteUrl: string | undefined): string | null {
+  if (!siteUrl) return null;
+  try {
+    const domain = new URL(siteUrl).hostname;
+    return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+  } catch {
+    return null;
+  }
+}
+
+// ── Article freshness ──────────────────────────────────────────────
+
+const FRESH_HOURS = 4;
+const FADE_DAYS = 3;
+
+function getArticleAge(publishedAt: string | null): "fresh" | "normal" | "old" {
+  if (!publishedAt) return "normal";
+  const hoursAgo = (Date.now() - new Date(publishedAt).getTime()) / 3600000;
+  if (hoursAgo < FRESH_HOURS) return "fresh";
+  if (hoursAgo > FADE_DAYS * 24) return "old";
+  return "normal";
+}
+
 interface FeedRowProps {
   item: FeedItem;
 }
@@ -71,9 +97,11 @@ export function FeedRow({ item }: FeedRowProps) {
   const borderColor = SOURCE_COLORS[sourceType] || "border-l-ast-accent";
   const fullContent = cleanContent(item.content);
   const hasMoreContent = fullContent.length > 180;
+  const faviconUrl = getFaviconUrl(item.sources?.url);
+  const age = getArticleAge(item.published_at);
 
   return (
-    <div className={`border-l-2 ${borderColor}`}>
+    <div className={`border-l-2 ${borderColor} ${age === "old" ? "opacity-50" : ""}`}>
       <a
         href={item.url}
         target="_blank"
@@ -90,12 +118,27 @@ export function FeedRow({ item }: FeedRowProps) {
           {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
+              {faviconUrl && (
+                <Image
+                  src={faviconUrl}
+                  alt=""
+                  width={14}
+                  height={14}
+                  className="rounded-sm flex-shrink-0"
+                  unoptimized
+                />
+              )}
               <span className="text-ast-accent text-xs font-medium">
                 {item.sources?.name || "Unknown"}
               </span>
               {item.author && (
                 <span className="text-ast-muted text-xs">
                   · {item.author}
+                </span>
+              )}
+              {age === "fresh" && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-ast-mint/10 border border-ast-mint/30 text-ast-mint font-semibold tracking-wider">
+                  FRESH
                 </span>
               )}
             </div>
