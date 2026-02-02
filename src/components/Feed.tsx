@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import type { FilterState } from "./FilterBar";
 import { FilterBar, EMPTY_FILTERS } from "./FilterBar";
@@ -13,6 +13,9 @@ export type SortMode = "recent" | "importance";
 interface FeedProps {
   items: FeedItem[];
   sources: { name: string }[];
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 /**
@@ -171,9 +174,30 @@ function DateGroupHeader({
   );
 }
 
-export function Feed({ items, sources }: FeedProps) {
+export function Feed({ items, sources, hasMore, loadingMore, onLoadMore }: FeedProps) {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [sortMode, setSortMode] = useState<SortMode>("importance");
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    if (!onLoadMore || !hasMore) return;
+
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loadingMore) {
+          onLoadMore();
+        }
+      },
+      { rootMargin: "400px" } // trigger 400px before reaching the bottom
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [onLoadMore, hasMore, loadingMore]);
 
   const tagCounts = useMemo(() => computeTagCounts(items), [items]);
 
@@ -293,6 +317,23 @@ export function Feed({ items, sources }: FeedProps) {
         {filtered.length === 0 && (
           <div className="text-center py-16 text-ast-muted">
             No items match your filters.
+          </div>
+        )}
+
+        {/* Infinite scroll sentinel */}
+        {hasMore && (
+          <div ref={sentinelRef} className="py-8 text-center">
+            {loadingMore ? (
+              <span className="text-ast-muted text-xs animate-pulse">Loading more articles...</span>
+            ) : (
+              <span className="text-ast-muted/50 text-xs">·</span>
+            )}
+          </div>
+        )}
+
+        {!hasMore && filtered.length > 0 && (
+          <div className="py-8 text-center text-ast-muted/40 text-xs">
+            End of feed
           </div>
         )}
       </div>

@@ -5,9 +5,11 @@ import type { FeedItem } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic"; // Always fetch fresh from Supabase
 
-async function getItems(): Promise<FeedItem[]> {
+const PAGE_SIZE = 50;
+
+async function getItems(): Promise<{ items: FeedItem[]; hasMore: boolean }> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return [];
+    return { items: [], hasMore: false };
   }
 
   const supabase = createServerClient();
@@ -16,14 +18,16 @@ async function getItems(): Promise<FeedItem[]> {
     .select("*, sources!inner(name, url, source_type, active)")
     .eq("sources.active", true)
     .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(500);
+    .limit(PAGE_SIZE + 1); // fetch one extra to detect hasMore
 
   if (error) {
     console.error("Failed to fetch items:", error.message);
-    return [];
+    return { items: [], hasMore: false };
   }
 
-  return (data as FeedItem[]) ?? [];
+  const items = (data as FeedItem[]) ?? [];
+  const hasMore = items.length > PAGE_SIZE;
+  return { items: hasMore ? items.slice(0, PAGE_SIZE) : items, hasMore };
 }
 
 async function getSources(): Promise<{ name: string }[]> {
@@ -42,7 +46,7 @@ async function getSources(): Promise<{ name: string }[]> {
 }
 
 export default async function Home() {
-  const [items, sources] = await Promise.all([getItems(), getSources()]);
+  const [{ items, hasMore }, sources] = await Promise.all([getItems(), getSources()]);
 
   return (
     <main className="min-h-screen">
@@ -56,7 +60,7 @@ export default async function Home() {
           </p>
         </div>
       ) : (
-        <LiveFeed initialItems={items} sources={sources} />
+        <LiveFeed initialItems={items} initialHasMore={hasMore} sources={sources} />
       )}
     </main>
   );

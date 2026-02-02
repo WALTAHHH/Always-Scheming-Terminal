@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
   const source = searchParams.get("source");
   const search = searchParams.get("q");
   const company = searchParams.get("company");
+  const before = searchParams.get("before"); // cursor: published_at ISO timestamp
 
   const supabase = createServerClient();
 
@@ -15,8 +16,14 @@ export async function GET(req: NextRequest) {
     .from("items")
     .select("*, sources!inner(name, url, source_type, active)", { count: "exact" })
     .eq("sources.active", true)
-    .order("published_at", { ascending: false, nullsFirst: false })
-    .range(offset, offset + limit - 1);
+    .order("published_at", { ascending: false, nullsFirst: false });
+
+  // Cursor-based pagination: fetch items older than this timestamp
+  if (before) {
+    query = query.lt("published_at", before);
+  }
+
+  query = query.range(offset, offset + limit - 1);
 
   // Filter by source name
   if (source) {
@@ -39,10 +46,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const items = data || [];
+  const hasMore = items.length === limit;
+
   return NextResponse.json({
-    items: data,
+    items,
     total: count,
     limit,
     offset,
+    hasMore,
   });
 }

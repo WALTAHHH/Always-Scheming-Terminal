@@ -7,13 +7,17 @@ import { NewItemsBanner } from "./NewItemsBanner";
 
 interface LiveFeedProps {
   initialItems: FeedItem[];
+  initialHasMore: boolean;
   sources: { name: string }[];
 }
 
 const POLL_INTERVAL = 60_000; // Check for new items every 60s
+const PAGE_SIZE = 50;
 
-export function LiveFeed({ initialItems, sources }: LiveFeedProps) {
+export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProps) {
   const [items, setItems] = useState<FeedItem[]>(initialItems);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [newCount, setNewCount] = useState(0);
   const pendingItems = useRef<FeedItem[]>([]);
   const latestId = useRef<string | null>(
@@ -82,10 +86,60 @@ export function LiveFeed({ initialItems, sources }: LiveFeedProps) {
     }
   }, []);
 
+  // Load older items (infinite scroll)
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+
+    setLoadingMore(true);
+    try {
+      // Find the oldest published_at in current items for cursor
+      const oldest = items.reduce((min, item) => {
+        const t = item.published_at || item.ingested_at;
+        if (!min) return t;
+        return t && t < min ? t : min;
+      }, null as string | null);
+
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (oldest) {
+        params.set("before", oldest);
+      }
+
+      const res = await fetch(`/api/items?${params}`);
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const fetched: FeedItem[] = data.items || [];
+
+      if (fetched.length === 0) {
+        setHasMore(false);
+        return;
+      }
+
+      // Deduplicate and append
+      setItems((prev) => {
+        const existingIds = new Set(prev.map((i) => i.id));
+        const newOnes = fetched.filter((i) => !existingIds.has(i.id));
+        return [...prev, ...newOnes];
+      });
+
+      setHasMore(data.hasMore ?? fetched.length === PAGE_SIZE);
+    } catch {
+      // Silently fail
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [items, hasMore, loadingMore]);
+
   return (
     <>
       <NewItemsBanner count={newCount} onClick={loadNewItems} />
-      <Feed items={items} sources={sources} />
+      <Feed
+        items={items}
+        sources={sources}
+        hasMore={hasMore}
+        loadingMore={loadingMore}
+        onLoadMore={loadMore}
+      />
     </>
   );
 }
