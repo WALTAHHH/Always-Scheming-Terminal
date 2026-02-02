@@ -78,7 +78,7 @@ export function ClusterRow({ cluster }: ClusterRowProps) {
 
       {/* Expanded related articles */}
       {expanded && (
-        <div className="ml-6 border-l border-ast-border/50">
+        <div className="ml-3 sm:ml-6 border-l border-ast-border/50">
           {cluster.related.map((item) => (
             <div key={item.id} className="opacity-80">
               <FeedRow item={item} />

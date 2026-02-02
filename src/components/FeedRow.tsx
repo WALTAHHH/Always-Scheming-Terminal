@@ -39,13 +39,13 @@ function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
   if (allTags.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-1 mt-1.5">
+    <div className="flex gap-1 mt-1.5 overflow-x-auto sm:flex-wrap sm:overflow-visible scrollbar-none">
       {allTags.map((tag, i) => {
         const colors = TAG_DIMENSION_COLORS[tag.dimension] || "border-l-ast-muted text-ast-muted";
         return (
           <span
             key={`${tag.dimension}-${tag.value}-${i}`}
-            className={`px-1.5 py-0.5 text-[10px] bg-ast-tag border-l-2 rounded-sm ${colors}`}
+            className={`px-1.5 py-0.5 text-[10px] bg-ast-tag border-l-2 rounded-sm whitespace-nowrap flex-shrink-0 ${colors}`}
           >
             {tag.value}
           </span>
@@ -109,15 +109,15 @@ export function FeedRow({ item }: FeedRowProps) {
         data-feed-item
         className="block py-3 px-3 hover:bg-ast-surface/50 transition-colors group"
       >
-        <div className="flex items-start gap-3">
-          {/* Timestamp — self-updating */}
-          <div className="flex-shrink-0 w-[40px] pt-0.5 text-right">
+        <div className="flex items-start gap-2 sm:gap-3">
+          {/* Timestamp — desktop only (separate column) */}
+          <div className="hidden sm:block flex-shrink-0 w-[40px] pt-0.5 text-right">
             <TimeAgo date={item.published_at} className="text-ast-muted text-xs" />
           </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
+            <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 flex-wrap">
               {faviconUrl && (
                 <Image
                   src={faviconUrl}
@@ -131,8 +131,12 @@ export function FeedRow({ item }: FeedRowProps) {
               <span className="text-ast-accent text-xs font-medium">
                 {item.sources?.name || "Unknown"}
               </span>
+              {/* Timestamp — mobile only (inline) */}
+              <span className="sm:hidden">
+                <TimeAgo date={item.published_at} className="text-ast-muted text-[10px]" />
+              </span>
               {item.author && (
-                <span className="text-ast-muted text-xs">
+                <span className="text-ast-muted text-xs hidden sm:inline">
                   · {item.author}
                 </span>
               )}
@@ -146,15 +150,15 @@ export function FeedRow({ item }: FeedRowProps) {
               {item.title}
             </h3>
             {item.content && !expanded && (
-              <p className="text-ast-muted text-xs mt-1 leading-relaxed">
+              <p className="text-ast-muted text-xs mt-1 leading-relaxed hidden sm:block">
                 {truncate(item.content, 180)}
               </p>
             )}
             <TagChips tags={item.tags as Record<string, string[]> | null} />
           </div>
 
-          {/* External link indicator */}
-          <div className="flex-shrink-0 text-ast-muted opacity-0 group-hover:opacity-100 transition-opacity pt-1">
+          {/* External link indicator — desktop only */}
+          <div className="hidden sm:block flex-shrink-0 text-ast-muted opacity-0 group-hover:opacity-100 transition-opacity pt-1">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="14"
@@ -176,7 +180,7 @@ export function FeedRow({ item }: FeedRowProps) {
 
       {/* Inline expand toggle */}
       {hasMoreContent && (
-        <div className="px-3 pb-2 ml-[52px]">
+        <div className="px-3 pb-2 sm:ml-[52px]">
           <button
             onClick={(e) => {
               e.preventDefault();
@@ -192,7 +196,7 @@ export function FeedRow({ item }: FeedRowProps) {
 
       {/* Expanded content */}
       {expanded && fullContent && (
-        <div className="px-3 pb-3 ml-[52px]">
+        <div className="px-3 pb-3 sm:ml-[52px]">
           <div className="text-xs text-ast-text/80 leading-relaxed bg-ast-surface/30 rounded px-3 py-2 border border-ast-border/30">
             {fullContent}
           </div>

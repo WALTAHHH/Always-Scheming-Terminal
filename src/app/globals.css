@@ -17,6 +17,15 @@
   background: #3a3a3a;
 }
 
+/* Hide scrollbar utility */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* Selection — AS blue */
 ::selection {
   background: rgba(119, 196, 217, 0.3);

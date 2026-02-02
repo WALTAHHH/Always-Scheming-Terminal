@@ -160,15 +160,17 @@ function DateGroupHeader({
   articleCount: number;
 }) {
   return (
-    <div className="sticky top-[93px] z-30 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border px-3 py-2 flex items-center justify-between">
+    <div className="sticky top-[81px] sm:top-[93px] z-30 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border px-3 py-2 flex items-center justify-between">
       <span className="text-ast-accent text-xs font-semibold tracking-wide uppercase">
         {label}
       </span>
       <span className="text-ast-muted text-[10px]">
         {storyCount} {storyCount === 1 ? "story" : "stories"}
-        {articleCount > storyCount && (
-          <span> · {articleCount} articles</span>
-        )}
+        <span className="hidden sm:inline">
+          {articleCount > storyCount && (
+            <span> · {articleCount} articles</span>
+          )}
+        </span>
       </span>
     </div>
   );
@@ -256,23 +258,23 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore }: FeedP
   return (
     <>
       <FilterBar sources={sources} tagCounts={tagCounts} onFilterChange={setFilters} />
-      <div className="max-w-5xl mx-auto px-4 py-2">
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-2">
         {/* Stats bar */}
-        <div className="text-ast-muted text-xs mb-2 px-3 flex items-center gap-3">
-          <span>
+        <div className="text-ast-muted text-xs mb-2 px-1 sm:px-3 flex items-center gap-2 sm:gap-3">
+          <span className="text-[10px] sm:text-xs">
             {totalArticles} articles → {totalStories} stories
           </span>
           {multiSourceCount > 0 && (
-            <span className="text-ast-gold">
+            <span className="text-ast-gold hidden sm:inline">
               {multiSourceCount} multi-source
             </span>
           )}
           <div className="flex-1" />
           {/* Sort toggle */}
-          <div className="flex items-center border border-ast-border rounded overflow-hidden">
+          <div className="flex items-center border border-ast-border rounded overflow-hidden flex-shrink-0">
             <button
               onClick={() => setSortMode("importance")}
-              className={`px-2.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
+              className={`px-2 sm:px-2.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
                 sortMode === "importance"
                   ? "bg-ast-gold/15 text-ast-gold"
                   : "text-ast-muted hover:text-ast-text"
@@ -283,7 +285,7 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore }: FeedP
             <div className="w-px h-4 bg-ast-border" />
             <button
               onClick={() => setSortMode("recent")}
-              className={`px-2.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
+              className={`px-2 sm:px-2.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
                 sortMode === "recent"
                   ? "bg-ast-accent/15 text-ast-accent"
                   : "text-ast-muted hover:text-ast-text"
