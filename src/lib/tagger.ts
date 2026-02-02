@@ -175,6 +175,19 @@ const COMPANY_LIST: CompanyDef[] = [
   { name: "Annapurna Interactive", segment: "studio", aliases: ["annapurna interactive", "annapurna games"] },
   { name: "11 bit studios", segment: "studio", aliases: ["11 bit studios", "11 bit", "frostpunk"] },
 
+  // ── Mid-Market / European Publishers ──
+  { name: "GDEV", segment: "mid-market", aliases: ["gdev", "nexters"] },
+  { name: "Stillfront Group", segment: "mid-market", aliases: ["stillfront", "stillfront group"] },
+  { name: "Coffee Stain Group", segment: "mid-market", aliases: ["coffee stain", "coffee stain studios", "deep rock galactic", "satisfactory", "goat simulator"], alsoTag: ["Embracer Group"] },
+  { name: "Paradox Interactive", segment: "mid-market", aliases: ["paradox interactive", "paradox", "cities skylines", "crusader kings", "hearts of iron", "europa universalis", "victoria 3", "stellaris"] },
+  { name: "Keywords Studios", segment: "mid-market", aliases: ["keywords studios", "keywords"] },
+  { name: "Team17", segment: "mid-market", aliases: ["team17", "team 17", "worms", "overcooked"] },
+  { name: "Frontier Developments", segment: "mid-market", aliases: ["frontier developments", "frontier dev", "elite dangerous", "planet coaster", "planet zoo", "jurassic world evolution"] },
+  { name: "MTG", segment: "mid-market", aliases: ["modern times group", "mtg gaming", "innogames", "kongregate"] },
+  { name: "Huuuge", segment: "mid-market", aliases: ["huuuge", "huuuge games", "huuuge inc"] },
+  { name: "Warner Bros Games", segment: "mid-market", aliases: ["warner bros games", "wb games", "warner bros discovery gaming", "warner bros interactive", "hogwarts legacy", "mortal kombat", "gotham knights", "multiversus"] },
+  { name: "DeNA", segment: "mid-market", aliases: ["dena", "dena co", "pokemon masters", "super mario run"] },
+
   // ── Infrastructure / Middleware ──
   { name: "Unity Technologies", segment: "infra", aliases: ["unity technologies", "unity engine", "unity gaming"] },
   { name: "Xsolla", segment: "infra", aliases: ["xsolla"] },

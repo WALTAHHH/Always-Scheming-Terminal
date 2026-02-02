@@ -1,6 +1,6 @@
 # AST Company List — V1 Draft
 
-> 75 companies across 8 segments. These are the companies most likely to appear in gaming industry news — the ones AST should recognize and tag.
+> 76 companies across 9 segments. These are the companies most likely to appear in gaming industry news — the ones AST should recognize and tag.
 
 ---
 
@@ -84,7 +84,23 @@
 | Annapurna Interactive | Private | Premium indie publisher, parent filed bankruptcy |
 | 11 bit studios | 11B.WA | Frostpunk, This War of Mine, Polish |
 
-## 6. Infrastructure / Middleware / Services
+## 6. Mid-Market / European Publishers
+
+| Company | Ticker | Notes |
+|---------|--------|-------|
+| GDEV | GDEV | Nexters parent, mobile publisher |
+| Stillfront Group | SF.ST | Mobile strategy/simulation publisher, Swedish |
+| Coffee Stain Group | Embracer subsidiary | Deep Rock Galactic, Satisfactory, Goat Simulator |
+| Paradox Interactive | PDX.ST | Cities Skylines, Crusader Kings, grand strategy |
+| Keywords Studios | KWS.L | Outsourced game dev services, largest in sector |
+| Team17 | TM17.L | Worms, Overcooked, indie publishing |
+| Frontier Developments | FDEV.L | Elite Dangerous, Planet Coaster/Zoo, sim specialist |
+| MTG (Modern Times Group) | MTG-B.ST | InnoGames, Kongregate, gaming holding |
+| Huuuge | HUG.WA | Social casino, Huuuge Casino, Polish |
+| Warner Bros Games | WBD | Hogwarts Legacy, Mortal Kombat, MultiVersus |
+| DeNA | 2432.T | Nintendo mobile partner, Pokémon Masters, Japanese mobile |
+
+## 7. Infrastructure / Middleware / Services
 
 | Company | Ticker | Notes |
 |---------|--------|-------|
@@ -95,7 +111,7 @@
 | Discord | Private | Voice/text platform, gaming community backbone |
 | Twitch | AMZN subsidiary | Live streaming, creator economy |
 
-## 7. Investment / Holding / Corporate
+## 8. Investment / Holding / Corporate
 
 | Company | Ticker | Notes |
 |---------|--------|-------|
@@ -115,9 +131,10 @@
 | Major Asian Publishers | 19 |
 | Mobile-First / F2P | 13 |
 | PC/Console Studios & Indies | 8 |
+| Mid-Market / European Publishers | 11 |
 | Infrastructure / Middleware | 6 |
 | Investment / Holding | 4 |
-| **Total** | **65** |
+| **Total** | **76** |
 
 ## Notes for AST Implementation
 
