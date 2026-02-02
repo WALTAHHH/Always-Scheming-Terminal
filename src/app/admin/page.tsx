@@ -208,7 +208,7 @@ function AddSourceForm({ onAdded }: { onAdded: () => void }) {
 
 // ── Health Dashboard ───────────────────────────────────────────────
 
-function HealthDashboard({ sources, logs }: { sources: SourceRow[]; logs: IngestionLogRow[] }) {
+function HealthDashboard({ sources, logs, onRefresh }: { sources: SourceRow[]; logs: IngestionLogRow[]; onRefresh: () => void }) {
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [hSortField, setHSortField] = useState<SortField>("last_fetch");
   const [hSortDir, setHSortDir] = useState<SortDir>("asc");
@@ -418,11 +418,14 @@ function HealthDashboard({ sources, logs }: { sources: SourceRow[]; logs: Ingest
                     </div>
                   )}
 
-                  {source.last_success_at && (
-                    <div className="mt-2 text-[10px] text-ast-muted">
-                      Last successful fetch: {timeAgo(source.last_success_at)}
-                    </div>
-                  )}
+                  <div className="mt-2 flex items-center justify-between">
+                    {source.last_success_at ? (
+                      <div className="text-[10px] text-ast-muted">
+                        Last successful fetch: {timeAgo(source.last_success_at)}
+                      </div>
+                    ) : <div />}
+                    <FetchButton sourceId={source.id} onDone={onRefresh} />
+                  </div>
                 </div>
               )}
             </div>
@@ -633,7 +636,7 @@ export default function AdminPage() {
                 <SortHeader label="Last Fetch" field="last_fetch" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-24 justify-end" />
                 <SortHeader label="Latest Article" field="latest_article" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-28 justify-end" />
                 <SortHeader label="Status" field="status" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-16 justify-center" />
-                <div className="w-[120px]" /> {/* actions */}
+                <div className="w-[160px]" /> {/* actions */}
               </div>
 
               <div className="divide-y divide-ast-border/50">
@@ -643,15 +646,69 @@ export default function AdminPage() {
                     source={source}
                     onToggle={() => toggleSource(source.id, source.active)}
                     onDelete={() => deleteSource(source.id)}
+                    onRefresh={() => { fetchSources(); fetchLogs(); }}
                   />
                 ))}
               </div>
             </div>
           </div>
         ) : (
-          <HealthDashboard sources={sources} logs={logs} />
+          <HealthDashboard sources={sources} logs={logs} onRefresh={() => { fetchSources(); fetchLogs(); }} />
         )}
       </main>
+    </div>
+  );
+}
+
+// ── Source Table Row ────────────────────────────────────────────────
+
+// ── Fetch Now Button (shared) ──────────────────────────────────────
+
+function FetchButton({ sourceId, onDone }: { sourceId: string; onDone: () => void }) {
+  const [fetching, setFetching] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function handleFetch(e: React.MouseEvent) {
+    e.stopPropagation(); // Don't trigger row expand
+    setFetching(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/ingest/source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_id: sourceId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setResult({
+        ok: data.ok,
+        msg: data.ok
+          ? `${data.result.inserted} new / ${data.result.fetched} fetched`
+          : data.result.errors?.[0] || "Error",
+      });
+      onDone();
+    } catch (err: any) {
+      setResult({ ok: false, msg: err.message || "Failed" });
+    } finally {
+      setFetching(false);
+      setTimeout(() => setResult(null), 4000);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={handleFetch}
+        disabled={fetching}
+        className="px-2 py-1 text-[10px] rounded border border-ast-accent/30 text-ast-accent hover:bg-ast-accent/10 disabled:opacity-50 transition-colors"
+      >
+        {fetching ? "⟳" : "Fetch"}
+      </button>
+      {result && (
+        <span className={`text-[10px] ${result.ok ? "text-ast-mint" : "text-ast-pink"}`}>
+          {result.msg}
+        </span>
+      )}
     </div>
   );
 }
@@ -662,10 +719,12 @@ function SourceTableRow({
   source,
   onToggle,
   onDelete,
+  onRefresh,
 }: {
   source: SourceRow;
   onToggle: () => void;
   onDelete: () => void;
+  onRefresh: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -705,7 +764,8 @@ function SourceTableRow({
         )}
       </span>
 
-      <div className="w-[120px] flex items-center justify-end gap-1">
+      <div className="w-[160px] flex items-center justify-end gap-1">
+        <FetchButton sourceId={source.id} onDone={onRefresh} />
         <button
           onClick={onToggle}
           className={`px-2 py-1 text-[10px] rounded border transition-colors ${

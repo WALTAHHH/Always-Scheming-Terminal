@@ -216,6 +216,24 @@ async function updateSourceHealth(
 }
 
 /**
+ * Ingest a single source by ID. Returns the result.
+ */
+export async function ingestOne(sourceId: string): Promise<IngestResult> {
+  const supabase = getSupabase();
+  const { data: source, error } = await supabase
+    .from("sources")
+    .select("*")
+    .eq("id", sourceId)
+    .single();
+
+  if (error || !source) {
+    return { source: "unknown", fetched: 0, inserted: 0, errors: [`Source not found: ${sourceId}`] };
+  }
+
+  return ingestSource(source as SourceRow);
+}
+
+/**
  * Ingest all active sources. Returns results per source.
  */
 export async function ingestAll(): Promise<IngestResult[]> {
