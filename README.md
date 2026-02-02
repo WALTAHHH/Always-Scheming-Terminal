@@ -281,7 +281,7 @@ PhoenixNews (phoenixnews.io) — dark terminal aesthetic, high information densi
 - [x] Sort toggle (Signal / Latest)
 - [x] Visual importance indicators (HOT / HIGH tiers using AS palette)
 
-### Phase 3: Polish (current)
+### Phase 3: Polish ✅
 - [x] Auto-refresh with "new items" banner
 - [x] Keyboard navigation (j/k, Enter, ?)
 - [x] AS design palette applied consistently across all components
@@ -289,10 +289,14 @@ PhoenixNews (phoenixnews.io) — dark terminal aesthetic, high information densi
 - [x] Source management page (add/remove/pause sources, sortable table)
 - [x] Ingestion health monitoring (logs, error tracking, per-source history, manual fetch)
 - [x] Performance optimization (infinite scroll pagination, cursor-based API)
-- [ ] Increase ingestion frequency (every 30 min during business hours) — deferred
 - [x] Hide articles from disabled sources in feed
 - [x] Manual fetch per source (admin)
 - [x] Sortable columns on health dashboard
+- [x] Live-updating relative timestamps (auto-refresh every 60s)
+- [x] Inline article preview expand
+- [x] Source favicons in feed rows
+- [x] Article age indicators (FRESH badge, old article fade)
+- [ ] Increase ingestion frequency (every 30 min during business hours) — deferred to Phase 4+
 
 **Done when:** Matt uses this daily instead of checking sources individually. Hypothesis validation begins.
 
