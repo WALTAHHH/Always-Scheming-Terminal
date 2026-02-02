@@ -13,7 +13,8 @@ async function getItems(): Promise<FeedItem[]> {
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("items")
-    .select("*, sources(name, url, source_type)")
+    .select("*, sources!inner(name, url, source_type, active)")
+    .eq("sources.active", true)
     .order("published_at", { ascending: false, nullsFirst: false })
     .limit(500);
 
