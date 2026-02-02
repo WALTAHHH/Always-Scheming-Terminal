@@ -285,11 +285,11 @@ PhoenixNews (phoenixnews.io) — dark terminal aesthetic, high information densi
 - [x] Auto-refresh with "new items" banner
 - [x] Keyboard navigation (j/k, Enter, ?)
 - [x] AS design palette applied consistently across all components
-- [ ] Draft company list (50+ companies)
-- [ ] Source management page (add/remove/pause sources)
-- [ ] Ingestion health monitoring (last fetch time, error tracking)
+- [x] Draft company list (76 companies, 9 segments)
+- [x] Source management page (add/remove/pause sources, sortable table)
+- [x] Ingestion health monitoring (logs, error tracking, per-source history, manual fetch)
 - [ ] Performance optimization (pagination, caching)
-- [ ] Increase ingestion frequency (every 30 min during business hours)
+- [ ] Increase ingestion frequency (every 30 min during business hours) — deferred
 
 **Done when:** Matt uses this daily instead of checking sources individually. Hypothesis validation begins.
 
@@ -314,11 +314,11 @@ If by week 8 of active use, nobody (including Matt) returns to the terminal unpr
 
 ## Open Tasks
 
-- [ ] Draft 50+ company list (Clawd to draft, Matt to verify)
-- [ ] Determine OpenAI API budget for tagging
-- [ ] Source management UI
-- [ ] Ingestion health dashboard
-- [ ] Increase cron frequency to 30-min intervals
+- [x] Draft company list (76 companies, 9 segments — done 2/2)
+- [ ] Determine OpenAI API budget for tagging — deferred
+- [x] Source management UI
+- [x] Ingestion health dashboard (with manual fetch per source)
+- [ ] Increase cron frequency to 30-min intervals — deferred
 
 ---
 
