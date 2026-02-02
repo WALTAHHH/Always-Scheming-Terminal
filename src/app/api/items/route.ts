@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from("items")
-    .select("*, sources(name, url, source_type)", { count: "exact" })
+    .select("*, sources!inner(name, url, source_type, active)", { count: "exact" })
+    .eq("sources.active", true)
     .order("published_at", { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
 
