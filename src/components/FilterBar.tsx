@@ -194,6 +194,34 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Listen for keyboard shortcut events from KeyboardNav
+  useEffect(() => {
+    function handleShortcut(e: Event) {
+      const detail = (e as CustomEvent<{ key: string }>).detail;
+      switch (detail.key) {
+        case "source":
+          setOpenDropdown((prev) => (prev === "source" ? null : "source"));
+          break;
+        case "company":
+          setOpenDropdown((prev) => (prev === "company" ? null : "company"));
+          break;
+        case "search": {
+          setOpenDropdown(null);
+          const search = barRef.current?.querySelector<HTMLInputElement>(
+            'input[placeholder="Search..."]'
+          );
+          search?.focus();
+          break;
+        }
+        case "close":
+          setOpenDropdown(null);
+          break;
+      }
+    }
+    window.addEventListener("ast-shortcut", handleShortcut);
+    return () => window.removeEventListener("ast-shortcut", handleShortcut);
+  }, []);
+
   const updateFilters = useCallback(
     (update: Partial<FilterState>) => {
       const next = { ...filters, ...update };

@@ -6,8 +6,10 @@ const SHORTCUTS = [
   { keys: ["j", "↓"], desc: "Next item" },
   { keys: ["k", "↑"], desc: "Previous item" },
   { keys: ["o", "Enter"], desc: "Open in new tab" },
-  { keys: ["/"], desc: "Search" },
-  { keys: ["Esc"], desc: "Clear / unfocus" },
+  { keys: ["/"], desc: "Focus search" },
+  { keys: ["s"], desc: "Toggle Source filter" },
+  { keys: ["c"], desc: "Toggle Company filter" },
+  { keys: ["Esc"], desc: "Close filters / unfocus" },
   { keys: ["?"], desc: "Toggle this help" },
 ];
 

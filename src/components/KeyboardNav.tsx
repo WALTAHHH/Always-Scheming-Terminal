@@ -8,6 +8,8 @@ import { useEffect } from "react";
  *   k / ↑  — previous item
  *   o / Enter — open selected item in new tab
  *   /  — focus search
+ *   s  — toggle/focus Source filter
+ *   c  — toggle/focus Company filter
  *   Esc — clear focus / close dropdowns
  */
 export function KeyboardNav() {
@@ -36,13 +38,27 @@ export function KeyboardNav() {
       }
     }
 
+    function dispatchShortcut(key: string) {
+      window.dispatchEvent(
+        new CustomEvent("ast-shortcut", { detail: { key } })
+      );
+    }
+
     function handleKeyDown(e: KeyboardEvent) {
-      // Don't capture if user is typing in an input
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") {
-        if (e.key === "Escape") {
+      // Escape always works — close dropdowns, blur inputs, clear selection
+      if (e.key === "Escape") {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") {
           (e.target as HTMLElement).blur();
         }
+        setActive(getItems(), -1);
+        dispatchShortcut("close");
+        return;
+      }
+
+      // Don't capture other shortcuts if user is typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") {
         return;
       }
 
@@ -74,14 +90,17 @@ export function KeyboardNav() {
         }
         case "/": {
           e.preventDefault();
-          const search = document.querySelector<HTMLInputElement>(
-            'input[placeholder="Search..."]'
-          );
-          search?.focus();
+          dispatchShortcut("search");
           break;
         }
-        case "Escape": {
-          setActive(items, -1);
+        case "s": {
+          e.preventDefault();
+          dispatchShortcut("source");
+          break;
+        }
+        case "c": {
+          e.preventDefault();
+          dispatchShortcut("company");
           break;
         }
       }
