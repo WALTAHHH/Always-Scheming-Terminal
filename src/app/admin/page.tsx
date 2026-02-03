@@ -469,6 +469,65 @@ function SortHeader({
   );
 }
 
+// ── Fetch All Sources Button ────────────────────────────────────────
+
+function FetchAllButton({ onDone }: { onDone: () => void }) {
+  const [fetching, setFetching] = useState(false);
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function handleFetchAll() {
+    setFetching(true);
+    setToast(null);
+    try {
+      const res = await fetch("/api/ingest", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ingestion failed");
+      const s = data.summary;
+      setToast({
+        ok: true,
+        msg: `${s.sources} sources · ${s.inserted} new articles · ${s.errors} errors`,
+      });
+      onDone();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setToast({ ok: false, msg });
+    } finally {
+      setFetching(false);
+      setTimeout(() => setToast(null), 6000);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleFetchAll}
+        disabled={fetching}
+        className="px-3 py-1.5 text-xs font-medium rounded border border-ast-accent/40 text-ast-accent hover:bg-ast-accent/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+      >
+        {fetching ? (
+          <>
+            <span className="inline-block w-3 h-3 border-2 border-ast-accent/30 border-t-ast-accent rounded-full animate-spin" />
+            Fetching…
+          </>
+        ) : (
+          "⟳ Fetch All"
+        )}
+      </button>
+      {toast && (
+        <span
+          className={`text-xs px-2 py-1 rounded border ${
+            toast.ok
+              ? "bg-ast-mint/10 border-ast-mint/30 text-ast-mint"
+              : "bg-ast-pink/10 border-ast-pink/30 text-ast-pink"
+          }`}
+        >
+          {toast.msg}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -589,7 +648,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className="border-b border-ast-border bg-ast-bg/95 sticky top-[53px] z-40">
-        <div className="max-w-5xl mx-auto px-4 flex gap-0">
+        <div className="max-w-5xl mx-auto px-4 flex items-center gap-0">
           <button
             onClick={() => setTab("sources")}
             className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
@@ -610,6 +669,9 @@ export default function AdminPage() {
           >
             Ingestion Health
           </button>
+          <div className="ml-auto">
+            <FetchAllButton onDone={() => { fetchSources(); fetchLogs(); }} />
+          </div>
         </div>
       </div>
 
