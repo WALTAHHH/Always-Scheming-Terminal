@@ -19,6 +19,12 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title="Always Scheming Terminal RSS Feed"
+          href="/api/feed.xml"
+        />
       </head>
       <body className="bg-ast-bg text-ast-text font-mono antialiased min-h-screen">
         <KeyboardNav />
