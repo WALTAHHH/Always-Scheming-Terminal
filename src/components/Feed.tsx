@@ -160,7 +160,7 @@ function DateGroupHeader({
   articleCount: number;
 }) {
   return (
-    <div className="sticky top-[81px] sm:top-[93px] z-30 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border px-3 py-2 flex items-center justify-between">
+    <div className="sticky top-11 z-30 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border px-3 py-2 flex items-center justify-between">
       <span className="text-ast-accent text-xs font-semibold tracking-wide uppercase">
         {label}
       </span>

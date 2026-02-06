@@ -266,9 +266,9 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
   };
 
   return (
-    <div className="border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm sticky top-[41px] sm:top-[53px] z-40">
+    <div className="h-11 border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm sticky top-0 z-40 flex items-center">
       {/* ── Desktop filter bar ── */}
-      <div className="hidden sm:flex max-w-5xl mx-auto px-4 py-2 items-center gap-2 flex-wrap" ref={barRef}>
+      <div className="hidden sm:flex max-w-5xl mx-auto px-4 items-center gap-2 w-full overflow-x-auto" ref={barRef}>
         <FilterDropdown
           label="Source"
           options={sourceOptions}
