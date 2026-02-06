@@ -131,11 +131,28 @@ function ScoreBreakdownPanel({
   );
 }
 
+type SourceFilter = "all" | "analysis" | "news";
+
 export function SignalPanel({ items }: SignalPanelProps) {
   const [expandedStory, setExpandedStory] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  
+  // Filter items by source type
+  const filteredItems = useMemo(() => {
+    if (sourceFilter === "all") return items;
+    const analysisTypes = new Set(["newsletter", "analysis", "blog"]);
+    return items.filter((item) => {
+      const sourceType = item.sources?.source_type || "news";
+      if (sourceFilter === "analysis") {
+        return analysisTypes.has(sourceType);
+      } else {
+        return !analysisTypes.has(sourceType);
+      }
+    });
+  }, [items, sourceFilter]);
   // Compute top stories from multi-source clusters
   const topStories = useMemo<TopStory[]>(() => {
-    const clusters = clusterItems(items);
+    const clusters = clusterItems(filteredItems);
     const scored = clusters.map((c) => ({
       ...c,
       importanceScore: scoreCluster(c),
@@ -184,7 +201,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
   const worthReading = useMemo<WorthReading[]>(() => {
     const analysisTypes = new Set(["newsletter", "analysis", "blog"]);
     
-    const analysisItems = items.filter((item) => {
+    const analysisItems = filteredItems.filter((item) => {
       const sourceType = item.sources?.source_type || "news";
       return analysisTypes.has(sourceType);
     });
@@ -218,7 +235,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
   const trendingCompanies = useMemo<TrendingCompany[]>(() => {
     const counts: Record<string, number> = {};
     
-    for (const item of items) {
+    for (const item of filteredItems) {
       const tags = (item.tags as Record<string, string[]>) || {};
       const companies = tags.company || [];
       for (const company of companies) {
@@ -241,14 +258,14 @@ export function SignalPanel({ items }: SignalPanelProps) {
 
   // Stats
   const stats = useMemo(() => {
-    const sources = new Set(items.map((i) => i.sources?.name).filter(Boolean));
-    const clusters = clusterItems(items);
+    const sources = new Set(filteredItems.map((i) => i.sources?.name).filter(Boolean));
+    const clusters = clusterItems(filteredItems);
     return {
-      articles: items.length,
+      articles: filteredItems.length,
       sources: sources.size,
       clusters: clusters.length,
     };
-  }, [items]);
+  }, [filteredItems]);
 
   const now = new Date();
   const timeStr = now.toLocaleTimeString("en-US", { 
@@ -263,13 +280,47 @@ export function SignalPanel({ items }: SignalPanelProps) {
       <div className="h-11 px-4 border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-ast-text text-sm font-semibold tracking-wide">SIGNAL</span>
-          <span className="text-ast-muted text-xs">
-            {stats.clusters} stories · {stats.sources} sources
-          </span>
+          {/* Source type toggle */}
+          <div className="flex items-center border border-ast-border rounded overflow-hidden">
+            <button
+              onClick={() => setSourceFilter("all")}
+              className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                sourceFilter === "all"
+                  ? "bg-ast-accent/15 text-ast-accent"
+                  : "text-ast-muted hover:text-ast-text"
+              }`}
+            >
+              ALL
+            </button>
+            <div className="w-px h-3 bg-ast-border" />
+            <button
+              onClick={() => setSourceFilter("analysis")}
+              className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                sourceFilter === "analysis"
+                  ? "bg-ast-pink/15 text-ast-pink"
+                  : "text-ast-muted hover:text-ast-text"
+              }`}
+            >
+              ANALYSIS
+            </button>
+            <div className="w-px h-3 bg-ast-border" />
+            <button
+              onClick={() => setSourceFilter("news")}
+              className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                sourceFilter === "news"
+                  ? "bg-ast-gold/15 text-ast-gold"
+                  : "text-ast-muted hover:text-ast-text"
+              }`}
+            >
+              NEWS
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-ast-accent text-[10px]">LIVE</span>
-          <span className="text-ast-muted text-xs" suppressHydrationWarning>{timeStr}</span>
+          <span className="text-ast-muted text-[10px]">
+            {stats.clusters}s · {stats.sources}src
+          </span>
+          <span className="text-ast-accent text-[10px]">●</span>
         </div>
       </div>
       
