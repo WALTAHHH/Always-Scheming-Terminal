@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import { clusterItems, type StoryCluster } from "@/lib/cluster";
-import { scoreCluster } from "@/lib/importance";
+import { scoreCluster, getClusterScoreBreakdown, type ScoreBreakdown } from "@/lib/importance";
 
 interface SignalPanelProps {
   items: FeedItem[];
@@ -18,6 +18,10 @@ interface TopStory {
   hoursAgo: number;
   trending: "up" | "stable" | "new";
   importanceScore: number;
+  breakdown: ScoreBreakdown;
+  sourceNames: string[];
+  leadUrl: string;
+  relatedArticles: { title: string; source: string; url: string }[];
 }
 
 interface WorthReading {
@@ -69,7 +73,66 @@ function ImportanceBar({ score, color = "accent" }: { score: number; color?: "ac
   );
 }
 
+function ScoreBreakdownPanel({ 
+  breakdown, 
+  leadUrl,
+  relatedArticles 
+}: { 
+  breakdown: ScoreBreakdown; 
+  leadUrl: string;
+  relatedArticles: { title: string; source: string; url: string }[];
+}) {
+  return (
+    <div className="mt-2 p-2 bg-ast-surface/80 rounded border border-ast-border/50 text-[10px]">
+      {/* Why it ranked */}
+      <div className="text-ast-muted mb-1.5 font-medium">Why this ranked</div>
+      <div className="space-y-1 mb-3">
+        {breakdown.factors.map((factor, i) => (
+          <div key={i} className="flex items-center justify-between gap-2">
+            <span className="text-ast-text">
+              {factor.label}
+              {factor.detail && <span className="text-ast-muted ml-1">({factor.detail})</span>}
+            </span>
+            <span className="text-ast-gold">+{(factor.value * 100).toFixed(0)}%</span>
+          </div>
+        ))}
+      </div>
+      
+      {/* All articles in cluster */}
+      <div className="pt-2 border-t border-ast-border/50">
+        <div className="text-ast-muted mb-1.5 font-medium">
+          {relatedArticles.length + 1} article{relatedArticles.length > 0 ? "s" : ""} in cluster
+        </div>
+        <div className="space-y-1.5">
+          <a 
+            href={leadUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="block text-ast-accent hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            → Lead article ↗
+          </a>
+          {relatedArticles.map((article, i) => (
+            <a
+              key={i}
+              href={article.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-ast-text hover:text-ast-accent transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              → {article.source}: {article.title.slice(0, 60)}{article.title.length > 60 ? "..." : ""} ↗
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SignalPanel({ items }: SignalPanelProps) {
+  const [expandedStory, setExpandedStory] = useState<string | null>(null);
   // Compute top stories from multi-source clusters
   const topStories = useMemo<TopStory[]>(() => {
     const clusters = clusterItems(items);
@@ -91,6 +154,14 @@ export function SignalPanel({ items }: SignalPanelProps) {
       const tags = (c.lead.tags as Record<string, string[]>) || {};
       const companies = tags.company || [];
       const hoursAgo = getHoursAgo(c.lead.published_at);
+      const breakdown = getClusterScoreBreakdown(c);
+      
+      // Collect all articles in cluster
+      const relatedArticles = c.related.map((item) => ({
+        title: item.title,
+        source: item.sources?.name || "Unknown",
+        url: item.url,
+      }));
       
       return {
         id: c.id,
@@ -101,6 +172,10 @@ export function SignalPanel({ items }: SignalPanelProps) {
         hoursAgo,
         trending: hoursAgo < 3 ? "new" : hoursAgo < 12 ? "up" : "stable",
         importanceScore: c.importanceScore,
+        breakdown,
+        sourceNames: c.sourceNames,
+        leadUrl: c.lead.url,
+        relatedArticles,
       };
     });
   }, [items]);
@@ -212,10 +287,13 @@ export function SignalPanel({ items }: SignalPanelProps) {
             ) : (
               topStories.map((story, idx) => (
                 <div key={story.id} className="group">
-                  <div className="flex items-start gap-2">
+                  <div 
+                    className="flex items-start gap-2 cursor-pointer"
+                    onClick={() => setExpandedStory(expandedStory === story.id ? null : story.id)}
+                  >
                     <span className="text-ast-muted text-[10px] mt-0.5">{idx + 1}.</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-ast-text text-xs font-medium leading-tight line-clamp-2">
+                      <p className="text-ast-text text-xs font-medium leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
                         {story.title}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
@@ -231,7 +309,17 @@ export function SignalPanel({ items }: SignalPanelProps) {
                         {story.trending === "up" && (
                           <span className="text-ast-mint text-[10px]">▲ trending</span>
                         )}
+                        <span className="text-ast-muted/50 text-[10px] ml-auto">
+                          {expandedStory === story.id ? "▼" : "▶"} why?
+                        </span>
                       </div>
+                      {/* Source list - always visible */}
+                      {story.sourceNames.length > 0 && (
+                        <div className="text-[10px] text-ast-muted mt-1">
+                          via {story.sourceNames.slice(0, 3).join(", ")}
+                          {story.sourceNames.length > 3 && ` +${story.sourceNames.length - 3}`}
+                        </div>
+                      )}
                       {story.companies.length > 0 && (
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {story.companies.map((c) => (
@@ -243,6 +331,13 @@ export function SignalPanel({ items }: SignalPanelProps) {
                             </span>
                           ))}
                         </div>
+                      )}
+                      {expandedStory === story.id && (
+                        <ScoreBreakdownPanel 
+                          breakdown={story.breakdown} 
+                          leadUrl={story.leadUrl}
+                          relatedArticles={story.relatedArticles}
+                        />
                       )}
                     </div>
                   </div>

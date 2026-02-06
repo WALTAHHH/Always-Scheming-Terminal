@@ -124,6 +124,103 @@ export function scoreCluster(cluster: StoryCluster): number {
   return Math.min(score, 1);
 }
 
+// ── Score breakdown for transparency ───────────────────────────────
+
+export interface ScoreBreakdown {
+  total: number;
+  factors: {
+    label: string;
+    value: number;
+    detail?: string;
+  }[];
+}
+
+/**
+ * Get detailed breakdown of cluster score for UI display.
+ */
+export function getClusterScoreBreakdown(cluster: StoryCluster): ScoreBreakdown {
+  const factors: ScoreBreakdown["factors"] = [];
+  const item = cluster.lead;
+  const tags = (item.tags as Record<string, string[]>) || {};
+
+  // 1. Category
+  const categories = tags.category || [];
+  let maxCatWeight = 0;
+  let maxCat = "";
+  for (const cat of categories) {
+    const w = CATEGORY_WEIGHTS[cat] ?? 0;
+    if (w > maxCatWeight) {
+      maxCatWeight = w;
+      maxCat = cat;
+    }
+  }
+  if (maxCatWeight > 0) {
+    factors.push({
+      label: "Category",
+      value: maxCatWeight,
+      detail: maxCat.replace("-", "&"),
+    });
+  }
+
+  // 2. Source authority
+  const sourceType = item.sources?.source_type || "news";
+  const sourceWeight = SOURCE_TYPE_WEIGHTS[sourceType] ?? 0.08;
+  factors.push({
+    label: "Source type",
+    value: sourceWeight,
+    detail: sourceType,
+  });
+
+  // 3. Company density
+  const companies = tags.company || [];
+  if (companies.length >= 3) {
+    factors.push({ label: "Companies", value: 0.15, detail: `${companies.length} mentioned` });
+  } else if (companies.length === 2) {
+    factors.push({ label: "Companies", value: 0.10, detail: "2 mentioned" });
+  } else if (companies.length === 1) {
+    factors.push({ label: "Companies", value: 0.05, detail: companies[0] });
+  }
+
+  // 4. Financial signals
+  const title = item.title || "";
+  let financialHits = 0;
+  for (const pattern of FINANCIAL_PATTERNS) {
+    if (pattern.test(title)) financialHits++;
+  }
+  if (financialHits > 0) {
+    factors.push({
+      label: "Financial signals",
+      value: Math.min(financialHits * 0.05, 0.15),
+      detail: `${financialHits} found`,
+    });
+  }
+
+  // 5. Multi-source bonus
+  if (cluster.isMultiSource) {
+    const extraSources = Math.max(0, cluster.sourceCount - 2);
+    const multiBonus = 0.15 + extraSources * 0.05;
+    factors.push({
+      label: "Multi-source",
+      value: multiBonus,
+      detail: `${cluster.sourceCount} sources`,
+    });
+  }
+
+  // 6. Cluster size
+  if (cluster.related.length > 0) {
+    const relatedBonus = Math.min(cluster.related.length * 0.02, 0.10);
+    factors.push({
+      label: "Related articles",
+      value: relatedBonus,
+      detail: `${cluster.related.length} articles`,
+    });
+  }
+
+  const total = Math.min(factors.reduce((sum, f) => sum + f.value, 0), 1);
+
+  return { total, factors };
+}
+
 // ── Importance tier for visual display ─────────────────────────────
 
 export type ImportanceTier = "critical" | "high" | "medium" | "low";
