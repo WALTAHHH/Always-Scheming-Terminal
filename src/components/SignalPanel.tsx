@@ -33,6 +33,16 @@ interface WorthReading {
   url: string;
 }
 
+interface Deal {
+  id: string;
+  title: string;
+  source: string;
+  category: "fundraising" | "m-and-a" | "earnings";
+  companies: string[];
+  hoursAgo: number;
+  url: string;
+}
+
 interface TrendingCompany {
   name: string;
   mentions: number;
@@ -229,7 +239,41 @@ export function SignalPanel({ items }: SignalPanelProps) {
       importanceScore: score,
       url: item.url,
     }));
-  }, [items]);
+  }, [filteredItems]);
+
+  // Compute deals (Fundraising, M&A, Earnings)
+  const deals = useMemo<Deal[]>(() => {
+    const dealCategories = new Set(["fundraising", "m-and-a", "earnings"]);
+    
+    const dealItems = filteredItems.filter((item) => {
+      const tags = (item.tags as Record<string, string[]>) || {};
+      const categories = tags.category || [];
+      return categories.some((c) => dealCategories.has(c));
+    });
+    
+    // Sort by recency
+    dealItems.sort((a, b) => {
+      const aTime = a.published_at ? new Date(a.published_at).getTime() : 0;
+      const bTime = b.published_at ? new Date(b.published_at).getTime() : 0;
+      return bTime - aTime;
+    });
+    
+    return dealItems.slice(0, 5).map((item) => {
+      const tags = (item.tags as Record<string, string[]>) || {};
+      const categories = tags.category || [];
+      const category = categories.find((c) => dealCategories.has(c)) as Deal["category"] || "fundraising";
+      
+      return {
+        id: item.id,
+        title: item.title,
+        source: item.sources?.name || "Unknown",
+        category,
+        companies: (tags.company || []).slice(0, 3),
+        hoursAgo: getHoursAgo(item.published_at),
+        url: item.url,
+      };
+    });
+  }, [filteredItems]);
 
   // Compute trending companies
   const trendingCompanies = useMemo<TrendingCompany[]>(() => {
@@ -426,6 +470,57 @@ export function SignalPanel({ items }: SignalPanelProps) {
                     <span className="text-ast-muted text-[10px]">{item.sourceType}</span>
                     <span className="text-ast-muted/50 text-[10px]">·</span>
                     <span className="text-ast-gold text-[10px]">{item.importanceScore.toFixed(2)}</span>
+                  </div>
+                </a>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Deals - Fundraising, M&A, Earnings */}
+        <div className="border-b border-ast-border">
+          <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
+            <span className="text-ast-gold text-xs font-semibold tracking-wide">
+              💰 DEALS
+            </span>
+          </div>
+          <div className="px-4 py-3 space-y-3">
+            {deals.length === 0 ? (
+              <p className="text-ast-muted text-xs">No deals or earnings yet</p>
+            ) : (
+              deals.map((deal) => (
+                <a
+                  key={deal.id}
+                  href={deal.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block group"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                      deal.category === "fundraising" 
+                        ? "bg-ast-mint/20 text-ast-mint" 
+                        : deal.category === "m-and-a"
+                        ? "bg-ast-pink/20 text-ast-pink"
+                        : "bg-ast-gold/20 text-ast-gold"
+                    }`}>
+                      {deal.category === "m-and-a" ? "M&A" : deal.category === "fundraising" ? "RAISE" : "EARN"}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
+                        {deal.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-ast-muted text-[10px]">{deal.source}</span>
+                        <span className="text-ast-muted text-[10px]">{formatHoursAgo(deal.hoursAgo)}</span>
+                        {deal.companies.length > 0 && (
+                          <>
+                            <span className="text-ast-muted/50 text-[10px]">·</span>
+                            <span className="text-ast-muted text-[10px]">{deal.companies.join(", ")}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </a>
               ))
