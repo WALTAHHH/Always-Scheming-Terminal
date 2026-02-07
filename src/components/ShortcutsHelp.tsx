@@ -10,6 +10,11 @@ const SHORTCUTS = [
   { keys: ["s"], desc: "Toggle Source filter" },
   { keys: ["c"], desc: "Toggle Company filter" },
   { keys: ["Esc"], desc: "Close filters / unfocus" },
+  { keys: ["1"], desc: "Toggle Feed panel" },
+  { keys: ["2"], desc: "Toggle Signal panel" },
+  { keys: ["3"], desc: "Toggle Companies panel" },
+  { keys: ["[", "]"], desc: "Resize left/right split" },
+  { keys: ["-", "="], desc: "Resize top/bottom split" },
   { keys: ["?"], desc: "Toggle this help" },
 ];
 

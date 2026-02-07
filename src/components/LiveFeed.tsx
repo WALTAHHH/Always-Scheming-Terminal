@@ -152,6 +152,55 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     });
   }, []);
 
+  // Adjust split positions
+  const adjustLeftWidth = useCallback((delta: number) => {
+    setLeftWidth((prev) => {
+      const next = Math.min(Math.max(prev + delta, MIN_PANE_WIDTH), MAX_PANE_WIDTH);
+      localStorage.setItem(STORAGE_KEY_HORIZONTAL, next.toString());
+      return next;
+    });
+  }, []);
+
+  const adjustTopHeight = useCallback((delta: number) => {
+    setTopHeight((prev) => {
+      const next = Math.min(Math.max(prev + delta, MIN_PANE_HEIGHT), MAX_PANE_HEIGHT);
+      localStorage.setItem(STORAGE_KEY_VERTICAL, next.toString());
+      return next;
+    });
+  }, []);
+
+  // Listen for keyboard shortcuts
+  useEffect(() => {
+    function handleShortcut(e: Event) {
+      const detail = (e as CustomEvent<{ key: string }>).detail;
+      switch (detail.key) {
+        case "toggle-feed":
+          togglePanel("feed");
+          break;
+        case "toggle-signal":
+          togglePanel("signal");
+          break;
+        case "toggle-companies":
+          togglePanel("companies");
+          break;
+        case "shrink-left":
+          adjustLeftWidth(-5);
+          break;
+        case "grow-left":
+          adjustLeftWidth(5);
+          break;
+        case "shrink-top":
+          adjustTopHeight(-5);
+          break;
+        case "grow-top":
+          adjustTopHeight(5);
+          break;
+      }
+    }
+    window.addEventListener("ast-shortcut", handleShortcut);
+    return () => window.removeEventListener("ast-shortcut", handleShortcut);
+  }, [togglePanel, adjustLeftWidth, adjustTopHeight]);
+
   // Update global items for company drawer
   useEffect(() => {
     setGlobalItems(items);

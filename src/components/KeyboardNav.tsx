@@ -11,6 +11,13 @@ import { useEffect } from "react";
  *   s  — toggle/focus Source filter
  *   c  — toggle/focus Company filter
  *   Esc — clear focus / close dropdowns
+ *   1  — toggle Feed panel
+ *   2  — toggle Signal panel
+ *   3  — toggle Companies panel
+ *   [  — shrink left pane
+ *   ]  — grow left pane
+ *   -  — shrink top-right pane
+ *   =  — grow top-right pane
  */
 export function KeyboardNav() {
   useEffect(() => {
@@ -101,6 +108,41 @@ export function KeyboardNav() {
         case "c": {
           e.preventDefault();
           dispatchShortcut("company");
+          break;
+        }
+        case "1": {
+          e.preventDefault();
+          dispatchShortcut("toggle-feed");
+          break;
+        }
+        case "2": {
+          e.preventDefault();
+          dispatchShortcut("toggle-signal");
+          break;
+        }
+        case "3": {
+          e.preventDefault();
+          dispatchShortcut("toggle-companies");
+          break;
+        }
+        case "[": {
+          e.preventDefault();
+          dispatchShortcut("shrink-left");
+          break;
+        }
+        case "]": {
+          e.preventDefault();
+          dispatchShortcut("grow-left");
+          break;
+        }
+        case "-": {
+          e.preventDefault();
+          dispatchShortcut("shrink-top");
+          break;
+        }
+        case "=": {
+          e.preventDefault();
+          dispatchShortcut("grow-top");
           break;
         }
       }
