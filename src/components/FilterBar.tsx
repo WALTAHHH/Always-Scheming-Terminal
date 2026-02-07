@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface TagOption {
   value: string;
@@ -50,6 +51,11 @@ function FilterDropdown({
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Calculate position when dropdown opens
   useEffect(() => {
@@ -63,6 +69,39 @@ function FilterDropdown({
   }, [isOpen]);
 
   if (options.length === 0) return null;
+
+  const dropdownMenu = (
+    <div 
+      className="fixed bg-ast-surface border border-ast-border rounded-lg shadow-xl min-w-[180px] max-h-[300px] overflow-y-auto"
+      style={{ top: position.top, left: position.left, zIndex: 99999 }}
+    >
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onToggleValue(opt.value)}
+          className={`w-full text-left px-3 py-1.5 text-xs hover:bg-ast-bg/50 flex items-center justify-between transition-colors ${
+            selected.includes(opt.value) ? "text-ast-accent" : "text-ast-text"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <span
+              className={`w-3 h-3 rounded-sm border flex items-center justify-center ${
+                selected.includes(opt.value)
+                  ? "border-ast-accent bg-ast-accent/20"
+                  : "border-ast-border"
+              }`}
+            >
+              {selected.includes(opt.value) && (
+                <span className="text-ast-accent text-[8px]">✓</span>
+              )}
+            </span>
+            {opt.value}
+          </span>
+          <span className="text-ast-muted text-[10px]">{opt.count}</span>
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="relative">
@@ -84,38 +123,7 @@ function FilterDropdown({
         <span className="ml-1">▾</span>
       </button>
 
-      {isOpen && (
-        <div 
-          className="fixed bg-ast-surface border border-ast-border rounded-lg shadow-xl min-w-[180px] max-h-[300px] overflow-y-auto"
-          style={{ top: position.top, left: position.left, zIndex: 9999 }}
-        >
-          {options.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => onToggleValue(opt.value)}
-              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-ast-bg/50 flex items-center justify-between transition-colors ${
-                selected.includes(opt.value) ? "text-ast-accent" : "text-ast-text"
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <span
-                  className={`w-3 h-3 rounded-sm border flex items-center justify-center ${
-                    selected.includes(opt.value)
-                      ? "border-ast-accent bg-ast-accent/20"
-                      : "border-ast-border"
-                  }`}
-                >
-                  {selected.includes(opt.value) && (
-                    <span className="text-ast-accent text-[8px]">✓</span>
-                  )}
-                </span>
-                {opt.value}
-              </span>
-              <span className="text-ast-muted text-[10px]">{opt.count}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {isOpen && mounted && createPortal(dropdownMenu, document.body)}
     </div>
   );
 }
