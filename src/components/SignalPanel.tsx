@@ -537,31 +537,24 @@ export function SignalPanel({ items }: SignalPanelProps) {
             {trendingCompanies.length === 0 ? (
               <p className="text-ast-muted text-xs">No company data yet</p>
             ) : (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                 {trendingCompanies.map((company) => {
-                  const barWidth = (company.mentions / company.maxMentions) * 100;
                   const isPublic = isPublicCompany(company.name);
                   return (
                     <div key={company.name} className="flex items-center gap-2">
                       {isPublic ? (
                         <button
                           onClick={() => openCompanyDrawer(company.name)}
-                          className="text-ast-text text-[10px] w-12 truncate text-left hover:text-ast-accent"
+                          className="text-ast-text text-[10px] flex-1 truncate text-left hover:text-ast-accent"
                         >
                           {company.name}
                         </button>
                       ) : (
-                        <span className="text-ast-text text-[10px] w-12 truncate">
+                        <span className="text-ast-text text-[10px] flex-1 truncate">
                           {company.name}
                         </span>
                       )}
-                      <div className="flex-1 h-1.5 bg-ast-border rounded-sm overflow-hidden">
-                        <div 
-                          className="h-full bg-ast-mint rounded-sm" 
-                          style={{ width: `${barWidth}%` }} 
-                        />
-                      </div>
-                      <span className="text-ast-muted text-[10px] w-4 text-right">
+                      <span className="text-ast-muted text-[10px] tabular-nums">
                         {company.mentions}
                       </span>
                     </div>
