@@ -7,6 +7,7 @@ import { scoreCluster, getClusterScoreBreakdown, type ScoreBreakdown } from "@/l
 import { CompanyTag } from "./CompanyTag";
 import { openCompanyDrawer } from "./CompanyDrawer";
 import { isPublicCompany, findCompanyByName } from "@/lib/companies";
+import { SourceFavicon } from "./SourceFavicon";
 
 interface SignalPanelProps {
   items: FeedItem[];
@@ -31,6 +32,7 @@ interface WorthReading {
   id: string;
   title: string;
   source: string;
+  sourceUrl: string;
   sourceType: string;
   importanceScore: number;
   url: string;
@@ -40,6 +42,7 @@ interface Deal {
   id: string;
   title: string;
   source: string;
+  sourceUrl: string;
   category: "fundraising" | "m-and-a" | "earnings";
   companies: string[];
   hoursAgo: number;
@@ -261,6 +264,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
       id: item.id,
       title: item.title,
       source: item.sources?.name || "Unknown",
+      sourceUrl: item.sources?.url || "",
       sourceType: item.sources?.source_type || "analysis",
       importanceScore: score,
       url: item.url,
@@ -292,6 +296,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
         id: item.id,
         title: item.title,
         source: item.sources?.name || "Unknown",
+        sourceUrl: item.sources?.url || "",
         category,
         companies: (tags.company || []).slice(0, 3),
         hoursAgo: getHoursAgo(item.published_at),
@@ -563,7 +568,8 @@ export function SignalPanel({ items }: SignalPanelProps) {
                         <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
                           {deal.title}
                         </p>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <SourceFavicon url={deal.sourceUrl} size={12} />
                           <span className="text-ast-muted text-[10px]">{deal.source}</span>
                           <span className="text-ast-muted text-[10px]">{formatHoursAgo(deal.hoursAgo)}</span>
                         </div>
@@ -587,7 +593,8 @@ export function SignalPanel({ items }: SignalPanelProps) {
                     <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
                       ▹ {item.title}
                     </p>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <SourceFavicon url={item.sourceUrl} size={12} />
                       <span className="text-ast-muted text-[10px]">{item.source}</span>
                       <span className="text-ast-muted/50 text-[10px]">·</span>
                       <span className="text-ast-gold text-[10px]">{item.importanceScore.toFixed(2)}</span>
