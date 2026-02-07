@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import { clusterItems, type StoryCluster } from "@/lib/cluster";
 import { scoreCluster, getClusterScoreBreakdown, type ScoreBreakdown } from "@/lib/importance";
 import { CompanyTag } from "./CompanyTag";
 import { openCompanyDrawer } from "./CompanyDrawer";
-import { isPublicCompany } from "@/lib/companies";
+import { isPublicCompany, findCompanyByName } from "@/lib/companies";
 
 interface SignalPanelProps {
   items: FeedItem[];
@@ -49,7 +49,13 @@ interface Deal {
 interface TrendingCompany {
   name: string;
   mentions: number;
-  maxMentions: number;
+  ticker?: string;
+}
+
+interface CompanyQuote {
+  price: number;
+  change: number;
+  changePercent: number;
 }
 
 function getHoursAgo(dateStr: string | null): number {
@@ -63,27 +69,6 @@ function formatHoursAgo(hours: number): string {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   return `${days}d`;
-}
-
-function ImportanceBar({ score, color = "accent" }: { score: number; color?: "accent" | "gold" | "pink" }) {
-  const width = Math.min(Math.max(score * 100, 5), 100);
-  const colorClass = {
-    accent: "bg-ast-accent",
-    gold: "bg-ast-gold",
-    pink: "bg-ast-pink",
-  }[color];
-  
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-ast-border rounded-sm overflow-hidden">
-        <div 
-          className={`h-full ${colorClass} rounded-sm`} 
-          style={{ width: `${width}%` }} 
-        />
-      </div>
-      <span className="text-ast-muted text-[10px] w-8">{score.toFixed(2)}</span>
-    </div>
-  );
 }
 
 function ScoreBreakdownPanel({ 
@@ -144,11 +129,53 @@ function ScoreBreakdownPanel({
   );
 }
 
+// Mini company card component
+function CompanyCard({ 
+  company, 
+  quote, 
+  loading 
+}: { 
+  company: TrendingCompany; 
+  quote: CompanyQuote | null;
+  loading: boolean;
+}) {
+  const isPositive = (quote?.change ?? 0) >= 0;
+  
+  return (
+    <button
+      onClick={() => openCompanyDrawer(company.name)}
+      className="flex-1 min-w-0 p-2 bg-ast-surface border border-ast-border rounded hover:border-ast-accent transition-colors text-left"
+    >
+      <div className="flex items-center justify-between gap-1 mb-1">
+        <span className="text-[10px] text-ast-accent font-medium truncate">
+          {company.ticker || company.name.slice(0, 6).toUpperCase()}
+        </span>
+        <span className="text-[10px] text-ast-muted tabular-nums">
+          {company.mentions}×
+        </span>
+      </div>
+      {loading ? (
+        <div className="text-[10px] text-ast-muted animate-pulse">...</div>
+      ) : quote ? (
+        <div className={`text-[11px] font-medium ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
+          {isPositive ? "▲" : "▼"} {Math.abs(quote.changePercent).toFixed(1)}%
+        </div>
+      ) : (
+        <div className="text-[10px] text-ast-muted truncate">{company.name}</div>
+      )}
+    </button>
+  );
+}
+
 type SourceFilter = "all" | "analysis" | "news";
+type MiddleTab = "deals" | "reading";
 
 export function SignalPanel({ items }: SignalPanelProps) {
   const [expandedStory, setExpandedStory] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [middleTab, setMiddleTab] = useState<MiddleTab>("deals");
+  const [companyQuotes, setCompanyQuotes] = useState<Record<string, CompanyQuote>>({});
+  const [quotesLoading, setQuotesLoading] = useState(false);
   
   // Filter items by source type
   const filteredItems = useMemo(() => {
@@ -163,6 +190,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
       }
     });
   }, [items, sourceFilter]);
+
   // Compute top stories from multi-source clusters
   const topStories = useMemo<TopStory[]>(() => {
     const clusters = clusterItems(filteredItems);
@@ -171,22 +199,18 @@ export function SignalPanel({ items }: SignalPanelProps) {
       importanceScore: scoreCluster(c),
     }));
     
-    // Filter for multi-source or high importance
     const significant = scored.filter(
       (c) => c.isMultiSource || c.importanceScore > 0.6
     );
     
-    // Sort by importance
     significant.sort((a, b) => b.importanceScore - a.importanceScore);
     
-    // Take top 5
     return significant.slice(0, 5).map((c) => {
       const tags = (c.lead.tags as Record<string, string[]>) || {};
       const companies = tags.company || [];
       const hoursAgo = getHoursAgo(c.lead.published_at);
       const breakdown = getClusterScoreBreakdown(c);
       
-      // Collect all articles in cluster
       const relatedArticles = c.related.map((item) => ({
         title: item.title,
         source: item.sources?.name || "Unknown",
@@ -208,7 +232,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
         relatedArticles,
       };
     });
-  }, [items]);
+  }, [filteredItems]);
 
   // Compute "worth reading" from newsletters/analysis
   const worthReading = useMemo<WorthReading[]>(() => {
@@ -219,7 +243,6 @@ export function SignalPanel({ items }: SignalPanelProps) {
       return analysisTypes.has(sourceType);
     });
     
-    // Score individually and sort
     const scored = analysisItems.map((item) => ({
       item,
       score: scoreCluster({ 
@@ -234,7 +257,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
     
     scored.sort((a, b) => b.score - a.score);
     
-    return scored.slice(0, 4).map(({ item, score }) => ({
+    return scored.slice(0, 5).map(({ item, score }) => ({
       id: item.id,
       title: item.title,
       source: item.sources?.name || "Unknown",
@@ -254,7 +277,6 @@ export function SignalPanel({ items }: SignalPanelProps) {
       return categories.some((c) => dealCategories.has(c));
     });
     
-    // Sort by recency
     dealItems.sort((a, b) => {
       const aTime = a.published_at ? new Date(a.published_at).getTime() : 0;
       const bTime = b.published_at ? new Date(b.published_at).getTime() : 0;
@@ -278,11 +300,11 @@ export function SignalPanel({ items }: SignalPanelProps) {
     });
   }, [filteredItems]);
 
-  // Compute trending companies
+  // Compute trending companies (only public ones with tickers)
   const trendingCompanies = useMemo<TrendingCompany[]>(() => {
     const counts: Record<string, number> = {};
     
-    for (const item of filteredItems) {
+    for (const item of items) {
       const tags = (item.tags as Record<string, string[]>) || {};
       const companies = tags.company || [];
       for (const company of companies) {
@@ -290,18 +312,69 @@ export function SignalPanel({ items }: SignalPanelProps) {
       }
     }
     
+    // Sort and filter to public companies
     const sorted = Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
+      .map(([name, mentions]) => {
+        const data = findCompanyByName(name);
+        return {
+          name,
+          mentions,
+          ticker: data?.ticker,
+          isPublic: !!data?.ticker,
+        };
+      })
+      .filter((c) => c.isPublic)
+      .sort((a, b) => b.mentions - a.mentions)
       .slice(0, 6);
     
-    const maxMentions = sorted[0]?.[1] || 1;
-    
-    return sorted.map(([name, mentions]) => ({
+    return sorted.map(({ name, mentions, ticker }) => ({
       name,
       mentions,
-      maxMentions,
+      ticker,
     }));
   }, [items]);
+
+  // Fetch stock quotes for trending companies
+  useEffect(() => {
+    if (trendingCompanies.length === 0) return;
+    
+    const tickersToFetch = trendingCompanies
+      .filter((c) => c.ticker && !companyQuotes[c.ticker])
+      .map((c) => c.ticker!)
+      .slice(0, 6);
+    
+    if (tickersToFetch.length === 0) return;
+    
+    setQuotesLoading(true);
+    
+    Promise.all(
+      tickersToFetch.map(async (ticker) => {
+        try {
+          const res = await fetch(`/api/stock/${ticker}?range=1d&interval=1d`);
+          const data = await res.json();
+          if (data.quote) {
+            return { ticker, quote: data.quote };
+          }
+        } catch {
+          // ignore
+        }
+        return null;
+      })
+    ).then((results) => {
+      const newQuotes: Record<string, CompanyQuote> = {};
+      for (const r of results) {
+        if (r) {
+          newQuotes[r.ticker] = {
+            price: r.quote.price,
+            change: r.quote.change,
+            changePercent: r.quote.changePercent,
+          };
+        }
+      }
+      setCompanyQuotes((prev) => ({ ...prev, ...newQuotes }));
+      setQuotesLoading(false);
+    });
+  }, [trendingCompanies]);
 
   // Stats
   const stats = useMemo(() => {
@@ -314,20 +387,12 @@ export function SignalPanel({ items }: SignalPanelProps) {
     };
   }, [filteredItems]);
 
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString("en-US", { 
-    hour: "2-digit", 
-    minute: "2-digit",
-    hour12: false 
-  });
-
   return (
     <div className="h-full flex flex-col bg-ast-bg">
-      {/* Header - matches filter bar height */}
+      {/* Header */}
       <div className="h-11 px-4 border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-ast-text text-sm font-semibold tracking-wide">SIGNAL</span>
-          {/* Source type toggle */}
           <div className="flex items-center border border-ast-border rounded overflow-hidden">
             <button
               onClick={() => setSourceFilter("all")}
@@ -371,7 +436,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
         </div>
       </div>
       
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto flex flex-col">
         {/* Top Stories */}
         <div className="border-b border-ast-border">
           <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
@@ -394,7 +459,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                       <p className="text-ast-text text-xs font-medium leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
                         {story.title}
                       </p>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-ast-gold text-[10px]">
                           [{story.sourceCount}] {story.articleCount}a
                         </span>
@@ -411,7 +476,6 @@ export function SignalPanel({ items }: SignalPanelProps) {
                           {expandedStory === story.id ? "▼" : "▶"} why?
                         </span>
                       </div>
-                      {/* Source list - always visible */}
                       {story.sourceNames.length > 0 && (
                         <div className="text-[10px] text-ast-muted mt-1">
                           via {story.sourceNames.slice(0, 3).join(", ")}
@@ -440,126 +504,121 @@ export function SignalPanel({ items }: SignalPanelProps) {
           </div>
         </div>
 
-        {/* Worth Reading */}
+        {/* Deals + Reading - Tabbed Section */}
         <div className="border-b border-ast-border">
-          <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
-            <span className="text-ast-pink text-xs font-semibold tracking-wide">
-              WORTH READING
-            </span>
-          </div>
-          <div className="px-4 py-3 space-y-3">
-            {worthReading.length === 0 ? (
-              <p className="text-ast-muted text-xs">No analysis pieces yet</p>
-            ) : (
-              worthReading.map((item) => (
-                <a 
-                  key={item.id}
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block group"
-                >
-                  <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
-                    ▹ {item.title}
-                  </p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-ast-muted text-[10px]">{item.source}</span>
-                    <span className="text-ast-muted/50 text-[10px]">·</span>
-                    <span className="text-ast-muted text-[10px]">{item.sourceType}</span>
-                    <span className="text-ast-muted/50 text-[10px]">·</span>
-                    <span className="text-ast-gold text-[10px]">{item.importanceScore.toFixed(2)}</span>
-                  </div>
-                </a>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Deals - Fundraising, M&A, Earnings */}
-        <div className="border-b border-ast-border">
-          <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
-            <span className="text-ast-gold text-xs font-semibold tracking-wide">
+          <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50 flex items-center gap-3">
+            <button
+              onClick={() => setMiddleTab("deals")}
+              className={`text-xs font-semibold tracking-wide transition-colors ${
+                middleTab === "deals" ? "text-ast-gold" : "text-ast-muted hover:text-ast-text"
+              }`}
+            >
               💰 DEALS
-            </span>
+              {deals.length > 0 && (
+                <span className={`ml-1 text-[10px] ${middleTab === "deals" ? "text-ast-gold/70" : "text-ast-muted"}`}>
+                  ({deals.length})
+                </span>
+              )}
+            </button>
+            <span className="text-ast-border">|</span>
+            <button
+              onClick={() => setMiddleTab("reading")}
+              className={`text-xs font-semibold tracking-wide transition-colors ${
+                middleTab === "reading" ? "text-ast-pink" : "text-ast-muted hover:text-ast-text"
+              }`}
+            >
+              📖 READING
+              {worthReading.length > 0 && (
+                <span className={`ml-1 text-[10px] ${middleTab === "reading" ? "text-ast-pink/70" : "text-ast-muted"}`}>
+                  ({worthReading.length})
+                </span>
+              )}
+            </button>
           </div>
+          
           <div className="px-4 py-3 space-y-3">
-            {deals.length === 0 ? (
-              <p className="text-ast-muted text-xs">No deals or earnings yet</p>
-            ) : (
-              deals.map((deal) => (
-                <a
-                  key={deal.id}
-                  href={deal.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block group"
-                >
-                  <div className="flex items-start gap-2">
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                      deal.category === "fundraising" 
-                        ? "bg-ast-mint/20 text-ast-mint" 
-                        : deal.category === "m-and-a"
-                        ? "bg-ast-pink/20 text-ast-pink"
-                        : "bg-ast-gold/20 text-ast-gold"
-                    }`}>
-                      {deal.category === "m-and-a" ? "M&A" : deal.category === "fundraising" ? "RAISE" : "EARN"}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
-                        {deal.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-ast-muted text-[10px]">{deal.source}</span>
-                        <span className="text-ast-muted text-[10px]">{formatHoursAgo(deal.hoursAgo)}</span>
-                        {deal.companies.length > 0 && (
-                          <>
-                            <span className="text-ast-muted/50 text-[10px]">·</span>
-                            <span className="text-ast-muted text-[10px]">{deal.companies.join(", ")}</span>
-                          </>
-                        )}
+            {middleTab === "deals" ? (
+              deals.length === 0 ? (
+                <p className="text-ast-muted text-xs">No deals or earnings yet</p>
+              ) : (
+                deals.map((deal) => (
+                  <a
+                    key={deal.id}
+                    href={deal.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block group"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${
+                        deal.category === "fundraising" 
+                          ? "bg-ast-mint/20 text-ast-mint" 
+                          : deal.category === "m-and-a"
+                          ? "bg-ast-pink/20 text-ast-pink"
+                          : "bg-ast-gold/20 text-ast-gold"
+                      }`}>
+                        {deal.category === "m-and-a" ? "M&A" : deal.category === "fundraising" ? "RAISE" : "EARN"}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
+                          {deal.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-ast-muted text-[10px]">{deal.source}</span>
+                          <span className="text-ast-muted text-[10px]">{formatHoursAgo(deal.hoursAgo)}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </a>
-              ))
+                  </a>
+                ))
+              )
+            ) : (
+              worthReading.length === 0 ? (
+                <p className="text-ast-muted text-xs">No analysis pieces yet</p>
+              ) : (
+                worthReading.map((item) => (
+                  <a 
+                    key={item.id}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block group"
+                  >
+                    <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
+                      ▹ {item.title}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-ast-muted text-[10px]">{item.source}</span>
+                      <span className="text-ast-muted/50 text-[10px]">·</span>
+                      <span className="text-ast-gold text-[10px]">{item.importanceScore.toFixed(2)}</span>
+                    </div>
+                  </a>
+                ))
+              )
             )}
           </div>
         </div>
 
-        {/* Trending Companies */}
-        <div className="border-b border-ast-border">
+        {/* Companies Section */}
+        <div className="flex-1 border-b border-ast-border">
           <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
             <span className="text-ast-mint text-xs font-semibold tracking-wide">
-              TRENDING
+              🏢 COMPANIES
             </span>
           </div>
           <div className="px-4 py-3">
             {trendingCompanies.length === 0 ? (
-              <p className="text-ast-muted text-xs">No company data yet</p>
+              <p className="text-ast-muted text-xs">No public companies in coverage</p>
             ) : (
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                {trendingCompanies.map((company) => {
-                  const isPublic = isPublicCompany(company.name);
-                  return (
-                    <div key={company.name} className="flex items-center gap-2">
-                      {isPublic ? (
-                        <button
-                          onClick={() => openCompanyDrawer(company.name)}
-                          className="text-ast-text text-[10px] flex-1 truncate text-left hover:text-ast-accent"
-                        >
-                          {company.name}
-                        </button>
-                      ) : (
-                        <span className="text-ast-text text-[10px] flex-1 truncate">
-                          {company.name}
-                        </span>
-                      )}
-                      <span className="text-ast-muted text-[10px] tabular-nums">
-                        {company.mentions}
-                      </span>
-                    </div>
-                  );
-                })}
+              <div className="grid grid-cols-3 gap-2">
+                {trendingCompanies.map((company) => (
+                  <CompanyCard
+                    key={company.name}
+                    company={company}
+                    quote={company.ticker ? companyQuotes[company.ticker] : null}
+                    loading={quotesLoading && !!company.ticker && !companyQuotes[company.ticker]}
+                  />
+                ))}
               </div>
             )}
           </div>
