@@ -5,8 +5,6 @@ import type { FeedItem } from "@/lib/database.types";
 import { clusterItems, type StoryCluster } from "@/lib/cluster";
 import { scoreCluster, getClusterScoreBreakdown, type ScoreBreakdown } from "@/lib/importance";
 import { CompanyTag } from "./CompanyTag";
-import { openCompanyDrawer } from "./CompanyDrawer";
-import { isPublicCompany, findCompanyByName } from "@/lib/companies";
 import { SourceFavicon } from "./SourceFavicon";
 
 interface SignalPanelProps {
@@ -47,18 +45,6 @@ interface Deal {
   companies: string[];
   hoursAgo: number;
   url: string;
-}
-
-interface TrendingCompany {
-  name: string;
-  mentions: number;
-  ticker?: string;
-}
-
-interface CompanyQuote {
-  price: number;
-  change: number;
-  changePercent: number;
 }
 
 function getHoursAgo(dateStr: string | null): number {
@@ -132,44 +118,6 @@ function ScoreBreakdownPanel({
   );
 }
 
-// Mini company card component
-function CompanyCard({ 
-  company, 
-  quote, 
-  loading 
-}: { 
-  company: TrendingCompany; 
-  quote: CompanyQuote | null;
-  loading: boolean;
-}) {
-  const isPositive = (quote?.change ?? 0) >= 0;
-  
-  return (
-    <button
-      onClick={() => openCompanyDrawer(company.name)}
-      className="flex-1 min-w-0 p-2 bg-ast-surface border border-ast-border rounded hover:border-ast-accent transition-colors text-left"
-    >
-      <div className="flex items-center justify-between gap-1 mb-1">
-        <span className="text-[10px] text-ast-accent font-medium truncate">
-          {company.ticker || company.name.slice(0, 6).toUpperCase()}
-        </span>
-        <span className="text-[10px] text-ast-muted tabular-nums">
-          {company.mentions}×
-        </span>
-      </div>
-      {loading ? (
-        <div className="text-[10px] text-ast-muted animate-pulse">...</div>
-      ) : quote ? (
-        <div className={`text-[11px] font-medium ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
-          {isPositive ? "▲" : "▼"} {Math.abs(quote.changePercent).toFixed(1)}%
-        </div>
-      ) : (
-        <div className="text-[10px] text-ast-muted truncate">{company.name}</div>
-      )}
-    </button>
-  );
-}
-
 type SourceFilter = "all" | "analysis" | "news";
 type MiddleTab = "deals" | "reading";
 
@@ -177,8 +125,6 @@ export function SignalPanel({ items }: SignalPanelProps) {
   const [expandedStory, setExpandedStory] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [middleTab, setMiddleTab] = useState<MiddleTab>("deals");
-  const [companyQuotes, setCompanyQuotes] = useState<Record<string, CompanyQuote>>({});
-  const [quotesLoading, setQuotesLoading] = useState(false);
   
   // Filter items by source type
   const filteredItems = useMemo(() => {
@@ -304,82 +250,6 @@ export function SignalPanel({ items }: SignalPanelProps) {
       };
     });
   }, [filteredItems]);
-
-  // Compute trending companies (only public ones with tickers)
-  const trendingCompanies = useMemo<TrendingCompany[]>(() => {
-    const counts: Record<string, number> = {};
-    
-    for (const item of items) {
-      const tags = (item.tags as Record<string, string[]>) || {};
-      const companies = tags.company || [];
-      for (const company of companies) {
-        counts[company] = (counts[company] || 0) + 1;
-      }
-    }
-    
-    // Sort and filter to public companies
-    const sorted = Object.entries(counts)
-      .map(([name, mentions]) => {
-        const data = findCompanyByName(name);
-        return {
-          name,
-          mentions,
-          ticker: data?.ticker,
-          isPublic: !!data?.ticker,
-        };
-      })
-      .filter((c) => c.isPublic)
-      .sort((a, b) => b.mentions - a.mentions)
-      .slice(0, 6);
-    
-    return sorted.map(({ name, mentions, ticker }) => ({
-      name,
-      mentions,
-      ticker,
-    }));
-  }, [items]);
-
-  // Fetch stock quotes for trending companies
-  useEffect(() => {
-    if (trendingCompanies.length === 0) return;
-    
-    const tickersToFetch = trendingCompanies
-      .filter((c) => c.ticker && !companyQuotes[c.ticker])
-      .map((c) => c.ticker!)
-      .slice(0, 6);
-    
-    if (tickersToFetch.length === 0) return;
-    
-    setQuotesLoading(true);
-    
-    Promise.all(
-      tickersToFetch.map(async (ticker) => {
-        try {
-          const res = await fetch(`/api/stock/${ticker}?range=1d&interval=1d`);
-          const data = await res.json();
-          if (data.quote) {
-            return { ticker, quote: data.quote };
-          }
-        } catch {
-          // ignore
-        }
-        return null;
-      })
-    ).then((results) => {
-      const newQuotes: Record<string, CompanyQuote> = {};
-      for (const r of results) {
-        if (r) {
-          newQuotes[r.ticker] = {
-            price: r.quote.price,
-            change: r.quote.change,
-            changePercent: r.quote.changePercent,
-          };
-        }
-      }
-      setCompanyQuotes((prev) => ({ ...prev, ...newQuotes }));
-      setQuotesLoading(false);
-    });
-  }, [trendingCompanies]);
 
   // Stats
   const stats = useMemo(() => {
@@ -606,30 +476,6 @@ export function SignalPanel({ items }: SignalPanelProps) {
           </div>
         </div>
 
-        {/* Companies Section */}
-        <div className="flex-1 border-b border-ast-border">
-          <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
-            <span className="text-ast-mint text-xs font-semibold tracking-wide">
-              🏢 COMPANIES
-            </span>
-          </div>
-          <div className="px-4 py-3">
-            {trendingCompanies.length === 0 ? (
-              <p className="text-ast-muted text-xs">No public companies in coverage</p>
-            ) : (
-              <div className="grid grid-cols-3 gap-2">
-                {trendingCompanies.map((company) => (
-                  <CompanyCard
-                    key={company.name}
-                    company={company}
-                    quote={company.ticker ? companyQuotes[company.ticker] : null}
-                    loading={quotesLoading && !!company.ticker && !companyQuotes[company.ticker]}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
     </div>
