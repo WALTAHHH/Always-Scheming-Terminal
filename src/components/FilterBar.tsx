@@ -48,13 +48,26 @@ function FilterDropdown({
   onToggleOpen: () => void;
   onToggleValue: (value: string) => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  // Calculate position when dropdown opens
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+      });
+    }
+  }, [isOpen]);
 
   if (options.length === 0) return null;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <button
+        ref={buttonRef}
         onClick={onToggleOpen}
         className={`px-3 py-1.5 text-xs rounded border transition-colors ${
           selected.length > 0
@@ -72,7 +85,10 @@ function FilterDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full mt-1 left-0 z-50 bg-ast-surface border border-ast-border rounded-lg shadow-xl min-w-[180px] max-h-[300px] overflow-y-auto">
+        <div 
+          className="fixed bg-ast-surface border border-ast-border rounded-lg shadow-xl min-w-[180px] max-h-[300px] overflow-y-auto"
+          style={{ top: position.top, left: position.left, zIndex: 9999 }}
+        >
           {options.map((opt) => (
             <button
               key={opt.value}
