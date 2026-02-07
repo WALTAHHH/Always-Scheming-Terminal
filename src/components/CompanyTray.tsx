@@ -19,12 +19,28 @@ const RANGE_CONFIG: Record<ChartRange, { range: string; interval: string; label:
   "1y": { range: "1y", interval: "1wk", label: "1Y" },
 };
 
-// Placeholder baskets - will be configurable later
+// Placeholder baskets - will be curated later
 const COMPANY_BASKETS: Record<string, string[]> = {
-  "AS Interface Index": ["Microsoft", "Sony Interactive", "Nintendo", "Valve", "Epic Games", "Roblox"],
-  "Platform Holders": ["Microsoft", "Sony Interactive", "Nintendo", "Apple", "Google", "Valve"],
-  "Mobile Giants": ["Tencent", "NetEase", "AppLovin", "Supercell", "Playtika"],
-  "Public Indies": ["CD Projekt", "Devolver Digital", "11 bit studios", "Coffee Stain Group"],
+  "AS Index": [
+    // Always Scheming's curated picks - TBD
+    "Microsoft", "Sony Interactive", "Nintendo", "Roblox", "Unity Technologies", "AppLovin",
+  ],
+  "Western Pure-Play": [
+    // Western-focused public gaming companies
+    "Electronic Arts", "Take-Two Interactive", "Ubisoft", "CD Projekt", "Embracer Group", "Paradox Interactive",
+  ],
+  "Asian Giants": [
+    // Major Asian publishers
+    "Tencent", "NetEase", "Nexon", "Krafton", "Bandai Namco", "Capcom",
+  ],
+  "Platform Holders": [
+    // Console/platform owners
+    "Microsoft", "Sony Interactive", "Nintendo", "Valve", "Epic Games", "Apple",
+  ],
+  "Mobile Leaders": [
+    // Mobile-first publishers
+    "AppLovin", "Playtika", "Scopely", "Moon Active", "Dream Games", "Supercell",
+  ],
 };
 
 interface StockQuote {
