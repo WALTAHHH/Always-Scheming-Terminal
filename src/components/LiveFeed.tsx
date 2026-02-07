@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import { Feed } from "./Feed";
 import { NewItemsBanner } from "./NewItemsBanner";
 import { SignalPanel } from "./SignalPanel";
 import { CompanyTray } from "./CompanyTray";
 import { CompanyDrawerPortal, setGlobalItems } from "./CompanyDrawer";
+import { clusterItems } from "@/lib/cluster";
 
 interface LiveFeedProps {
   initialItems: FeedItem[];
@@ -252,6 +253,17 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   const effectiveLeftWidth = !panels.feed ? 0 : !showRightPane ? 100 : leftWidth;
   const effectiveRightWidth = !showRightPane ? 0 : !panels.feed ? 100 : (100 - leftWidth);
 
+  // Global stats
+  const stats = useMemo(() => {
+    const sourceSet = new Set(items.map((i) => i.sources?.name).filter(Boolean));
+    const clusters = clusterItems(items);
+    return {
+      articles: items.length,
+      sources: sourceSet.size,
+      stories: clusters.length,
+    };
+  }, [items]);
+
   return (
     <>
       <NewItemsBanner count={newCount} onClick={loadNewItems} />
@@ -293,7 +305,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
 
       <div 
         ref={containerRef}
-        className={`flex h-[calc(100vh-5.5rem)] sm:h-[calc(100vh-6rem)] ${isDraggingH || isDraggingV ? "select-none" : ""}`}
+        className={`flex h-[calc(100vh-7.5rem)] sm:h-[calc(100vh-8rem)] ${isDraggingH || isDraggingV ? "select-none" : ""}`}
       >
         {/* Left pane: Feed */}
         {panels.feed && (
@@ -367,6 +379,17 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
             )}
           </div>
         )}
+      </div>
+      
+      {/* Global stats footer */}
+      <div className="h-8 px-4 border-t border-ast-border bg-ast-surface flex items-center justify-center">
+        <div className="text-ast-muted text-xs flex items-center gap-3">
+          <span>{stats.articles} articles</span>
+          <span className="text-ast-border">·</span>
+          <span>{stats.sources} sources</span>
+          <span className="text-ast-border">·</span>
+          <span>{stats.stories} stories</span>
+        </div>
       </div>
       
       <CompanyDrawerPortal />

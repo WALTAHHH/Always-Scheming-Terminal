@@ -625,16 +625,6 @@ export function SignalPanel({ items }: SignalPanelProps) {
         </div>
       </div>
 
-      {/* Stats footer */}
-      <div className="px-4 py-3 border-t border-ast-border bg-ast-surface">
-        <div className="text-ast-muted text-xs flex items-center gap-3">
-          <span>{stats.articles} articles</span>
-          <span className="text-ast-border">·</span>
-          <span>{stats.sources} sources</span>
-          <span className="text-ast-border">·</span>
-          <span>{stats.clusters} stories</span>
-        </div>
-      </div>
     </div>
   );
 }
