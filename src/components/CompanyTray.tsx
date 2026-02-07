@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { findCompanyByName, type CompanyData } from "@/lib/companies";
 import type { FeedItem } from "@/lib/database.types";
+import { TimeAgo } from "./TimeAgo";
 
 interface CompanyTrayProps {
   items: FeedItem[];
@@ -136,14 +137,6 @@ function MiniChart({ history, isPositive }: { history: StockHistory[]; isPositiv
       </svg>
     </div>
   );
-}
-
-function getHoursAgo(dateStr: string | null): string {
-  if (!dateStr) return "";
-  const hours = Math.floor((Date.now() - new Date(dateStr).getTime()) / 3600000);
-  if (hours < 1) return "just now";
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 }
 
 // Company card with sparkline
@@ -391,7 +384,7 @@ function CompanyModal({
                         </p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-[10px] text-ast-muted">{item.sources?.name}</span>
-                          <span className="text-[10px] text-ast-muted">{getHoursAgo(item.published_at)}</span>
+                          <TimeAgo date={item.published_at} className="text-[10px] text-ast-muted" />
                         </div>
                       </a>
                     ))}

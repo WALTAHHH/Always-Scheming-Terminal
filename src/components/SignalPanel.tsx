@@ -6,6 +6,7 @@ import { clusterItems, type StoryCluster } from "@/lib/cluster";
 import { scoreCluster, getClusterScoreBreakdown, type ScoreBreakdown } from "@/lib/importance";
 import { CompanyTag } from "./CompanyTag";
 import { SourceFavicon } from "./SourceFavicon";
+import { TimeAgo } from "./TimeAgo";
 
 interface SignalPanelProps {
   items: FeedItem[];
@@ -17,7 +18,7 @@ interface TopStory {
   sourceCount: number;
   articleCount: number;
   companies: string[];
-  hoursAgo: number;
+  publishedAt: string | null;
   trending: "up" | "stable" | "new";
   importanceScore: number;
   breakdown: ScoreBreakdown;
@@ -43,7 +44,7 @@ interface Deal {
   sourceUrl: string;
   category: "fundraising" | "m-and-a" | "earnings";
   companies: string[];
-  hoursAgo: number;
+  publishedAt: string | null;
   url: string;
 }
 
@@ -51,13 +52,6 @@ function getHoursAgo(dateStr: string | null): number {
   if (!dateStr) return 999;
   const diff = Date.now() - new Date(dateStr).getTime();
   return Math.floor(diff / (1000 * 60 * 60));
-}
-
-function formatHoursAgo(hours: number): string {
-  if (hours < 1) return "just now";
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
 }
 
 function ScoreBreakdownPanel({ 
@@ -172,7 +166,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
         sourceCount: c.sourceCount,
         articleCount: 1 + c.related.length,
         companies: companies.slice(0, 3),
-        hoursAgo,
+        publishedAt: c.lead.published_at,
         trending: hoursAgo < 3 ? "new" : hoursAgo < 12 ? "up" : "stable",
         importanceScore: c.importanceScore,
         breakdown,
@@ -245,7 +239,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
         sourceUrl: item.sources?.url || "",
         category,
         companies: (tags.company || []).slice(0, 3),
-        hoursAgo: getHoursAgo(item.published_at),
+        publishedAt: item.published_at,
         url: item.url,
       };
     });
@@ -338,9 +332,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                         <span className="text-ast-gold text-[10px]">
                           [{story.sourceCount}] {story.articleCount}a
                         </span>
-                        <span className="text-ast-muted text-[10px]">
-                          {formatHoursAgo(story.hoursAgo)}
-                        </span>
+                        <TimeAgo date={story.publishedAt} className="text-ast-muted text-[10px]" />
                         {story.trending === "new" && (
                           <span className="text-ast-pink text-[10px]">▲ new</span>
                         )}
@@ -441,7 +433,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <SourceFavicon url={deal.sourceUrl} size={12} />
                           <span className="text-ast-muted text-[10px]">{deal.source}</span>
-                          <span className="text-ast-muted text-[10px]">{formatHoursAgo(deal.hoursAgo)}</span>
+                          <TimeAgo date={deal.publishedAt} className="text-ast-muted text-[10px]" />
                         </div>
                       </div>
                     </div>
