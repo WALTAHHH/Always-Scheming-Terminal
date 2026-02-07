@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
+import { ALL_CATEGORIES } from "@/lib/tagger";
 
 interface TagOption {
   value: string;
@@ -276,6 +277,12 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
       .sort((a, b) => b.count - a.count);
   };
 
+  // Category options: always show all categories, even with 0 count
+  const categoryOptions: TagOption[] = ALL_CATEGORIES.map((cat) => ({
+    value: cat,
+    count: tagCounts.category?.[cat] || 0,
+  })).sort((a, b) => b.count - a.count);
+
   const sourceOptions: TagOption[] = sources.map((s) => ({
     value: s.name,
     count: tagCounts._sources?.[s.name] || 0,
@@ -305,7 +312,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
         />
         <FilterDropdown
           label="Category"
-          options={toOptions("category")}
+          options={categoryOptions}
           selected={filters.categories}
           isOpen={openDropdown === "category"}
           onToggleOpen={() => setOpenDropdown(openDropdown === "category" ? null : "category")}
@@ -443,7 +450,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
             />
             <MobileFilterList
               label="Category"
-              options={toOptions("category")}
+              options={categoryOptions}
               selected={filters.categories}
               onToggleValue={(v) =>
                 updateFilters({ categories: toggleInArray(filters.categories, v) })

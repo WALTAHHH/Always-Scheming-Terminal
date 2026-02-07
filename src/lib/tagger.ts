@@ -258,6 +258,21 @@ const CATEGORY_RULES_FULL: Record<string, string[]> = {
     "investment round", "venture capital",
     "raised \\$", "raises \\$", "secures \\$",
   ],
+  layoffs: [
+    "layoffs", "laid off", "laying off", "job cuts", "job losses",
+    "workforce reduction", "downsizing", "restructuring",
+    "lets go", "let go of", "cutting jobs", "cutting staff",
+    "studio closure", "studio closures", "shutting down",
+  ],
+  release: [
+    "launches", "now available", "out now", "release date",
+    "coming to", "arrives on", "releasing", "announced for",
+    "launches on", "hits stores", "available now",
+  ],
+  interview: [
+    "interview", "speaks to", "talks to", "sits down with",
+    "in conversation", "q&a", "talks about", "discusses",
+  ],
 };
 
 // These check TITLE ONLY (too noisy in body text — cross-promos, etc.)
@@ -269,6 +284,18 @@ const CATEGORY_RULES_TITLE_ONLY: Record<string, string[]> = {
     "opinion", "editorial", "| opinion",
   ],
 };
+
+// All possible categories (for UI to show even when count is 0)
+export const ALL_CATEGORIES = [
+  "earnings",
+  "m-and-a",
+  "fundraising",
+  "layoffs",
+  "release",
+  "interview",
+  "podcast",
+  "opinion",
+];
 
 export interface TagResult {
   category: string[];
