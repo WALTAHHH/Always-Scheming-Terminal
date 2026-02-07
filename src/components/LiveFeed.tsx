@@ -5,6 +5,7 @@ import type { FeedItem } from "@/lib/database.types";
 import { Feed } from "./Feed";
 import { NewItemsBanner } from "./NewItemsBanner";
 import { SignalPanel } from "./SignalPanel";
+import { CompanyDrawerPortal, setGlobalItems } from "./CompanyDrawer";
 
 interface LiveFeedProps {
   initialItems: FeedItem[];
@@ -76,6 +77,11 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isDragging, leftWidth]);
+
+  // Update global items for company drawer
+  useEffect(() => {
+    setGlobalItems(items);
+  }, [items]);
 
   const checkForNew = useCallback(async () => {
     try {
@@ -217,6 +223,9 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
           <SignalPanel items={items} />
         </div>
       </div>
+      
+      {/* Company Drawer Portal */}
+      <CompanyDrawerPortal />
     </>
   );
 }

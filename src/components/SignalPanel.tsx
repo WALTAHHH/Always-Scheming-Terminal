@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import { clusterItems, type StoryCluster } from "@/lib/cluster";
 import { scoreCluster, getClusterScoreBreakdown, type ScoreBreakdown } from "@/lib/importance";
+import { CompanyTag } from "./CompanyTag";
+import { openCompanyDrawer } from "./CompanyDrawer";
+import { isPublicCompany } from "@/lib/companies";
 
 interface SignalPanelProps {
   items: FeedItem[];
@@ -418,12 +421,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                       {story.companies.length > 0 && (
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {story.companies.map((c) => (
-                            <span 
-                              key={c} 
-                              className="text-[9px] px-1 py-0.5 bg-ast-border/50 text-ast-muted rounded"
-                            >
-                              {c}
-                            </span>
+                            <CompanyTag key={c} name={c} />
                           ))}
                         </div>
                       )}
@@ -542,11 +540,21 @@ export function SignalPanel({ items }: SignalPanelProps) {
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {trendingCompanies.map((company) => {
                   const barWidth = (company.mentions / company.maxMentions) * 100;
+                  const isPublic = isPublicCompany(company.name);
                   return (
                     <div key={company.name} className="flex items-center gap-2">
-                      <span className="text-ast-text text-[10px] w-12 truncate">
-                        {company.name}
-                      </span>
+                      {isPublic ? (
+                        <button
+                          onClick={() => openCompanyDrawer(company.name)}
+                          className="text-ast-text text-[10px] w-12 truncate text-left hover:text-ast-accent"
+                        >
+                          {company.name}
+                        </button>
+                      ) : (
+                        <span className="text-ast-text text-[10px] w-12 truncate">
+                          {company.name}
+                        </span>
+                      )}
                       <div className="flex-1 h-1.5 bg-ast-border rounded-sm overflow-hidden">
                         <div 
                           className="h-full bg-ast-mint rounded-sm" 

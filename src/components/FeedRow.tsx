@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import { TimeAgo } from "./TimeAgo";
 import Image from "next/image";
+import { CompanyTag } from "./CompanyTag";
 
 function truncate(text: string | null, maxLen: number): string {
   if (!text) return "";
@@ -41,6 +42,17 @@ function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
   return (
     <div className="flex gap-1 mt-1.5 overflow-x-auto sm:flex-wrap sm:overflow-visible scrollbar-none">
       {allTags.map((tag, i) => {
+        // Use CompanyTag for company dimension
+        if (tag.dimension === "company") {
+          return (
+            <CompanyTag 
+              key={`${tag.dimension}-${tag.value}-${i}`} 
+              name={tag.value}
+              className="border-l-2 border-l-ast-gold"
+            />
+          );
+        }
+        
         const colors = TAG_DIMENSION_COLORS[tag.dimension] || "border-l-ast-muted text-ast-muted";
         return (
           <span
