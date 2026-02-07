@@ -152,29 +152,29 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
             <div className="p-5 text-ast-muted text-sm animate-pulse">Loading market data...</div>
           ) : (
             <>
-              {quote && (
+              {quote && quote.price != null && (
                 <div className="px-5 py-4 border-b border-ast-border">
                   <div className="flex items-baseline gap-3">
                     <span className="text-2xl font-semibold text-ast-text">{formatCurrency(quote.price, quote.currency)}</span>
                     <span className={isPositive ? "text-ast-mint" : "text-ast-pink"}>
-                      {isPositive ? "▲" : "▼"} {formatCurrency(Math.abs(quote.change), quote.currency)} ({quote.changePercent.toFixed(2)}%)
+                      {isPositive ? "▲" : "▼"} {formatCurrency(Math.abs(quote.change ?? 0), quote.currency)} ({(quote.changePercent ?? 0).toFixed(2)}%)
                     </span>
                   </div>
                 </div>
               )}
 
-              {quote && (
+              {quote && quote.price != null && (
                 <div className="grid grid-cols-3 gap-4 px-5 py-3 border-b border-ast-border bg-ast-surface/30">
                   <div className="text-center">
-                    <div className="text-sm font-medium text-ast-text">{formatMarketCap(quote.marketCap)}</div>
+                    <div className="text-sm font-medium text-ast-text">{formatMarketCap(quote.marketCap ?? 0)}</div>
                     <div className="text-[10px] text-ast-muted">Market Cap</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-sm font-medium text-ast-text">{formatCurrency(quote.fiftyTwoWeekHigh, quote.currency)}</div>
+                    <div className="text-sm font-medium text-ast-text">{formatCurrency(quote.fiftyTwoWeekHigh ?? 0, quote.currency)}</div>
                     <div className="text-[10px] text-ast-muted">52W High</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-sm font-medium text-ast-text">{formatCurrency(quote.fiftyTwoWeekLow, quote.currency)}</div>
+                    <div className="text-sm font-medium text-ast-text">{formatCurrency(quote.fiftyTwoWeekLow ?? 0, quote.currency)}</div>
                     <div className="text-[10px] text-ast-muted">52W Low</div>
                   </div>
                 </div>
