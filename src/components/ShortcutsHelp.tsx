@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 const SHORTCUTS = [
   { keys: ["j", "↓"], desc: "Next item" },
@@ -20,6 +21,11 @@ const SHORTCUTS = [
 
 export function ShortcutsHelp() {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -38,9 +44,59 @@ export function ShortcutsHelp() {
     return () => document.removeEventListener("keydown", handleKey);
   }, [open]);
 
+  const modal = open && mounted ? (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={() => setOpen(false)}
+      />
+      
+      {/* Modal content */}
+      <div className="relative bg-ast-surface border border-ast-border rounded-lg shadow-2xl p-6 w-[340px] max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-ast-text font-semibold text-base">
+            ⌨️ Keyboard Shortcuts
+          </h2>
+          <button
+            onClick={() => setOpen(false)}
+            className="w-6 h-6 rounded border border-ast-border text-ast-muted hover:text-ast-text flex items-center justify-center text-sm"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="space-y-3">
+          {SHORTCUTS.map((s) => (
+            <div
+              key={s.desc}
+              className="flex items-center justify-between gap-4"
+            >
+              <span className="text-ast-muted text-xs">{s.desc}</span>
+              <div className="flex gap-1 flex-shrink-0">
+                {s.keys.map((key) => (
+                  <kbd
+                    key={key}
+                    className="px-2 py-1 bg-ast-bg border border-ast-border rounded text-[11px] text-ast-text font-mono min-w-[28px] text-center"
+                  >
+                    {key}
+                  </kbd>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 pt-4 border-t border-ast-border">
+          <p className="text-ast-muted text-[10px] text-center">
+            Press <kbd className="px-1 py-0.5 bg-ast-bg border border-ast-border rounded text-[10px]">?</kbd> or <kbd className="px-1 py-0.5 bg-ast-bg border border-ast-border rounded text-[10px]">Esc</kbd> to close
+          </p>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
-      {/* Small hint in the header area */}
+      {/* Trigger button */}
       <button
         onClick={() => setOpen((prev) => !prev)}
         className="text-ast-muted hover:text-ast-text text-xs transition-colors"
@@ -49,48 +105,8 @@ export function ShortcutsHelp() {
         <kbd className="px-1.5 py-0.5 bg-ast-surface border border-ast-border rounded text-[10px]">?</kbd>
       </button>
 
-      {/* Modal overlay */}
-      {open && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/60 z-[60]"
-            onClick={() => setOpen(false)}
-          />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[70] bg-ast-surface border border-ast-border rounded-lg shadow-2xl p-6 w-[320px]">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-ast-text font-semibold text-sm">
-                Keyboard Shortcuts
-              </h2>
-              <button
-                onClick={() => setOpen(false)}
-                className="text-ast-muted hover:text-ast-text text-xs"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="space-y-2.5">
-              {SHORTCUTS.map((s) => (
-                <div
-                  key={s.desc}
-                  className="flex items-center justify-between"
-                >
-                  <span className="text-ast-muted text-xs">{s.desc}</span>
-                  <div className="flex gap-1">
-                    {s.keys.map((key) => (
-                      <kbd
-                        key={key}
-                        className="px-2 py-0.5 bg-ast-bg border border-ast-border rounded text-[11px] text-ast-text font-mono min-w-[28px] text-center"
-                      >
-                        {key}
-                      </kbd>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
+      {/* Portal the modal to body */}
+      {mounted && modal && createPortal(modal, document.body)}
     </>
   );
 }
