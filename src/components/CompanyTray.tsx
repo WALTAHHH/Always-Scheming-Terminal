@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { findCompanyByName, type CompanyData } from "@/lib/companies";
 import type { FeedItem } from "@/lib/database.types";
 
@@ -212,21 +213,23 @@ function CompanyCard({
   );
 }
 
-// Expanded company detail
-function CompanyDetail({ 
+// Company detail modal
+function CompanyModal({ 
   companyData,
   stockData,
   items,
   chartRange,
   onRangeChange,
+  onClose,
 }: { 
   companyData: CompanyData;
   stockData: StockData;
   items: FeedItem[];
   chartRange: ChartRange;
   onRangeChange: (range: ChartRange) => void;
+  onClose: () => void;
 }) {
-  const { quote, history } = stockData;
+  const { quote, history, loading } = stockData;
   const isPositive = (quote?.change ?? 0) >= 0;
 
   const relatedItems = useMemo(() => {
@@ -237,99 +240,166 @@ function CompanyDetail({
         const companies = (tags.company || []).map((c) => c.toLowerCase());
         return companies.some((c) => matchTerms.some((term) => c.includes(term) || term.includes(c)));
       })
-      .slice(0, 4);
+      .slice(0, 6);
   }, [companyData, items]);
 
+  // Close on Escape
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
   return (
-    <div className="mt-2 p-3 bg-ast-surface/30 rounded border border-ast-border/50">
-      {/* Stats row */}
-      {quote && (
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <div className="text-center">
-            <div className="text-xs font-medium text-ast-text">{formatMarketCap(quote.marketCap)}</div>
-            <div className="text-[9px] text-ast-muted">Mkt Cap</div>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      
+      {/* Modal */}
+      <div className="relative bg-ast-surface border border-ast-border rounded-lg shadow-2xl w-[400px] max-h-[80vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between flex-shrink-0">
+          <div>
+            <h2 className="text-lg font-semibold text-ast-text">{companyData.name}</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-ast-accent text-sm">{companyData.ticker}</span>
+              <span className="text-ast-muted text-xs">· {companyData.exchange}</span>
+              {quote && (
+                <span className={`text-sm font-medium ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
+                  {isPositive ? "▲" : "▼"} {Math.abs(quote.changePercent).toFixed(2)}%
+                </span>
+              )}
+            </div>
           </div>
-          <div className="text-center">
-            <div className="text-xs font-medium text-ast-text">{formatCurrency(quote.fiftyTwoWeekHigh, quote.currency)}</div>
-            <div className="text-[9px] text-ast-muted">52W Hi</div>
-          </div>
-          <div className="text-center">
-            <div className="text-xs font-medium text-ast-text">{formatCurrency(quote.fiftyTwoWeekLow, quote.currency)}</div>
-            <div className="text-[9px] text-ast-muted">52W Lo</div>
-          </div>
-        </div>
-      )}
-
-      {/* Chart with range selector */}
-      <div className="mb-3">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[9px] text-ast-muted uppercase">Price History</span>
-          <div className="flex gap-0.5">
-            {(Object.keys(RANGE_CONFIG) as ChartRange[]).map((r) => (
-              <button
-                key={r}
-                onClick={(e) => { e.stopPropagation(); onRangeChange(r); }}
-                className={`px-1.5 py-0.5 text-[9px] rounded border ${
-                  chartRange === r ? "border-ast-accent text-ast-accent" : "border-ast-border text-ast-muted"
-                }`}
-              >
-                {RANGE_CONFIG[r].label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <MiniChart history={history} isPositive={isPositive} />
-      </div>
-
-      {/* IR Links */}
-      {companyData.irUrl && (
-        <div className="flex gap-2 mb-3">
-          <a 
-            href={companyData.irUrl} 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            onClick={(e) => e.stopPropagation()}
-            className="flex-1 px-2 py-1.5 bg-ast-bg border border-ast-border rounded text-[10px] text-ast-muted hover:text-ast-accent text-center"
+          <button 
+            onClick={onClose}
+            className="w-8 h-8 rounded border border-ast-border text-ast-muted hover:text-ast-text flex items-center justify-center"
           >
-            📊 IR
-          </a>
-          {companyData.secUrl && (
-            <a 
-              href={companyData.secUrl} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()} 
-              className="flex-1 px-2 py-1.5 bg-ast-bg border border-ast-border rounded text-[10px] text-ast-muted hover:text-ast-accent text-center"
-            >
-              📄 SEC
-            </a>
+            ✕
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading ? (
+            <div className="text-ast-muted text-sm animate-pulse">Loading market data...</div>
+          ) : (
+            <>
+              {/* Price */}
+              {quote && (
+                <div className="mb-4">
+                  <div className="text-3xl font-semibold text-ast-text">
+                    {formatCurrency(quote.price, quote.currency)}
+                  </div>
+                </div>
+              )}
+
+              {/* Stats row */}
+              {quote && (
+                <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-ast-bg/50 rounded border border-ast-border/50">
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-ast-text">{formatMarketCap(quote.marketCap)}</div>
+                    <div className="text-[10px] text-ast-muted">Market Cap</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-ast-text">{formatCurrency(quote.fiftyTwoWeekHigh, quote.currency)}</div>
+                    <div className="text-[10px] text-ast-muted">52W High</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-ast-text">{formatCurrency(quote.fiftyTwoWeekLow, quote.currency)}</div>
+                    <div className="text-[10px] text-ast-muted">52W Low</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Chart with range selector */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-ast-muted uppercase">Price History</span>
+                  <div className="flex gap-1">
+                    {(Object.keys(RANGE_CONFIG) as ChartRange[]).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => onRangeChange(r)}
+                        className={`px-2 py-1 text-[10px] rounded border ${
+                          chartRange === r ? "border-ast-accent text-ast-accent" : "border-ast-border text-ast-muted"
+                        }`}
+                      >
+                        {RANGE_CONFIG[r].label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="h-32 bg-ast-bg/50 rounded overflow-hidden">
+                  {history.length > 0 ? (
+                    <MiniChart history={history} isPositive={isPositive} />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-ast-muted text-xs">
+                      No chart data
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* IR Links */}
+              {companyData.irUrl && (
+                <div className="flex gap-2 mb-4">
+                  <a 
+                    href={companyData.irUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center"
+                  >
+                    📊 Investor Relations
+                  </a>
+                  {companyData.secUrl && (
+                    <a 
+                      href={companyData.secUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center"
+                    >
+                      📄 SEC Filings
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* Recent coverage */}
+              <div>
+                <div className="text-xs text-ast-accent uppercase font-semibold mb-2">
+                  Recent Coverage ({relatedItems.length})
+                </div>
+                {relatedItems.length === 0 ? (
+                  <p className="text-ast-muted text-xs">No recent coverage found.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {relatedItems.map((item) => (
+                      <a 
+                        key={item.id} 
+                        href={item.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="block group"
+                      >
+                        <p className="text-xs text-ast-text group-hover:text-ast-accent line-clamp-2 leading-snug">
+                          {item.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-ast-muted">{item.sources?.name}</span>
+                          <span className="text-[10px] text-ast-muted">{getHoursAgo(item.published_at)}</span>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
-      )}
-
-      {/* Recent coverage */}
-      {relatedItems.length > 0 && (
-        <div>
-          <div className="text-[9px] text-ast-muted uppercase mb-1.5">Recent Coverage</div>
-          <div className="space-y-1.5">
-            {relatedItems.map((item) => (
-              <a 
-                key={item.id} 
-                href={item.url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="block group"
-              >
-                <p className="text-[11px] text-ast-text group-hover:text-ast-accent line-clamp-1 leading-tight">
-                  {item.title}
-                </p>
-                <span className="text-[9px] text-ast-muted">{item.sources?.name} · {getHoursAgo(item.published_at)}</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -423,6 +493,22 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
     return stockDataMap[ticker] || { quote: null, history: [], loading: true };
   };
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const selectedCompanyData = selectedCompany ? findCompanyByName(selectedCompany) : null;
+
+  const modal = selectedCompany && selectedCompanyData && mounted ? (
+    <CompanyModal
+      companyData={selectedCompanyData}
+      stockData={getStockData(selectedCompanyData.ticker)}
+      items={items}
+      chartRange={chartRange}
+      onRangeChange={setChartRange}
+      onClose={() => onSelectCompany(null)}
+    />
+  ) : null;
+
   return (
     <div className="h-full flex flex-col bg-ast-bg">
       {/* Header with basket tabs */}
@@ -454,28 +540,21 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid grid-cols-2 gap-2">
           {basketCompanies.map(({ name, data, mentions }) => (
-            <div key={name}>
-              <CompanyCard
-                name={name}
-                companyData={data}
-                stockData={getStockData(data?.ticker)}
-                mentionCount={mentions}
-                isExpanded={selectedCompany === name}
-                onClick={() => onSelectCompany(selectedCompany === name ? null : name)}
-              />
-              {selectedCompany === name && data && (
-                <CompanyDetail
-                  companyData={data}
-                  stockData={getStockData(data.ticker)}
-                  items={items}
-                  chartRange={chartRange}
-                  onRangeChange={setChartRange}
-                />
-              )}
-            </div>
+            <CompanyCard
+              key={name}
+              name={name}
+              companyData={data}
+              stockData={getStockData(data?.ticker)}
+              mentionCount={mentions}
+              isExpanded={selectedCompany === name}
+              onClick={() => onSelectCompany(name)}
+            />
           ))}
         </div>
       </div>
+
+      {/* Modal portal */}
+      {mounted && modal && createPortal(modal, document.body)}
     </div>
   );
 }
