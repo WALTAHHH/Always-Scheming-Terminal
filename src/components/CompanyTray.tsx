@@ -298,11 +298,13 @@ function CompanyModal({
 
               {/* Stats row */}
               {quote && (
-                <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-ast-bg/50 rounded border border-ast-border/50">
-                  <div className="text-center">
-                    <div className="text-sm font-medium text-ast-text">{formatMarketCap(quote.marketCap)}</div>
-                    <div className="text-[10px] text-ast-muted">Market Cap</div>
-                  </div>
+                <div className={`grid ${quote.marketCap ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-4 p-3 bg-ast-bg/50 rounded border border-ast-border/50`}>
+                  {quote.marketCap > 0 && (
+                    <div className="text-center">
+                      <div className="text-sm font-medium text-ast-text">{formatMarketCap(quote.marketCap)}</div>
+                      <div className="text-[10px] text-ast-muted">Market Cap</div>
+                    </div>
+                  )}
                   <div className="text-center">
                     <div className="text-sm font-medium text-ast-text">{formatCurrency(quote.fiftyTwoWeekHigh, quote.currency)}</div>
                     <div className="text-[10px] text-ast-muted">52W High</div>

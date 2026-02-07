@@ -52,13 +52,17 @@ export async function GET(
       return NextResponse.json({ quote: null, history: [], error: "No data" });
     }
 
+    // Yahoo chart endpoint uses chartPreviousClose, not previousClose
+    const prevClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice;
+    const price = meta.regularMarketPrice;
+    
     const quote: StockQuote = {
       ticker: meta.symbol,
-      price: meta.regularMarketPrice,
-      change: meta.regularMarketPrice - meta.previousClose,
-      changePercent: ((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100,
-      marketCap: meta.marketCap || 0,
-      previousClose: meta.previousClose,
+      price,
+      change: price - prevClose,
+      changePercent: prevClose ? ((price - prevClose) / prevClose) * 100 : 0,
+      marketCap: meta.marketCap || 0, // Not available from chart endpoint
+      previousClose: prevClose,
       fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || 0,
       fiftyTwoWeekLow: meta.fiftyTwoWeekLow || 0,
       currency: meta.currency || "USD",
