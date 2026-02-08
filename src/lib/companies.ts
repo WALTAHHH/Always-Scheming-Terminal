@@ -262,6 +262,56 @@ export const GAMING_COMPANIES: CompanyData[] = [
     irUrl: "https://www.microsoft.com/en-us/investor",
     aliases: ["Microsoft Gaming", "Xbox", "Xbox Game Studios"],
   },
+  // ── AS Primitives Index additions ──
+  {
+    name: "Apple",
+    ticker: "AAPL",
+    exchange: "NASDAQ",
+    irUrl: "https://investor.apple.com/",
+    aliases: ["Apple Inc", "Vision Pro"],
+  },
+  {
+    name: "Coinbase",
+    ticker: "COIN",
+    exchange: "NASDAQ",
+    irUrl: "https://investor.coinbase.com/",
+    aliases: ["Coinbase Global", "BASE"],
+  },
+  {
+    name: "Google",
+    ticker: "GOOGL",
+    exchange: "NASDAQ",
+    irUrl: "https://abc.xyz/investor/",
+    aliases: ["Alphabet", "Alphabet Inc", "YouTube Gaming", "Stadia"],
+  },
+  {
+    name: "Meta",
+    ticker: "META",
+    exchange: "NASDAQ",
+    irUrl: "https://investor.fb.com/",
+    aliases: ["Meta Platforms", "Facebook", "Quest", "Horizon", "Oculus"],
+  },
+  {
+    name: "Nvidia",
+    ticker: "NVDA",
+    exchange: "NASDAQ",
+    irUrl: "https://investor.nvidia.com/",
+    aliases: ["NVIDIA Corporation", "GeForce", "GeForce Now"],
+  },
+  {
+    name: "Samsung",
+    ticker: "005930.KS",
+    exchange: "KRX",
+    irUrl: "https://www.samsung.com/global/ir/",
+    aliases: ["Samsung Electronics", "Samsung Gaming"],
+  },
+  {
+    name: "Snap",
+    ticker: "SNAP",
+    exchange: "NYSE",
+    irUrl: "https://investor.snap.com/",
+    aliases: ["Snap Inc", "Snapchat", "Spectacles", "Lens Studio"],
+  },
 ];
 
 export function findCompanyByName(name: string): CompanyData | null {
