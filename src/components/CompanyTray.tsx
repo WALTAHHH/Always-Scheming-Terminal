@@ -13,6 +13,7 @@ interface CompanyTrayProps {
 }
 
 type ChartRange = "1w" | "1mo" | "6mo" | "1y";
+type IndexWeighting = "equal" | "mcap";
 
 const RANGE_CONFIG: Record<ChartRange, { range: string; interval: string; label: string }> = {
   "1w": { range: "5d", interval: "1h", label: "1W" },
@@ -401,10 +402,209 @@ function CompanyModal({
   );
 }
 
+// Index Overview component - aggregated chart for AS Index
+function IndexOverview({
+  stockDataMap,
+  basketCompanies,
+  weighting,
+  onWeightingChange,
+  chartRange,
+  onRangeChange,
+}: {
+  stockDataMap: Record<string, StockData>;
+  basketCompanies: { name: string; data: CompanyData | null; mentions: number }[];
+  weighting: IndexWeighting;
+  onWeightingChange: (w: IndexWeighting) => void;
+  chartRange: ChartRange;
+  onRangeChange: (r: ChartRange) => void;
+}) {
+  // Calculate composite index
+  const indexData = useMemo(() => {
+    // Get all stocks with valid data
+    const validStocks = basketCompanies
+      .filter((c) => c.data?.ticker)
+      .map((c) => ({
+        ticker: c.data!.ticker,
+        name: c.name,
+        data: stockDataMap[c.data!.ticker],
+      }))
+      .filter((s) => s.data?.history?.length > 1 && s.data?.quote);
+
+    if (validStocks.length === 0) {
+      return { history: [], change: 0, totalMarketCap: 0, stockCount: 0 };
+    }
+
+    // Get all unique dates across all stocks
+    const allDates = new Set<string>();
+    for (const stock of validStocks) {
+      for (const h of stock.data.history) {
+        allDates.add(h.date);
+      }
+    }
+    const sortedDates = Array.from(allDates).sort();
+
+    // Build price maps for each stock
+    const priceMaps: Record<string, Record<string, number>> = {};
+    const firstPrices: Record<string, number> = {};
+    const marketCaps: Record<string, number> = {};
+    
+    for (const stock of validStocks) {
+      priceMaps[stock.ticker] = {};
+      marketCaps[stock.ticker] = stock.data.quote?.marketCap || 0;
+      
+      for (const h of stock.data.history) {
+        priceMaps[stock.ticker][h.date] = h.close;
+        if (!firstPrices[stock.ticker]) {
+          firstPrices[stock.ticker] = h.close;
+        }
+      }
+    }
+
+    // Calculate total market cap for weighting
+    const totalMcap = Object.values(marketCaps).reduce((a, b) => a + b, 0);
+
+    // Calculate index value for each date
+    const indexHistory: StockHistory[] = [];
+    let lastValidValue = 100;
+
+    for (const date of sortedDates) {
+      let weightedSum = 0;
+      let totalWeight = 0;
+
+      for (const stock of validStocks) {
+        const price = priceMaps[stock.ticker][date];
+        const firstPrice = firstPrices[stock.ticker];
+        
+        if (price && firstPrice) {
+          // Normalize to 100 at start
+          const normalizedValue = (price / firstPrice) * 100;
+          
+          // Weight
+          const weight = weighting === "mcap" 
+            ? (marketCaps[stock.ticker] / totalMcap) 
+            : (1 / validStocks.length);
+          
+          weightedSum += normalizedValue * weight;
+          totalWeight += weight;
+        }
+      }
+
+      if (totalWeight > 0) {
+        lastValidValue = weightedSum / totalWeight;
+      }
+      
+      indexHistory.push({ date, close: lastValidValue });
+    }
+
+    // Calculate total change
+    const firstValue = indexHistory[0]?.close || 100;
+    const lastValue = indexHistory[indexHistory.length - 1]?.close || 100;
+    const change = ((lastValue - firstValue) / firstValue) * 100;
+
+    return {
+      history: indexHistory,
+      change,
+      totalMarketCap: totalMcap,
+      stockCount: validStocks.length,
+    };
+  }, [stockDataMap, basketCompanies, weighting]);
+
+  const isPositive = indexData.change >= 0;
+  const loading = basketCompanies.some((c) => c.data?.ticker && stockDataMap[c.data.ticker]?.loading);
+
+  return (
+    <div className="p-3 border-b border-ast-border bg-ast-surface/30">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-ast-text">AS Primitives Index</span>
+          <span className="text-[10px] text-ast-muted">
+            {indexData.stockCount} stocks
+          </span>
+        </div>
+        {loading ? (
+          <span className="text-xs text-ast-muted animate-pulse">Loading...</span>
+        ) : (
+          <span className={`text-sm font-semibold ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
+            {isPositive ? "▲" : "▼"} {Math.abs(indexData.change).toFixed(2)}%
+          </span>
+        )}
+      </div>
+
+      {/* Index value */}
+      {indexData.history.length > 0 && (
+        <div className="text-2xl font-semibold text-ast-text mb-2">
+          {indexData.history[indexData.history.length - 1]?.close.toFixed(2)}
+          <span className="text-xs text-ast-muted ml-1">pts</span>
+        </div>
+      )}
+
+      {/* Chart */}
+      {indexData.history.length > 1 && (
+        <div className="h-24 mb-3">
+          <Sparkline history={indexData.history} isPositive={isPositive} height={96} />
+        </div>
+      )}
+
+      {/* Controls */}
+      <div className="flex items-center justify-between">
+        {/* Weighting toggle */}
+        <div className="flex gap-1">
+          <button
+            onClick={() => onWeightingChange("equal")}
+            className={`px-2 py-1 text-[10px] rounded border transition-colors ${
+              weighting === "equal"
+                ? "border-ast-accent text-ast-accent bg-ast-accent/10"
+                : "border-ast-border text-ast-muted hover:text-ast-text"
+            }`}
+          >
+            Equal
+          </button>
+          <button
+            onClick={() => onWeightingChange("mcap")}
+            className={`px-2 py-1 text-[10px] rounded border transition-colors ${
+              weighting === "mcap"
+                ? "border-ast-accent text-ast-accent bg-ast-accent/10"
+                : "border-ast-border text-ast-muted hover:text-ast-text"
+            }`}
+          >
+            Mkt Cap
+          </button>
+        </div>
+
+        {/* Range selector */}
+        <div className="flex gap-1">
+          {(Object.keys(RANGE_CONFIG) as ChartRange[]).map((r) => (
+            <button
+              key={r}
+              onClick={() => onRangeChange(r)}
+              className={`px-2 py-1 text-[10px] rounded border transition-colors ${
+                chartRange === r
+                  ? "border-ast-accent text-ast-accent bg-ast-accent/10"
+                  : "border-ast-border text-ast-muted hover:text-ast-text"
+              }`}
+            >
+              {RANGE_CONFIG[r].label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Market cap info */}
+      {weighting === "mcap" && indexData.totalMarketCap > 0 && (
+        <div className="mt-2 text-[10px] text-ast-muted">
+          Combined market cap: {formatMarketCap(indexData.totalMarketCap)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CompanyTray({ items, selectedCompany, onSelectCompany }: CompanyTrayProps) {
   const [activeBasket, setActiveBasket] = useState<string>("AS Index");
   const [stockDataMap, setStockDataMap] = useState<Record<string, StockData>>({});
   const [chartRange, setChartRange] = useState<ChartRange>("1mo");
+  const [indexWeighting, setIndexWeighting] = useState<IndexWeighting>("equal");
   
   const basketNames = Object.keys(COMPANY_BASKETS);
   const currentBasket = COMPANY_BASKETS[activeBasket] || [];
@@ -431,10 +631,14 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
     }));
   }, [currentBasket, mentionCounts]);
 
+  // Track last fetched range to detect changes
+  const [lastFetchedRange, setLastFetchedRange] = useState<ChartRange | null>(null);
+
   // Fetch stock data for basket companies
   useEffect(() => {
+    const rangeChanged = lastFetchedRange !== chartRange;
     const tickersToFetch = basketCompanies
-      .filter((c) => c.data?.ticker && !stockDataMap[c.data.ticker])
+      .filter((c) => c.data?.ticker && (rangeChanged || !stockDataMap[c.data.ticker]))
       .map((c) => c.data!.ticker);
 
     if (tickersToFetch.length === 0) return;
@@ -442,9 +646,10 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
     // Mark as loading
     const loadingUpdates: Record<string, StockData> = {};
     for (const ticker of tickersToFetch) {
-      loadingUpdates[ticker] = { quote: null, history: [], loading: true };
+      loadingUpdates[ticker] = { quote: stockDataMap[ticker]?.quote || null, history: [], loading: true };
     }
     setStockDataMap((prev) => ({ ...prev, ...loadingUpdates }));
+    setLastFetchedRange(chartRange);
 
     // Fetch all
     const config = RANGE_CONFIG[chartRange];
@@ -532,6 +737,18 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
           ))}
         </div>
       </div>
+
+      {/* Index Overview - only for AS Index */}
+      {activeBasket === "AS Index" && (
+        <IndexOverview
+          stockDataMap={stockDataMap}
+          basketCompanies={basketCompanies}
+          weighting={indexWeighting}
+          onWeightingChange={setIndexWeighting}
+          chartRange={chartRange}
+          onRangeChange={setChartRange}
+        />
+      )}
 
       {/* Company grid */}
       <div className="flex-1 overflow-y-auto p-3">
