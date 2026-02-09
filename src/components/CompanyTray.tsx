@@ -465,26 +465,16 @@ function InteractiveChart({
       <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
         <path d={pathD} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
         
-        {/* Hover indicator */}
+        {/* Hover indicator - minimal vertical line only */}
         {hoverPoint && (
-          <>
-            <line 
-              x1={hoverPoint.x} y1="0" 
-              x2={hoverPoint.x} y2="100" 
-              stroke={color} 
-              strokeWidth="1" 
-              strokeDasharray="2,2"
-              vectorEffect="non-scaling-stroke"
-              opacity="0.5"
-            />
-            <circle 
-              cx={hoverPoint.x} 
-              cy={hoverPoint.y} 
-              r="3" 
-              fill={color}
-              vectorEffect="non-scaling-stroke"
-            />
-          </>
+          <line 
+            x1={hoverPoint.x} y1="0" 
+            x2={hoverPoint.x} y2="100" 
+            stroke="#ffffff" 
+            strokeWidth="1" 
+            vectorEffect="non-scaling-stroke"
+            opacity="0.3"
+          />
         )}
       </svg>
 
@@ -505,6 +495,166 @@ function InteractiveChart({
   );
 }
 
+// Index Modal - detailed view of AS Index (similar to CompanyModal)
+function IndexModal({
+  indexData,
+  weighting,
+  onWeightingChange,
+  chartRange,
+  onRangeChange,
+  onClose,
+}: {
+  indexData: {
+    history: StockHistory[];
+    change: number;
+    totalMarketCap: number;
+    stockCount: number;
+    weights: { name: string; ticker: string; weight: number; marketCap: number }[];
+  };
+  weighting: IndexWeighting;
+  onWeightingChange: (w: IndexWeighting) => void;
+  chartRange: ChartRange;
+  onRangeChange: (r: ChartRange) => void;
+  onClose: () => void;
+}) {
+  const isPositive = indexData.change >= 0;
+  const currentValue = indexData.history[indexData.history.length - 1]?.close || 100;
+
+  // Close on Escape
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      
+      {/* Modal */}
+      <div className="relative bg-ast-surface border border-ast-border rounded-lg shadow-2xl w-[420px] max-h-[80vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between flex-shrink-0">
+          <div>
+            <h2 className="text-lg font-semibold text-ast-text">AS Primitives Index</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-ast-accent text-sm">{indexData.stockCount} stocks</span>
+              <span className={`text-sm font-medium ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
+                {isPositive ? "▲" : "▼"} {Math.abs(indexData.change).toFixed(2)}%
+              </span>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="w-8 h-8 rounded border border-ast-border text-ast-muted hover:text-ast-text flex items-center justify-center"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {/* Index value */}
+          <div className="text-3xl font-semibold text-ast-text mb-4">
+            {currentValue.toFixed(2)}
+            <span className="text-sm text-ast-muted ml-1">pts</span>
+          </div>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-ast-bg/50 rounded border border-ast-border/50">
+            <div className="text-center">
+              <div className="text-sm font-medium text-ast-text">{formatMarketCap(indexData.totalMarketCap)}</div>
+              <div className="text-[10px] text-ast-muted">Combined Mkt Cap</div>
+            </div>
+            <div className="text-center">
+              <div className="text-sm font-medium text-ast-text">{indexData.stockCount}</div>
+              <div className="text-[10px] text-ast-muted">Constituents</div>
+            </div>
+            <div className="text-center">
+              <div className="text-sm font-medium text-ast-text capitalize">{weighting}</div>
+              <div className="text-[10px] text-ast-muted">Weighting</div>
+            </div>
+          </div>
+
+          {/* Chart with range selector */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex gap-1">
+                <button
+                  onClick={() => onWeightingChange("equal")}
+                  className={`px-2 py-1 text-[10px] rounded border ${
+                    weighting === "equal" ? "border-ast-accent text-ast-accent" : "border-ast-border text-ast-muted"
+                  }`}
+                >
+                  Equal
+                </button>
+                <button
+                  onClick={() => onWeightingChange("mcap")}
+                  className={`px-2 py-1 text-[10px] rounded border ${
+                    weighting === "mcap" ? "border-ast-accent text-ast-accent" : "border-ast-border text-ast-muted"
+                  }`}
+                >
+                  Mkt Cap
+                </button>
+              </div>
+              <div className="flex gap-1">
+                {(Object.keys(RANGE_CONFIG) as ChartRange[]).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => onRangeChange(r)}
+                    className={`px-2 py-1 text-[10px] rounded border ${
+                      chartRange === r ? "border-ast-accent text-ast-accent" : "border-ast-border text-ast-muted"
+                    }`}
+                  >
+                    {RANGE_CONFIG[r].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="h-40 bg-ast-bg/50 rounded overflow-hidden">
+              {indexData.history.length > 1 ? (
+                <InteractiveChart history={indexData.history} isPositive={isPositive} height={160} />
+              ) : (
+                <div className="h-full flex items-center justify-center text-ast-muted text-xs">
+                  No chart data
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Weights breakdown */}
+          <div>
+            <div className="text-xs text-ast-accent uppercase font-semibold mb-2">
+              Constituent Weights
+            </div>
+            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+              {indexData.weights.map((w) => (
+                <div key={w.ticker} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-ast-accent font-medium w-16">{w.ticker}</span>
+                    <span className="text-ast-muted">{w.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {weighting === "mcap" && (
+                      <span className="text-ast-muted text-[10px]">{formatMarketCap(w.marketCap)}</span>
+                    )}
+                    <span className="text-ast-text font-medium w-12 text-right">
+                      {(w.weight * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Index Overview component - aggregated chart for AS Index
 function IndexOverview({
   stockDataMap,
@@ -513,6 +663,7 @@ function IndexOverview({
   onWeightingChange,
   chartRange,
   onRangeChange,
+  onOpenModal,
 }: {
   stockDataMap: Record<string, StockData>;
   basketCompanies: { name: string; data: CompanyData | null; mentions: number }[];
@@ -520,6 +671,7 @@ function IndexOverview({
   onWeightingChange: (w: IndexWeighting) => void;
   chartRange: ChartRange;
   onRangeChange: (r: ChartRange) => void;
+  onOpenModal: () => void;
 }) {
   // Calculate composite index
   const indexData = useMemo(() => {
@@ -602,11 +754,20 @@ function IndexOverview({
     const lastValue = indexHistory[indexHistory.length - 1]?.close || 100;
     const change = ((lastValue - firstValue) / firstValue) * 100;
 
+    // Build weights info for display
+    const weightInfo = validStocks.map((s) => ({
+      name: s.name,
+      ticker: s.ticker,
+      weight: weights[s.ticker],
+      marketCap: marketCaps[s.ticker],
+    })).sort((a, b) => b.weight - a.weight);
+
     return {
       history: indexHistory,
       change,
       totalMarketCap: totalMcap,
       stockCount: validStocks.length,
+      weights: weightInfo,
     };
   }, [stockDataMap, basketCompanies, weighting]);
 
@@ -615,37 +776,43 @@ function IndexOverview({
 
   return (
     <div className="p-3 border-b border-ast-border bg-ast-surface/30">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-ast-text">AS Primitives Index</span>
-          <span className="text-[10px] text-ast-muted">
-            {indexData.stockCount} stocks
-          </span>
+      {/* Clickable area to open modal */}
+      <button 
+        onClick={onOpenModal}
+        className="w-full text-left hover:bg-ast-surface/50 -m-2 p-2 rounded transition-colors"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-ast-text">AS Primitives Index</span>
+            <span className="text-[10px] text-ast-muted">
+              {indexData.stockCount} stocks
+            </span>
+          </div>
+          {loading ? (
+            <span className="text-xs text-ast-muted animate-pulse">Loading...</span>
+          ) : (
+            <span className={`text-sm font-semibold ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
+              {isPositive ? "▲" : "▼"} {Math.abs(indexData.change).toFixed(2)}%
+            </span>
+          )}
         </div>
-        {loading ? (
-          <span className="text-xs text-ast-muted animate-pulse">Loading...</span>
-        ) : (
-          <span className={`text-sm font-semibold ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
-            {isPositive ? "▲" : "▼"} {Math.abs(indexData.change).toFixed(2)}%
-          </span>
+
+        {/* Index value */}
+        {indexData.history.length > 0 && (
+          <div className="text-2xl font-semibold text-ast-text mb-2">
+            {indexData.history[indexData.history.length - 1]?.close.toFixed(2)}
+            <span className="text-xs text-ast-muted ml-1">pts</span>
+          </div>
         )}
-      </div>
 
-      {/* Index value */}
-      {indexData.history.length > 0 && (
-        <div className="text-2xl font-semibold text-ast-text mb-2">
-          {indexData.history[indexData.history.length - 1]?.close.toFixed(2)}
-          <span className="text-xs text-ast-muted ml-1">pts</span>
-        </div>
-      )}
-
-      {/* Interactive Chart */}
-      {indexData.history.length > 1 && (
-        <div className="h-24 mb-3">
-          <InteractiveChart history={indexData.history} isPositive={isPositive} height={96} />
-        </div>
-      )}
+        {/* Interactive Chart */}
+        {indexData.history.length > 1 && (
+          <div className="h-24 mb-3">
+            <InteractiveChart history={indexData.history} isPositive={isPositive} height={96} />
+          </div>
+        )}
+      </button>
 
       {/* Controls */}
       <div className="flex items-center justify-between">
@@ -706,6 +873,7 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
   const [stockDataMap, setStockDataMap] = useState<Record<string, StockData>>({});
   const [chartRange, setChartRange] = useState<ChartRange>("1mo");
   const [indexWeighting, setIndexWeighting] = useState<IndexWeighting>("equal");
+  const [showIndexModal, setShowIndexModal] = useState(false);
   
   const basketNames = Object.keys(COMPANY_BASKETS);
   const currentBasket = COMPANY_BASKETS[activeBasket] || [];
@@ -812,6 +980,92 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
     />
   ) : null;
 
+  // Calculate index data for modal (same logic as IndexOverview)
+  const indexDataForModal = useMemo(() => {
+    if (activeBasket !== "AS Index") return null;
+    
+    const validStocks = basketCompanies
+      .filter((c) => c.data?.ticker)
+      .map((c) => ({
+        ticker: c.data!.ticker,
+        name: c.name,
+        data: stockDataMap[c.data!.ticker],
+      }))
+      .filter((s) => s.data?.history?.length > 1 && s.data?.quote);
+
+    if (validStocks.length === 0) return null;
+
+    const priceMaps: Record<string, Record<string, number>> = {};
+    const firstPrices: Record<string, number> = {};
+    const marketCaps: Record<string, number> = {};
+    const allDatesSet = new Set<string>();
+    
+    for (const stock of validStocks) {
+      priceMaps[stock.ticker] = {};
+      marketCaps[stock.ticker] = stock.data.quote?.marketCap || 1;
+      
+      for (const h of stock.data.history) {
+        priceMaps[stock.ticker][h.date] = h.close;
+        allDatesSet.add(h.date);
+        if (!firstPrices[stock.ticker]) {
+          firstPrices[stock.ticker] = h.close;
+        }
+      }
+    }
+
+    const sortedDates = Array.from(allDatesSet).sort();
+
+    for (const stock of validStocks) {
+      let lastPrice = firstPrices[stock.ticker];
+      for (const date of sortedDates) {
+        if (priceMaps[stock.ticker][date]) {
+          lastPrice = priceMaps[stock.ticker][date];
+        } else {
+          priceMaps[stock.ticker][date] = lastPrice;
+        }
+      }
+    }
+
+    const totalMcap = Object.values(marketCaps).reduce((a, b) => a + b, 0);
+    const weights: Record<string, number> = {};
+    for (const stock of validStocks) {
+      weights[stock.ticker] = indexWeighting === "mcap" 
+        ? marketCaps[stock.ticker] / totalMcap 
+        : 1 / validStocks.length;
+    }
+
+    const indexHistory: StockHistory[] = [];
+    for (const date of sortedDates) {
+      let indexValue = 0;
+      for (const stock of validStocks) {
+        const price = priceMaps[stock.ticker][date];
+        const firstPrice = firstPrices[stock.ticker];
+        const normalizedValue = (price / firstPrice) * 100;
+        indexValue += normalizedValue * weights[stock.ticker];
+      }
+      indexHistory.push({ date, close: indexValue });
+    }
+
+    const firstValue = indexHistory[0]?.close || 100;
+    const lastValue = indexHistory[indexHistory.length - 1]?.close || 100;
+    const change = ((lastValue - firstValue) / firstValue) * 100;
+
+    const weightInfo = validStocks.map((s) => ({
+      name: s.name,
+      ticker: s.ticker,
+      weight: weights[s.ticker],
+      marketCap: marketCaps[s.ticker],
+    })).sort((a, b) => b.weight - a.weight);
+
+    return {
+      history: indexHistory,
+      change,
+      totalMarketCap: totalMcap,
+      stockCount: validStocks.length,
+      weights: weightInfo,
+    };
+  }, [activeBasket, basketCompanies, stockDataMap, indexWeighting]);
+
   return (
     <div className="h-full flex flex-col bg-ast-bg">
       {/* Header with basket tabs */}
@@ -848,6 +1102,7 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
           onWeightingChange={setIndexWeighting}
           chartRange={chartRange}
           onRangeChange={setChartRange}
+          onOpenModal={() => setShowIndexModal(true)}
         />
       )}
 
@@ -870,6 +1125,19 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
 
       {/* Modal portal */}
       {mounted && modal && createPortal(modal, document.body)}
+      
+      {/* Index Modal portal */}
+      {mounted && showIndexModal && indexDataForModal && createPortal(
+        <IndexModal
+          indexData={indexDataForModal}
+          weighting={indexWeighting}
+          onWeightingChange={setIndexWeighting}
+          chartRange={chartRange}
+          onRangeChange={setChartRange}
+          onClose={() => setShowIndexModal(false)}
+        />,
+        document.body
+      )}
     </div>
   );
 }
