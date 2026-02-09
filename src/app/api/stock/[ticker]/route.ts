@@ -34,22 +34,36 @@ export async function GET(
   const interval = searchParams.get("interval") || "1d";
 
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${interval}&range=${range}`;
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-      next: { revalidate: 300 },
-    });
+    // Fetch chart data and quote data in parallel
+    const [chartRes, quoteRes] = await Promise.all([
+      fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${interval}&range=${range}`,
+        { headers: { "User-Agent": "Mozilla/5.0" }, next: { revalidate: 300 } }
+      ),
+      fetch(
+        `https://query1.finance.yahoo.com/v6/finance/quote?symbols=${ticker}`,
+        { headers: { "User-Agent": "Mozilla/5.0" }, next: { revalidate: 300 } }
+      ),
+    ]);
 
-    if (!res.ok) {
-      return NextResponse.json({ quote: null, history: [], error: `HTTP ${res.status}` });
+    if (!chartRes.ok) {
+      return NextResponse.json({ quote: null, history: [], error: `HTTP ${chartRes.status}` });
     }
 
-    const data = await res.json();
-    const result = data.chart?.result?.[0];
+    const chartData = await chartRes.json();
+    const result = chartData.chart?.result?.[0];
     const meta = result?.meta;
 
     if (!meta) {
       return NextResponse.json({ quote: null, history: [], error: "No data" });
+    }
+
+    // Get market cap from quote endpoint
+    let marketCap = 0;
+    if (quoteRes.ok) {
+      const quoteData = await quoteRes.json();
+      const quoteResult = quoteData.quoteResponse?.result?.[0];
+      marketCap = quoteResult?.marketCap || 0;
     }
 
     // Yahoo chart endpoint uses chartPreviousClose, not previousClose
@@ -61,7 +75,7 @@ export async function GET(
       price,
       change: price - prevClose,
       changePercent: prevClose ? ((price - prevClose) / prevClose) * 100 : 0,
-      marketCap: meta.marketCap || 0, // Not available from chart endpoint
+      marketCap,
       previousClose: prevClose,
       fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || 0,
       fiftyTwoWeekLow: meta.fiftyTwoWeekLow || 0,
