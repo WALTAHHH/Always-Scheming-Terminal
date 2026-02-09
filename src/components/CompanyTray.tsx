@@ -681,12 +681,13 @@ function IndexOverview({
       .map((c) => ({
         ticker: c.data!.ticker,
         name: c.name,
-        data: stockDataMap[c.data!.ticker],
+        companyData: c.data!,
+        stockData: stockDataMap[c.data!.ticker],
       }))
-      .filter((s) => s.data?.history?.length > 1 && s.data?.quote);
+      .filter((s) => s.stockData?.history?.length > 1 && s.stockData?.quote);
 
     if (validStocks.length === 0) {
-      return { history: [], change: 0, totalMarketCap: 0, stockCount: 0 };
+      return { history: [], change: 0, totalMarketCap: 0, stockCount: 0, weights: [] };
     }
 
     // Build price maps with forward-fill for missing dates
@@ -697,9 +698,10 @@ function IndexOverview({
     
     for (const stock of validStocks) {
       priceMaps[stock.ticker] = {};
-      marketCaps[stock.ticker] = stock.data.quote?.marketCap || 1; // Default to 1 to avoid div by zero
+      // Use static marketCapB from companies.ts (in billions), convert to raw number
+      marketCaps[stock.ticker] = (stock.companyData.marketCapB || 1) * 1e9;
       
-      for (const h of stock.data.history) {
+      for (const h of stock.stockData.history) {
         priceMaps[stock.ticker][h.date] = h.close;
         allDatesSet.add(h.date);
         if (!firstPrices[stock.ticker]) {
@@ -989,9 +991,10 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
       .map((c) => ({
         ticker: c.data!.ticker,
         name: c.name,
-        data: stockDataMap[c.data!.ticker],
+        companyData: c.data!,
+        stockData: stockDataMap[c.data!.ticker],
       }))
-      .filter((s) => s.data?.history?.length > 1 && s.data?.quote);
+      .filter((s) => s.stockData?.history?.length > 1 && s.stockData?.quote);
 
     if (validStocks.length === 0) return null;
 
@@ -1002,9 +1005,10 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
     
     for (const stock of validStocks) {
       priceMaps[stock.ticker] = {};
-      marketCaps[stock.ticker] = stock.data.quote?.marketCap || 1;
+      // Use static marketCapB from companies.ts (in billions), convert to raw number
+      marketCaps[stock.ticker] = (stock.companyData.marketCapB || 1) * 1e9;
       
-      for (const h of stock.data.history) {
+      for (const h of stock.stockData.history) {
         priceMaps[stock.ticker][h.date] = h.close;
         allDatesSet.add(h.date);
         if (!firstPrices[stock.ticker]) {
@@ -1015,6 +1019,7 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
 
     const sortedDates = Array.from(allDatesSet).sort();
 
+    // Forward-fill missing prices
     for (const stock of validStocks) {
       let lastPrice = firstPrices[stock.ticker];
       for (const date of sortedDates) {

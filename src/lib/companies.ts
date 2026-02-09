@@ -10,6 +10,7 @@ export interface CompanyData {
   irUrl: string;
   secUrl?: string;
   aliases: string[];
+  marketCapB?: number; // Market cap in billions USD (for index weighting)
 }
 
 export const GAMING_COMPANIES: CompanyData[] = [
@@ -29,6 +30,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     irUrl: "https://ir.take2games.com/",
     secUrl: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000946581&type=10-K",
     aliases: ["Take-Two", "Take Two", "Rockstar", "2K Games", "Zynga"],
+    marketCapB: 30, // ~$30B
   },
   {
     name: "Roblox",
@@ -36,6 +38,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NYSE",
     irUrl: "https://ir.roblox.com/",
     aliases: ["Roblox Corporation"],
+    marketCapB: 38, // ~$38B
   },
   {
     name: "Unity",
@@ -43,6 +46,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NYSE",
     irUrl: "https://investors.unity.com/",
     aliases: ["Unity Software", "Unity Technologies"],
+    marketCapB: 9, // ~$9B
   },
   {
     name: "AppLovin",
@@ -64,6 +68,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "HKEX",
     irUrl: "https://www.tencent.com/en-us/investors.html",
     aliases: ["Tencent Holdings", "Riot Games", "WeChat"],
+    marketCapB: 450, // ~$450B
   },
   {
     name: "NetEase",
@@ -85,6 +90,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NYSE",
     irUrl: "https://www.sony.com/en/SonyInfo/IR/",
     aliases: ["Sony Interactive Entertainment", "PlayStation", "SIE", "Sony Group"],
+    marketCapB: 115, // ~$115B
   },
   {
     name: "Capcom",
@@ -261,14 +267,17 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NASDAQ",
     irUrl: "https://www.microsoft.com/en-us/investor",
     aliases: ["Microsoft Gaming", "Xbox", "Xbox Game Studios"],
+    marketCapB: 3100, // ~$3.1T
   },
   // ── AS Primitives Index additions ──
+  // Market caps in billions USD (approximate, for index weighting)
   {
     name: "Apple",
     ticker: "AAPL",
     exchange: "NASDAQ",
     irUrl: "https://investor.apple.com/",
     aliases: ["Apple Inc", "Vision Pro"],
+    marketCapB: 3400, // ~$3.4T
   },
   {
     name: "Coinbase",
@@ -276,6 +285,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NASDAQ",
     irUrl: "https://investor.coinbase.com/",
     aliases: ["Coinbase Global", "BASE"],
+    marketCapB: 65, // ~$65B
   },
   {
     name: "Google",
@@ -283,6 +293,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NASDAQ",
     irUrl: "https://abc.xyz/investor/",
     aliases: ["Alphabet", "Alphabet Inc", "YouTube Gaming", "Stadia"],
+    marketCapB: 2300, // ~$2.3T
   },
   {
     name: "Meta",
@@ -290,6 +301,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NASDAQ",
     irUrl: "https://investor.fb.com/",
     aliases: ["Meta Platforms", "Facebook", "Quest", "Horizon", "Oculus"],
+    marketCapB: 1500, // ~$1.5T
   },
   {
     name: "Nvidia",
@@ -297,6 +309,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NASDAQ",
     irUrl: "https://investor.nvidia.com/",
     aliases: ["NVIDIA Corporation", "GeForce", "GeForce Now"],
+    marketCapB: 3200, // ~$3.2T
   },
   {
     name: "Samsung",
@@ -304,6 +317,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "KRX",
     irUrl: "https://www.samsung.com/global/ir/",
     aliases: ["Samsung Electronics", "Samsung Gaming"],
+    marketCapB: 280, // ~$280B
   },
   {
     name: "Snap",
@@ -311,6 +325,7 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NYSE",
     irUrl: "https://investor.snap.com/",
     aliases: ["Snap Inc", "Snapchat", "Spectacles", "Lens Studio"],
+    marketCapB: 18, // ~$18B
   },
 ];
 
