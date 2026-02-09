@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import yahooFinance from "yahoo-finance2";
 
 export interface StockQuote {
   ticker: string;
@@ -24,6 +25,14 @@ export interface StockResponse {
   error?: string;
 }
 
+// Map range strings to yahoo-finance2 period format
+const RANGE_MAP: Record<string, { period1: Date; interval: "1d" | "1wk" | "1mo" }> = {
+  "5d": { period1: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), interval: "1d" },
+  "1mo": { period1: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), interval: "1d" },
+  "6mo": { period1: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000), interval: "1d" },
+  "1y": { period1: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), interval: "1wk" },
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ ticker: string }> }
@@ -31,69 +40,44 @@ export async function GET(
   const { ticker } = await params;
   const { searchParams } = new URL(request.url);
   const range = searchParams.get("range") || "1mo";
-  const interval = searchParams.get("interval") || "1d";
 
   try {
-    // Fetch chart data and quote data in parallel
-    const [chartRes, quoteRes] = await Promise.all([
-      fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${interval}&range=${range}`,
-        { headers: { "User-Agent": "Mozilla/5.0" }, next: { revalidate: 300 } }
-      ),
-      fetch(
-        `https://query1.finance.yahoo.com/v6/finance/quote?symbols=${ticker}`,
-        { headers: { "User-Agent": "Mozilla/5.0" }, next: { revalidate: 300 } }
-      ),
+    // Fetch quote and historical data using yahoo-finance2
+    const [quoteData, chartData] = await Promise.all([
+      yahooFinance.quote(ticker),
+      yahooFinance.chart(ticker, {
+        period1: RANGE_MAP[range]?.period1 || RANGE_MAP["1mo"].period1,
+        interval: RANGE_MAP[range]?.interval || "1d",
+      }),
     ]);
 
-    if (!chartRes.ok) {
-      return NextResponse.json({ quote: null, history: [], error: `HTTP ${chartRes.status}` });
+    if (!quoteData) {
+      return NextResponse.json({ quote: null, history: [], error: "No quote data" });
     }
 
-    const chartData = await chartRes.json();
-    const result = chartData.chart?.result?.[0];
-    const meta = result?.meta;
-
-    if (!meta) {
-      return NextResponse.json({ quote: null, history: [], error: "No data" });
-    }
-
-    // Get market cap from quote endpoint
-    let marketCap = 0;
-    if (quoteRes.ok) {
-      const quoteData = await quoteRes.json();
-      const quoteResult = quoteData.quoteResponse?.result?.[0];
-      marketCap = quoteResult?.marketCap || 0;
-    }
-
-    // Yahoo chart endpoint uses chartPreviousClose, not previousClose
-    const prevClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice;
-    const price = meta.regularMarketPrice;
-    
     const quote: StockQuote = {
-      ticker: meta.symbol,
-      price,
-      change: price - prevClose,
-      changePercent: prevClose ? ((price - prevClose) / prevClose) * 100 : 0,
-      marketCap,
-      previousClose: prevClose,
-      fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || 0,
-      fiftyTwoWeekLow: meta.fiftyTwoWeekLow || 0,
-      currency: meta.currency || "USD",
-      exchange: meta.exchangeName || meta.exchange,
+      ticker: quoteData.symbol,
+      price: quoteData.regularMarketPrice || 0,
+      change: quoteData.regularMarketChange || 0,
+      changePercent: quoteData.regularMarketChangePercent || 0,
+      marketCap: quoteData.marketCap || 0,
+      previousClose: quoteData.regularMarketPreviousClose || 0,
+      fiftyTwoWeekHigh: quoteData.fiftyTwoWeekHigh || 0,
+      fiftyTwoWeekLow: quoteData.fiftyTwoWeekLow || 0,
+      currency: quoteData.currency || "USD",
+      exchange: quoteData.exchange || "",
     };
 
-    const timestamps = result?.timestamp || [];
-    const closes = result?.indicators?.quote?.[0]?.close || [];
-    const history: StockHistory[] = timestamps
-      .map((ts: number, i: number) => ({
-        date: new Date(ts * 1000).toISOString().split("T")[0],
-        close: closes[i],
-      }))
-      .filter((h: StockHistory) => h.close !== null);
+    const history: StockHistory[] = (chartData.quotes || [])
+      .filter((q) => q.close !== null && q.close !== undefined)
+      .map((q) => ({
+        date: new Date(q.date).toISOString().split("T")[0],
+        close: q.close as number,
+      }));
 
     return NextResponse.json({ quote, history });
   } catch (error) {
+    console.error(`Stock API error for ${ticker}:`, error);
     return NextResponse.json({
       quote: null,
       history: [],

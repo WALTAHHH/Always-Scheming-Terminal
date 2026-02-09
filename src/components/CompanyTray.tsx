@@ -698,8 +698,10 @@ function IndexOverview({
     
     for (const stock of validStocks) {
       priceMaps[stock.ticker] = {};
-      // Use static marketCapB from companies.ts (in billions), convert to raw number
-      marketCaps[stock.ticker] = (stock.companyData.marketCapB || 1) * 1e9;
+      // Prefer API market cap, fall back to static marketCapB from companies.ts
+      const apiMcap = stock.stockData.quote?.marketCap || 0;
+      const staticMcap = (stock.companyData.marketCapB || 0) * 1e9;
+      marketCaps[stock.ticker] = apiMcap > 0 ? apiMcap : (staticMcap || 1e9);
       
       for (const h of stock.stockData.history) {
         priceMaps[stock.ticker][h.date] = h.close;
@@ -1005,8 +1007,10 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
     
     for (const stock of validStocks) {
       priceMaps[stock.ticker] = {};
-      // Use static marketCapB from companies.ts (in billions), convert to raw number
-      marketCaps[stock.ticker] = (stock.companyData.marketCapB || 1) * 1e9;
+      // Prefer API market cap, fall back to static marketCapB from companies.ts
+      const apiMcap = stock.stockData.quote?.marketCap || 0;
+      const staticMcap = (stock.companyData.marketCapB || 0) * 1e9;
+      marketCaps[stock.ticker] = apiMcap > 0 ? apiMcap : (staticMcap || 1e9);
       
       for (const h of stock.stockData.history) {
         priceMaps[stock.ticker][h.date] = h.close;
