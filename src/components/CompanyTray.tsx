@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { findCompanyByName, type CompanyData } from "@/lib/companies";
 import type { FeedItem } from "@/lib/database.types";
@@ -402,6 +402,109 @@ function CompanyModal({
   );
 }
 
+// Interactive chart with hover tooltip (Robinhood-style)
+function InteractiveChart({ 
+  history, 
+  isPositive, 
+  height = 96 
+}: { 
+  history: StockHistory[]; 
+  isPositive: boolean; 
+  height?: number;
+}) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  if (history.length < 2) {
+    return <div style={{ height }} className="bg-ast-surface/30 rounded flex items-center justify-center">
+      <span className="text-ast-muted text-[10px]">No data</span>
+    </div>;
+  }
+
+  const prices = history.map((h) => h.close);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+
+  const points = prices.map((price, i) => {
+    const x = (i / (prices.length - 1)) * 100;
+    const y = 100 - ((price - min) / range) * 100;
+    return { x, y, price, date: history[i].date };
+  });
+
+  const pathD = `M ${points.map(p => `${p.x},${p.y}`).join(" L ")}`;
+  const color = isPositive ? "#00d4aa" : "#ff6b8a";
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const index = Math.round(x * (history.length - 1));
+    setHoverIndex(Math.max(0, Math.min(history.length - 1, index)));
+  };
+
+  const handleMouseLeave = () => setHoverIndex(null);
+
+  const hoverPoint = hoverIndex !== null ? points[hoverIndex] : null;
+  const hoverData = hoverIndex !== null ? history[hoverIndex] : null;
+
+  // Format date nicely
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      style={{ height }} 
+      className="w-full relative cursor-crosshair"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+      <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+        <path d={pathD} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        
+        {/* Hover indicator */}
+        {hoverPoint && (
+          <>
+            <line 
+              x1={hoverPoint.x} y1="0" 
+              x2={hoverPoint.x} y2="100" 
+              stroke={color} 
+              strokeWidth="1" 
+              strokeDasharray="2,2"
+              vectorEffect="non-scaling-stroke"
+              opacity="0.5"
+            />
+            <circle 
+              cx={hoverPoint.x} 
+              cy={hoverPoint.y} 
+              r="3" 
+              fill={color}
+              vectorEffect="non-scaling-stroke"
+            />
+          </>
+        )}
+      </svg>
+
+      {/* Tooltip */}
+      {hoverData && hoverPoint && (
+        <div 
+          className="absolute top-0 pointer-events-none px-2 py-1 bg-ast-surface border border-ast-border rounded shadow-lg text-xs z-10"
+          style={{ 
+            left: `${hoverPoint.x}%`,
+            transform: `translateX(${hoverPoint.x > 70 ? '-100%' : '0'})`,
+          }}
+        >
+          <div className="text-ast-text font-semibold">{hoverData.close.toFixed(2)} pts</div>
+          <div className="text-ast-muted text-[10px]">{formatDate(hoverData.date)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Index Overview component - aggregated chart for AS Index
 function IndexOverview({
   stockDataMap,
@@ -434,66 +537,64 @@ function IndexOverview({
       return { history: [], change: 0, totalMarketCap: 0, stockCount: 0 };
     }
 
-    // Get all unique dates across all stocks
-    const allDates = new Set<string>();
-    for (const stock of validStocks) {
-      for (const h of stock.data.history) {
-        allDates.add(h.date);
-      }
-    }
-    const sortedDates = Array.from(allDates).sort();
-
-    // Build price maps for each stock
+    // Build price maps with forward-fill for missing dates
     const priceMaps: Record<string, Record<string, number>> = {};
     const firstPrices: Record<string, number> = {};
     const marketCaps: Record<string, number> = {};
+    const allDatesSet = new Set<string>();
     
     for (const stock of validStocks) {
       priceMaps[stock.ticker] = {};
-      marketCaps[stock.ticker] = stock.data.quote?.marketCap || 0;
+      marketCaps[stock.ticker] = stock.data.quote?.marketCap || 1; // Default to 1 to avoid div by zero
       
       for (const h of stock.data.history) {
         priceMaps[stock.ticker][h.date] = h.close;
+        allDatesSet.add(h.date);
         if (!firstPrices[stock.ticker]) {
           firstPrices[stock.ticker] = h.close;
         }
       }
     }
 
-    // Calculate total market cap for weighting
+    const sortedDates = Array.from(allDatesSet).sort();
+
+    // Forward-fill missing prices for each stock
+    for (const stock of validStocks) {
+      let lastPrice = firstPrices[stock.ticker];
+      for (const date of sortedDates) {
+        if (priceMaps[stock.ticker][date]) {
+          lastPrice = priceMaps[stock.ticker][date];
+        } else {
+          priceMaps[stock.ticker][date] = lastPrice;
+        }
+      }
+    }
+
+    // Calculate weights (fixed for entire period)
     const totalMcap = Object.values(marketCaps).reduce((a, b) => a + b, 0);
+    const weights: Record<string, number> = {};
+    for (const stock of validStocks) {
+      weights[stock.ticker] = weighting === "mcap" 
+        ? marketCaps[stock.ticker] / totalMcap 
+        : 1 / validStocks.length;
+    }
 
     // Calculate index value for each date
     const indexHistory: StockHistory[] = [];
-    let lastValidValue = 100;
 
     for (const date of sortedDates) {
-      let weightedSum = 0;
-      let totalWeight = 0;
+      let indexValue = 0;
 
       for (const stock of validStocks) {
         const price = priceMaps[stock.ticker][date];
         const firstPrice = firstPrices[stock.ticker];
         
-        if (price && firstPrice) {
-          // Normalize to 100 at start
-          const normalizedValue = (price / firstPrice) * 100;
-          
-          // Weight
-          const weight = weighting === "mcap" 
-            ? (marketCaps[stock.ticker] / totalMcap) 
-            : (1 / validStocks.length);
-          
-          weightedSum += normalizedValue * weight;
-          totalWeight += weight;
-        }
-      }
-
-      if (totalWeight > 0) {
-        lastValidValue = weightedSum / totalWeight;
+        // Normalize to 100 at start, then weight
+        const normalizedValue = (price / firstPrice) * 100;
+        indexValue += normalizedValue * weights[stock.ticker];
       }
       
-      indexHistory.push({ date, close: lastValidValue });
+      indexHistory.push({ date, close: indexValue });
     }
 
     // Calculate total change
@@ -539,10 +640,10 @@ function IndexOverview({
         </div>
       )}
 
-      {/* Chart */}
+      {/* Interactive Chart */}
       {indexData.history.length > 1 && (
         <div className="h-24 mb-3">
-          <Sparkline history={indexData.history} isPositive={isPositive} height={96} />
+          <InteractiveChart history={indexData.history} isPositive={isPositive} height={96} />
         </div>
       )}
 
