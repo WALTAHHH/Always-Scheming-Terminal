@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 
 export function Header() {
@@ -6,9 +7,14 @@ export function Header() {
     <header className="h-12 sm:h-14 border-b border-ast-border sticky top-0 z-50 bg-ast-bg/95 backdrop-blur-sm">
       <div className="h-full max-w-5xl mx-auto px-3 sm:px-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-ast-accent text-base sm:text-lg">⚡</span>
+          <Image
+            src="/logo.png"
+            alt="Always Scheming"
+            width={24}
+            height={24}
+            className="w-5 h-5 sm:w-6 sm:h-6"
+          />
           <h1 className="font-semibold text-sm sm:text-lg tracking-tight">
-            <span className="text-ast-accent">AS</span>{" "}
             <span className="text-ast-text hidden sm:inline">
               <span className="text-ast-accent">Always</span>{" "}
               <span className="text-ast-pink">Scheming</span>{" "}

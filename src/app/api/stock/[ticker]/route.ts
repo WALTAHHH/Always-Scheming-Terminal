@@ -55,22 +55,26 @@ export async function GET(
       return NextResponse.json({ quote: null, history: [], error: "No quote data" });
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const q = quoteData as any;
     const quote: StockQuote = {
-      ticker: quoteData.symbol,
-      price: quoteData.regularMarketPrice || 0,
-      change: quoteData.regularMarketChange || 0,
-      changePercent: quoteData.regularMarketChangePercent || 0,
-      marketCap: quoteData.marketCap || 0,
-      previousClose: quoteData.regularMarketPreviousClose || 0,
-      fiftyTwoWeekHigh: quoteData.fiftyTwoWeekHigh || 0,
-      fiftyTwoWeekLow: quoteData.fiftyTwoWeekLow || 0,
-      currency: quoteData.currency || "USD",
-      exchange: quoteData.exchange || "",
+      ticker: q.symbol,
+      price: q.regularMarketPrice || 0,
+      change: q.regularMarketChange || 0,
+      changePercent: q.regularMarketChangePercent || 0,
+      marketCap: q.marketCap || 0,
+      previousClose: q.regularMarketPreviousClose || 0,
+      fiftyTwoWeekHigh: q.fiftyTwoWeekHigh || 0,
+      fiftyTwoWeekLow: q.fiftyTwoWeekLow || 0,
+      currency: q.currency || "USD",
+      exchange: q.exchange || "",
     };
 
-    const history: StockHistory[] = (chartData.quotes || [])
-      .filter((q) => q.close !== null && q.close !== undefined)
-      .map((q) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const chart = chartData as any;
+    const history: StockHistory[] = (chart.quotes || [])
+      .filter((q: { close?: number | null }) => q.close !== null && q.close !== undefined)
+      .map((q: { date: Date | string; close: number }) => ({
         date: new Date(q.date).toISOString().split("T")[0],
         close: q.close as number,
       }));
