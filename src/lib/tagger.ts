@@ -20,6 +20,18 @@ function matchesAny(text: string, keywords: string[]): boolean {
   });
 }
 
+/**
+ * Count how many keywords match in the text using word boundaries.
+ * Used for categories that require multiple signals to reduce false positives.
+ */
+function countMatches(text: string, keywords: string[]): number {
+  return keywords.filter((kw) => {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`\\b${escaped}\\b`, "i");
+    return re.test(text);
+  }).length;
+}
+
 // ── Rule-based: Platform keywords ──────────────────────────────────
 const PLATFORM_RULES: Record<string, string[]> = {
   mobile: [
@@ -285,6 +297,19 @@ const CATEGORY_RULES_TITLE_ONLY: Record<string, string[]> = {
   ],
 };
 
+// ── Negative patterns for earnings (exclude analysis/opinion pieces) ──
+const EARNINGS_NEGATIVE_PATTERNS: string[] = [
+  // Analysis/opinion indicators
+  "analysis", "opinion", "editorial", "commentary", "perspective",
+  "what it means", "what this means", "implications",
+  "my take", "our take", "deep dive", "breakdown",
+  // Future predictions (not actual earnings)
+  "will dominate", "could dominate", "may dominate",
+  "predictions", "forecast", "outlook", "trends to watch",
+  // General industry pieces
+  "state of the industry", "industry trends", "market overview",
+];
+
 // All possible categories (for UI to show even when count is 0)
 export const ALL_CATEGORIES = [
   "earnings",
@@ -319,7 +344,16 @@ export function tagItem(
 
   // Full text matching (title + content) for specific categories
   for (const [cat, keywords] of Object.entries(CATEGORY_RULES_FULL)) {
-    if (matchesAny(text, keywords)) {
+    if (cat === "earnings") {
+      // Earnings requires 2+ keyword matches to reduce false positives
+      const matchCount = countMatches(text, keywords);
+      if (matchCount >= 2) {
+        // Also check negative patterns — exclude analysis/opinion pieces
+        if (!matchesAny(text, EARNINGS_NEGATIVE_PATTERNS)) {
+          categories.add(cat);
+        }
+      }
+    } else if (matchesAny(text, keywords)) {
       categories.add(cat);
     }
   }
