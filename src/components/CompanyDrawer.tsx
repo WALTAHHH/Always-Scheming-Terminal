@@ -20,13 +20,16 @@ export function openCompanyDrawer(name: string) {
   }
 }
 
-type ChartRange = "1w" | "1mo" | "6mo" | "1y";
+type ChartRange = "1d" | "1w" | "1mo" | "3mo" | "ytd" | "1y" | "all";
 
-const RANGE_CONFIG: Record<ChartRange, { range: string; interval: string; label: string }> = {
-  "1w": { range: "5d", interval: "1h", label: "1W" },
-  "1mo": { range: "1mo", interval: "1d", label: "1M" },
-  "6mo": { range: "6mo", interval: "1d", label: "6M" },
-  "1y": { range: "1y", interval: "1wk", label: "1Y" },
+const RANGE_CONFIG: Record<ChartRange, { range: string; label: string }> = {
+  "1d": { range: "1d", label: "1D" },
+  "1w": { range: "5d", label: "1W" },
+  "1mo": { range: "1mo", label: "1M" },
+  "3mo": { range: "3mo", label: "3M" },
+  "ytd": { range: "ytd", label: "YTD" },
+  "1y": { range: "1y", label: "1Y" },
+  "all": { range: "5y", label: "ALL" },
 };
 
 function formatCurrency(value: number, currency: string = "USD"): string {
@@ -44,10 +47,19 @@ function formatMarketCap(value: number): string {
   return `$${value.toFixed(0)}`;
 }
 
-function MiniChart({ history, isPositive }: { history: StockHistory[]; isPositive: boolean }) {
+interface InteractiveChartProps {
+  history: StockHistory[];
+  isPositive: boolean;
+  currency: string;
+  onHover?: (price: number | null, date: string | null) => void;
+}
+
+function InteractiveChart({ history, isPositive, currency, onHover }: InteractiveChartProps) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
   if (history.length < 2) {
     return (
-      <div className="h-24 bg-ast-surface/50 rounded flex items-center justify-center">
+      <div className="h-40 rounded flex items-center justify-center">
         <span className="text-ast-muted text-xs">No chart data</span>
       </div>
     );
@@ -57,19 +69,98 @@ function MiniChart({ history, isPositive }: { history: StockHistory[]; isPositiv
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const range = max - min || 1;
+  const padding = 8;
+  const width = 100;
+  const height = 100;
 
   const points = prices.map((price, i) => {
-    const x = 5 + (i / (prices.length - 1)) * 90;
-    const y = 5 + 90 - ((price - min) / range) * 90;
-    return `${x},${y}`;
+    const x = padding + (i / (prices.length - 1)) * (width - padding * 2);
+    const y = padding + (height - padding * 2) - ((price - min) / range) * (height - padding * 2);
+    return { x, y, price, date: history[i].date };
   });
 
+  const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x},${p.y}`).join(" ");
   const color = isPositive ? "#00d4aa" : "#ff6b8a";
 
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * width;
+    const index = Math.round(((x - padding) / (width - padding * 2)) * (points.length - 1));
+    const clampedIndex = Math.max(0, Math.min(points.length - 1, index));
+    setHoverIndex(clampedIndex);
+    if (onHover && points[clampedIndex]) {
+      onHover(points[clampedIndex].price, points[clampedIndex].date);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setHoverIndex(null);
+    if (onHover) onHover(null, null);
+  };
+
+  const hoverPoint = hoverIndex !== null ? points[hoverIndex] : null;
+
   return (
-    <div className="h-24 bg-ast-surface/50 rounded overflow-hidden">
-      <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
-        <path d={`M ${points.join(" L ")}`} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+    <div className="h-40 w-full relative">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full h-full"
+        preserveAspectRatio="none"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        style={{ cursor: "crosshair" }}
+      >
+        {/* Gradient fill under line */}
+        <defs>
+          <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        
+        {/* Filled area */}
+        <path
+          d={`${pathD} L ${points[points.length - 1].x},${height - padding} L ${padding},${height - padding} Z`}
+          fill="url(#chartGradient)"
+        />
+        
+        {/* Line */}
+        <path
+          d={pathD}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* Hover line and dot */}
+        {hoverPoint && (
+          <>
+            <line
+              x1={hoverPoint.x}
+              y1={padding}
+              x2={hoverPoint.x}
+              y2={height - padding}
+              stroke={color}
+              strokeWidth="1"
+              strokeDasharray="2,2"
+              vectorEffect="non-scaling-stroke"
+              opacity="0.5"
+            />
+            <circle
+              cx={hoverPoint.x}
+              cy={hoverPoint.y}
+              r="4"
+              fill={color}
+              stroke="#0d1117"
+              strokeWidth="2"
+              vectorEffect="non-scaling-stroke"
+            />
+          </>
+        )}
       </svg>
     </div>
   );
@@ -92,7 +183,9 @@ interface DrawerContentProps {
 function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps) {
   const [stockData, setStockData] = useState<StockResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [chartRange, setChartRange] = useState<ChartRange>("1mo");
+  const [chartRange, setChartRange] = useState<ChartRange>("3mo");
+  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
 
   const relatedItems = useMemo(() => {
     if (!companyData) return [];
@@ -113,7 +206,7 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
       setLoading(true);
       try {
         const config = RANGE_CONFIG[chartRange];
-        const res = await fetch(`/api/stock/${companyData.ticker}?range=${config.range}&interval=${config.interval}`);
+        const res = await fetch(`/api/stock/${companyData.ticker}?range=${config.range}`);
         const data = await res.json();
         setStockData(data);
       } catch {
@@ -181,21 +274,43 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
               )}
 
               <div className="px-5 py-4 border-b border-ast-border">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs text-ast-muted uppercase">Price History</span>
-                  <div className="flex gap-1">
-                    {(Object.keys(RANGE_CONFIG) as ChartRange[]).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => setChartRange(r)}
-                        className={`px-2 py-0.5 text-[10px] rounded border ${chartRange === r ? "border-ast-accent text-ast-accent" : "border-ast-border text-ast-muted"}`}
-                      >
-                        {RANGE_CONFIG[r].label}
-                      </button>
-                    ))}
+                {/* Hover price display */}
+                {hoverPrice !== null ? (
+                  <div className="mb-2">
+                    <div className="text-xl font-semibold text-ast-text">{formatCurrency(hoverPrice, quote?.currency)}</div>
+                    <div className="text-xs text-ast-muted">{hoverDate}</div>
                   </div>
+                ) : (
+                  <div className="mb-2 h-8" /> 
+                )}
+                
+                {/* Chart */}
+                <InteractiveChart 
+                  history={history} 
+                  isPositive={isPositive}
+                  currency={quote?.currency || "USD"}
+                  onHover={(price, date) => {
+                    setHoverPrice(price);
+                    setHoverDate(date);
+                  }}
+                />
+                
+                {/* Range selector */}
+                <div className="flex justify-center gap-1 mt-3">
+                  {(Object.keys(RANGE_CONFIG) as ChartRange[]).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setChartRange(r)}
+                      className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                        chartRange === r 
+                          ? "bg-ast-accent/20 text-ast-accent" 
+                          : "text-ast-muted hover:text-ast-text"
+                      }`}
+                    >
+                      {RANGE_CONFIG[r].label}
+                    </button>
+                  ))}
                 </div>
-                <MiniChart history={history} isPositive={isPositive} />
               </div>
 
               {companyData.irUrl && (

@@ -27,12 +27,21 @@ export interface StockResponse {
   error?: string;
 }
 
+// Helper to get start of year
+function getYTDStart(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), 0, 1);
+}
+
 // Map range strings to yahoo-finance2 period format
-const RANGE_MAP: Record<string, { period1: Date; interval: "1d" | "1wk" | "1mo" }> = {
-  "5d": { period1: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), interval: "1d" },
+const RANGE_MAP: Record<string, { period1: Date; interval: "1d" | "1wk" | "1mo" | "1h" | "5m" }> = {
+  "1d": { period1: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), interval: "5m" },
+  "5d": { period1: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), interval: "1h" },
   "1mo": { period1: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), interval: "1d" },
-  "6mo": { period1: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000), interval: "1d" },
+  "3mo": { period1: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), interval: "1d" },
+  "ytd": { period1: getYTDStart(), interval: "1d" },
   "1y": { period1: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), interval: "1wk" },
+  "5y": { period1: new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000), interval: "1mo" },
 };
 
 export async function GET(
