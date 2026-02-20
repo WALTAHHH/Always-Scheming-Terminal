@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { KeyboardNav } from "@/components/KeyboardNav";
+import { FeedbackButton } from "@/components/FeedbackButton";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -32,6 +33,7 @@ export default function RootLayout({
       <body className="bg-ast-bg text-ast-text font-mono antialiased min-h-screen">
         <KeyboardNav />
         {children}
+        <FeedbackButton />
       </body>
     </html>
   );
