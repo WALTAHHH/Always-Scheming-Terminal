@@ -23,12 +23,14 @@ function formatTimeAgo(dateStr: string | null): string {
 /**
  * Self-updating relative timestamp.
  * Re-renders every 60s to keep "3m", "2h" etc. fresh.
+ * Uses suppressHydrationWarning to avoid SSR/client mismatch errors.
  */
 export function TimeAgo({ date, className }: { date: string | null; className?: string }) {
-  const [text, setText] = useState(() => formatTimeAgo(date));
+  const [text, setText] = useState<string>("--:--");
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Update immediately in case SSR value is stale
+    setMounted(true);
     setText(formatTimeAgo(date));
 
     const interval = setInterval(() => {
@@ -37,6 +39,11 @@ export function TimeAgo({ date, className }: { date: string | null; className?: 
 
     return () => clearInterval(interval);
   }, [date]);
+
+  // Render placeholder until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return <span className={className} suppressHydrationWarning>--:--</span>;
+  }
 
   return <span className={className}>{text}</span>;
 }
