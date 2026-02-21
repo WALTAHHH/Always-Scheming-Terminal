@@ -217,8 +217,14 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore }: FeedP
     }));
   }, [filtered]);
 
-  // Group by date
-  const groups = useMemo(() => groupByDate(clusters), [clusters]);
+  // Group by date - only compute after mount to avoid hydration mismatch
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  
+  const groups = useMemo(() => {
+    if (!mounted) return [{ label: "Loading...", clusters: [] }];
+    return groupByDate(clusters);
+  }, [clusters, mounted]);
 
   // Sort within each date group
   const sortedGroups = useMemo(
