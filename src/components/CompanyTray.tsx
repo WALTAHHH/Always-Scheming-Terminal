@@ -76,7 +76,7 @@ function formatMarketCap(value: number): string {
   return `$${value.toFixed(0)}`;
 }
 
-// Sparkline component
+// Sparkline component - with gradient fill
 function Sparkline({ history, isPositive, height = 24 }: { history: StockHistory[]; isPositive: boolean; height?: number }) {
   if (history.length < 2) {
     return <div className="h-6 bg-ast-surface/30 rounded" />;
@@ -89,17 +89,27 @@ function Sparkline({ history, isPositive, height = 24 }: { history: StockHistory
 
   const points = prices.map((price, i) => {
     const x = (i / (prices.length - 1)) * 100;
-    const y = 100 - ((price - min) / range) * 100;
-    return `${x},${y}`;
+    const y = 5 + 90 - ((price - min) / range) * 90; // 5% padding top/bottom
+    return { x, y };
   });
 
+  const pathD = `M ${points.map(p => `${p.x},${p.y}`).join(" L ")}`;
+  const areaD = `${pathD} L 100,95 L 0,95 Z`;
   const color = isPositive ? "#00d4aa" : "#ff6b8a";
+  const gradientId = `sparkGrad-${isPositive ? "pos" : "neg"}-${Math.random().toString(36).slice(2, 8)}`;
 
   return (
     <div style={{ height }} className="w-full">
       <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill={`url(#${gradientId})`} />
         <path 
-          d={`M ${points.join(" L ")}`} 
+          d={pathD} 
           fill="none" 
           stroke={color} 
           strokeWidth="2" 
@@ -110,7 +120,7 @@ function Sparkline({ history, isPositive, height = 24 }: { history: StockHistory
   );
 }
 
-// Full chart component
+// Full chart component - with gradient fill
 function MiniChart({ history, isPositive }: { history: StockHistory[]; isPositive: boolean }) {
   if (history.length < 2) {
     return (
@@ -128,15 +138,25 @@ function MiniChart({ history, isPositive }: { history: StockHistory[]; isPositiv
   const points = prices.map((price, i) => {
     const x = 2 + (i / (prices.length - 1)) * 96;
     const y = 5 + 90 - ((price - min) / range) * 90;
-    return `${x},${y}`;
+    return { x, y };
   });
 
+  const pathD = `M ${points.map(p => `${p.x},${p.y}`).join(" L ")}`;
+  const areaD = `${pathD} L 98,95 L 2,95 Z`;
   const color = isPositive ? "#00d4aa" : "#ff6b8a";
+  const gradientId = `miniGrad-${isPositive ? "pos" : "neg"}`;
 
   return (
     <div className="h-20 bg-ast-surface/50 rounded overflow-hidden">
       <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
-        <path d={`M ${points.join(" L ")}`} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill={`url(#${gradientId})`} />
+        <path d={pathD} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
       </svg>
     </div>
   );
@@ -402,17 +422,19 @@ function CompanyModal({
   );
 }
 
-// Interactive chart with hover tooltip (Robinhood-style)
+// Interactive chart with hover tooltip (Robinhood-style) - Enhanced version
 function InteractiveChart({ 
   history, 
   isPositive, 
-  height = 96 
+  height = 96,
+  previousClose,
 }: { 
   history: StockHistory[]; 
   isPositive: boolean; 
   height?: number;
+  previousClose?: number;
 }) {
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [hoverX, setHoverX] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   if (history.length < 2) {
@@ -422,36 +444,65 @@ function InteractiveChart({
   }
 
   const prices = history.map((h) => h.close);
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
+  const allPrices = previousClose ? [...prices, previousClose] : prices;
+  const min = Math.min(...allPrices);
+  const max = Math.max(...allPrices);
   const range = max - min || 1;
+  
+  const padding = { top: 5, bottom: 5, left: 0, right: 0 };
+  const chartHeight = 100 - padding.top - padding.bottom;
 
   const points = prices.map((price, i) => {
     const x = (i / (prices.length - 1)) * 100;
-    const y = 100 - ((price - min) / range) * 100;
+    const y = padding.top + chartHeight - ((price - min) / range) * chartHeight;
     return { x, y, price, date: history[i].date };
   });
 
   const pathD = `M ${points.map(p => `${p.x},${p.y}`).join(" L ")}`;
+  const areaD = `${pathD} L 100,${padding.top + chartHeight} L 0,${padding.top + chartHeight} Z`;
   const color = isPositive ? "#00d4aa" : "#ff6b8a";
+  const gradientId = `trayGradient-${isPositive ? "pos" : "neg"}-${height}`;
+  
+  // Previous close reference line
+  const prevCloseY = previousClose 
+    ? padding.top + chartHeight - ((previousClose - min) / range) * chartHeight
+    : null;
+
+  // Interpolate price at hover position
+  const getInterpolatedPoint = (xPercent: number) => {
+    if (points.length < 2) return null;
+    const x = xPercent * 100;
+    let leftIdx = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      if (points[i + 1].x >= x) { leftIdx = i; break; }
+      leftIdx = i;
+    }
+    const rightIdx = Math.min(leftIdx + 1, points.length - 1);
+    const left = points[leftIdx];
+    const right = points[rightIdx];
+    if (left.x === right.x) return left;
+    const t = (x - left.x) / (right.x - left.x);
+    return {
+      x,
+      y: left.y + t * (right.y - left.y),
+      price: left.price + t * (right.price - left.price),
+      date: left.date,
+    };
+  };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const index = Math.round(x * (history.length - 1));
-    setHoverIndex(Math.max(0, Math.min(history.length - 1, index)));
+    setHoverX((e.clientX - rect.left) / rect.width);
   };
 
-  const handleMouseLeave = () => setHoverIndex(null);
+  const handleMouseLeave = () => setHoverX(null);
 
-  const hoverPoint = hoverIndex !== null ? points[hoverIndex] : null;
-  const hoverData = hoverIndex !== null ? history[hoverIndex] : null;
+  const hoverPoint = hoverX !== null ? getInterpolatedPoint(hoverX) : null;
 
-  // Format date nicely
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
   return (
@@ -463,23 +514,58 @@ function InteractiveChart({
       onMouseLeave={handleMouseLeave}
     >
       <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        
+        {/* Gradient fill under line */}
+        <path d={areaD} fill={`url(#${gradientId})`} />
+        
+        {/* Previous close reference line */}
+        {prevCloseY !== null && (
+          <line 
+            x1="0" y1={prevCloseY} 
+            x2="100" y2={prevCloseY} 
+            stroke="#888888" 
+            strokeWidth="1" 
+            strokeDasharray="2,2"
+            vectorEffect="non-scaling-stroke"
+            opacity="0.5"
+          />
+        )}
+        
+        {/* Main line */}
         <path d={pathD} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
         
-        {/* Hover indicator - minimal vertical line only */}
+        {/* Hover indicator */}
         {hoverPoint && (
-          <line 
-            x1={hoverPoint.x} y1="0" 
-            x2={hoverPoint.x} y2="100" 
-            stroke="#ffffff" 
-            strokeWidth="1" 
-            vectorEffect="non-scaling-stroke"
-            opacity="0.3"
-          />
+          <>
+            <line 
+              x1={hoverPoint.x} y1={padding.top} 
+              x2={hoverPoint.x} y2={padding.top + chartHeight} 
+              stroke="#ffffff" 
+              strokeWidth="1" 
+              vectorEffect="non-scaling-stroke"
+              opacity="0.4"
+            />
+            <circle 
+              cx={hoverPoint.x} 
+              cy={hoverPoint.y} 
+              r="3" 
+              fill={color} 
+              stroke="#fff" 
+              strokeWidth="1.5"
+              vectorEffect="non-scaling-stroke"
+            />
+          </>
         )}
       </svg>
 
       {/* Tooltip */}
-      {hoverData && hoverPoint && (
+      {hoverPoint && (
         <div 
           className="absolute top-0 pointer-events-none px-2 py-1 bg-ast-surface border border-ast-border rounded shadow-lg text-xs z-10"
           style={{ 
@@ -487,8 +573,8 @@ function InteractiveChart({
             transform: `translateX(${hoverPoint.x > 70 ? '-100%' : '0'})`,
           }}
         >
-          <div className="text-ast-text font-semibold">{hoverData.close.toFixed(2)} pts</div>
-          <div className="text-ast-muted text-[10px]">{formatDate(hoverData.date)}</div>
+          <div className="text-ast-text font-semibold">{hoverPoint.price.toFixed(2)} pts</div>
+          <div className="text-ast-muted text-[10px]">{formatDate(hoverPoint.date)}</div>
         </div>
       )}
     </div>
