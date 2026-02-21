@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import { TimeAgo } from "./TimeAgo";
 import Image from "next/image";
@@ -105,12 +105,18 @@ interface FeedRowProps {
 
 export function FeedRow({ item }: FeedRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const [age, setAge] = useState<"fresh" | "normal" | "old">("normal");
+  
   const sourceType = item.sources?.source_type || "news";
   const borderColor = SOURCE_COLORS[sourceType] || "border-l-ast-accent";
   const fullContent = cleanContent(item.content);
   const hasMoreContent = fullContent.length > 180;
   const faviconUrl = getFaviconUrl(item.sources?.url);
-  const age = getArticleAge(item.published_at);
+
+  // Calculate age client-side only to avoid hydration mismatch
+  useEffect(() => {
+    setAge(getArticleAge(item.published_at));
+  }, [item.published_at]);
 
   return (
     <div className={`border-l-2 ${borderColor} ${age === "old" ? "opacity-50" : ""}`}>
