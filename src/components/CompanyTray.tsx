@@ -561,7 +561,16 @@ function IndexModal({
         {/* Header */}
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-lg font-semibold text-ast-text">AS Primitives Index</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-ast-text">AS Primitives Index</h2>
+              <div className="relative group">
+                <span className="text-ast-muted hover:text-ast-accent cursor-help">ⓘ</span>
+                <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-ast-bg border border-ast-border rounded-lg shadow-xl text-xs text-ast-text w-72 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                  <p className="font-medium mb-1">What is the AS Primitives Index?</p>
+                  <p className="text-ast-muted leading-relaxed">A basket of 13 gaming-adjacent public companies spanning Input (hardware), Interface (platforms), and Infrastructure (cloud/AI). Toggle between equal-weighted and market-cap-weighted views.</p>
+                </div>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <span className="text-ast-accent text-sm">{indexData.stockCount} stocks</span>
               <span className={`text-sm font-medium ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
@@ -811,6 +820,13 @@ function IndexOverview({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-ast-text">AS Primitives Index</span>
+            <div className="relative group">
+              <span className="text-ast-muted hover:text-ast-accent cursor-help text-xs">ⓘ</span>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-ast-surface border border-ast-border rounded-lg shadow-xl text-xs text-ast-text w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <p className="font-medium mb-1">What is this?</p>
+                <p className="text-ast-muted leading-relaxed">A basket of 13 gaming-adjacent public companies spanning Input (hardware), Interface (platforms), and Infrastructure (cloud/AI). Equal or market-cap weighted.</p>
+              </div>
+            </div>
             <span className="text-[10px] text-ast-muted">
               {indexData.stockCount} stocks
             </span>
