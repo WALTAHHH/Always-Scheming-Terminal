@@ -375,9 +375,26 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore }: FeedP
             </div>
           );
         })}
-        {filtered.length === 0 && (
+        {filtered.length === 0 && !loadingMore && (
           <div className="text-center py-16 text-ast-muted">
             No items match your filters.
+          </div>
+        )}
+
+        {/* Loading skeleton when filtering with few results */}
+        {filtered.length === 0 && loadingMore && (
+          <div className="space-y-3 py-4 animate-pulse">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="border border-ast-border rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded bg-ast-surface" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-3/4 bg-ast-surface rounded" />
+                    <div className="h-3 w-1/2 bg-ast-surface/50 rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -385,7 +402,10 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore }: FeedP
         {hasMore && (
           <div ref={sentinelRef} className="py-8 text-center">
             {loadingMore ? (
-              <span className="text-ast-muted text-xs animate-pulse">Loading more articles...</span>
+              <div className="flex items-center justify-center gap-2">
+                <span className="inline-block w-4 h-4 border-2 border-ast-accent/30 border-t-ast-accent rounded-full animate-spin" />
+                <span className="text-ast-muted text-xs">Loading more articles...</span>
+              </div>
             ) : (
               <span className="text-ast-muted/50 text-xs">·</span>
             )}
