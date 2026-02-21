@@ -101,7 +101,7 @@ export interface StoryCluster {
  */
 export function clusterItems(
   items: FeedItem[],
-  threshold = 0.3
+  threshold = parseFloat(process.env.CLUSTER_THRESHOLD || "0.3")
 ): StoryCluster[] {
   const MAX_CLUSTER_SIZE = 10;
   const TIME_WINDOW_MS = 72 * 60 * 60 * 1000; // 72 hours
