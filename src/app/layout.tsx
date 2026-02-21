@@ -32,11 +32,13 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-ast-bg text-ast-text font-mono antialiased min-h-screen">
-        <PostHogProvider>
-          <KeyboardNav />
-          {children}
-          <FeedbackButton />
-        </PostHogProvider>
+        <KeyboardNav />
+        {children}
+        <FeedbackButton />
+        {/* Debug: static test element */}
+        <div style={{ position: 'fixed', bottom: '100px', right: '20px', zIndex: 99999, background: 'red', color: 'white', padding: '20px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold' }}>
+          TEST BUTTON
+        </div>
       </body>
     </html>
   );
