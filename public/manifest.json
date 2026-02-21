@@ -1,0 +1,33 @@
+{
+  "name": "Always Scheming Terminal",
+  "short_name": "AST",
+  "description": "Gaming industry intelligence, real-time.",
+  "start_url": "/?utm_source=pwa&utm_medium=installed",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#00d4aa",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["news", "business"],
+  "screenshots": [],
+  "prefer_related_applications": false
+}

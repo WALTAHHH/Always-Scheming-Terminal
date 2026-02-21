@@ -20,6 +20,18 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        
+        {/* PWA */}
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#00d4aa" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="AST" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="application-name" content="AST" />
+        <meta name="msapplication-TileColor" content="#0d1117" />
+        <meta name="msapplication-tap-highlight" content="no" />
+        
         <link
           href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
           rel="stylesheet"
