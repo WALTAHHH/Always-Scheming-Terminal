@@ -542,29 +542,32 @@ function InteractiveChart({
         {/* Main line */}
         <path d={pathD} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
         
-        {/* Hover indicator */}
+        {/* Hover indicator - just the vertical line in SVG */}
         {hoverPoint && (
-          <>
-            <line 
-              x1={hoverPoint.x} y1={padding.top} 
-              x2={hoverPoint.x} y2={padding.top + chartHeight} 
-              stroke="#ffffff" 
-              strokeWidth="1" 
-              vectorEffect="non-scaling-stroke"
-              opacity="0.4"
-            />
-            <circle 
-              cx={hoverPoint.x} 
-              cy={hoverPoint.y} 
-              r="3" 
-              fill={color} 
-              stroke="#fff" 
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-            />
-          </>
+          <line 
+            x1={hoverPoint.x} y1={padding.top} 
+            x2={hoverPoint.x} y2={padding.top + chartHeight} 
+            stroke="#ffffff" 
+            strokeWidth="1" 
+            vectorEffect="non-scaling-stroke"
+            opacity="0.4"
+          />
         )}
       </svg>
+
+      {/* Hover dot - HTML element to avoid SVG stretching */}
+      {hoverPoint && (
+        <div 
+          className="absolute w-2 h-2 rounded-full pointer-events-none"
+          style={{ 
+            left: `${hoverPoint.x}%`,
+            top: `${hoverPoint.y}%`,
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: color,
+            boxShadow: '0 0 0 2px #fff',
+          }}
+        />
+      )}
 
       {/* Tooltip */}
       {hoverPoint && (

@@ -361,33 +361,34 @@ function InteractiveChart({
           </g>
         ))}
 
-        {/* Hover crosshair and dot (smooth interpolation) */}
+        {/* Hover vertical line only - dot moved outside SVG */}
         {hoverData && hoverX !== null && (
-          <>
-            {/* Vertical line */}
-            <line
-              x1={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
-              y1={padding.top}
-              x2={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
-              y2={height - padding.bottom}
-              stroke="#ffffff"
-              strokeWidth="1"
-              vectorEffect="non-scaling-stroke"
-              opacity="0.5"
-            />
-            {/* Dot on line */}
-            <circle
-              cx={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
-              cy={hoverData.y}
-              r="6"
-              fill={color}
-              stroke="#ffffff"
-              strokeWidth="2"
-              vectorEffect="non-scaling-stroke"
-            />
-          </>
+          <line
+            x1={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
+            y1={padding.top}
+            x2={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
+            y2={height - padding.bottom}
+            stroke="#ffffff"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+            opacity="0.5"
+          />
         )}
       </svg>
+      
+      {/* Hover dot - HTML element to avoid SVG aspect ratio stretching */}
+      {hoverData && hoverX !== null && (
+        <div 
+          className="absolute w-3 h-3 rounded-full pointer-events-none"
+          style={{ 
+            left: `${(Math.max(padding.left, Math.min(width - padding.right, hoverX)) / width) * 100}%`,
+            top: `${(hoverData.y / height) * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: color,
+            boxShadow: '0 0 0 2px #fff',
+          }}
+        />
+      )}
 
       {/* News marker tooltip */}
       {activeMarker && (
