@@ -184,21 +184,21 @@ function CompanyCard({
   return (
     <button
       onClick={onClick}
-      className={`w-full p-2.5 rounded border text-left transition-all ${
+      className={`w-full p-3 rounded-lg border text-left transition-all ${
         isExpanded 
-          ? "border-ast-accent bg-ast-accent/5" 
-          : "border-ast-border hover:border-ast-muted bg-ast-surface/50"
+          ? "border-ast-accent bg-ast-accent/5 shadow-md" 
+          : "border-ast-border hover:border-ast-muted bg-ast-surface/50 hover:bg-ast-surface"
       }`}
     >
       {/* Header row */}
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="text-xs font-semibold text-ast-accent">
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="text-sm font-bold text-ast-accent tracking-tight">
           {companyData?.ticker || name.slice(0, 6).toUpperCase()}
         </span>
         {loading ? (
-          <span className="text-[10px] text-ast-muted animate-pulse">...</span>
+          <span className="text-xs text-ast-muted animate-pulse">...</span>
         ) : quote ? (
-          <span className={`text-xs font-semibold ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
+          <span className={`text-sm font-bold ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
             {isPositive ? "▲" : "▼"}{Math.abs(quote.changePercent).toFixed(1)}%
           </span>
         ) : null}
@@ -206,23 +206,23 @@ function CompanyCard({
       
       {/* Price */}
       {quote && (
-        <div className="text-sm font-medium text-ast-text mb-1">
+        <div className="text-base font-semibold text-ast-text mb-2">
           {formatCurrency(quote.price, quote.currency)}
         </div>
       )}
       
-      {/* Sparkline */}
+      {/* Sparkline - taller */}
       {history.length > 0 && (
-        <div className="mb-1.5">
-          <Sparkline history={history} isPositive={isPositive} height={28} />
+        <div className="mb-2">
+          <Sparkline history={history} isPositive={isPositive} height={40} />
         </div>
       )}
       
       {/* Footer */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-ast-muted truncate">{name}</span>
+        <span className="text-xs text-ast-muted truncate">{name}</span>
         {mentionCount > 0 && (
-          <span className="text-[10px] text-ast-muted">{mentionCount}×</span>
+          <span className="text-xs text-ast-accent font-medium">{mentionCount}×</span>
         )}
       </div>
     </button>
@@ -898,8 +898,8 @@ function IndexOverview({
 
         {/* Interactive Chart */}
         {indexData.history.length > 1 && (
-          <div className="h-24 mb-3">
-            <InteractiveChart history={indexData.history} isPositive={isPositive} height={96} />
+          <div className="h-32 mb-3">
+            <InteractiveChart history={indexData.history} isPositive={isPositive} height={128} />
           </div>
         )}
       </button>
