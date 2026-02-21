@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { findCompanyByName, isPublicCompany, type CompanyData } from "@/lib/companies";
+import { findCompanyByName, type CompanyData } from "@/lib/companies";
 import type { StockResponse, StockQuote, StockHistory } from "@/app/api/stock/[ticker]/route";
 import type { FeedItem } from "@/lib/database.types";
 
@@ -47,85 +47,272 @@ function formatMarketCap(value: number): string {
   return `$${value.toFixed(0)}`;
 }
 
+function formatDateShort(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// ── News marker type ──
+interface NewsMarker {
+  date: string;
+  x: number;
+  y: number;
+  item: FeedItem;
+}
+
+// ── Chart skeleton for loading state ──
+function ChartSkeleton() {
+  return (
+    <div className="h-56 w-full relative animate-pulse">
+      <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+        <path
+          d="M 8,70 Q 25,65 35,50 T 55,55 T 75,40 T 92,45"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="text-ast-border"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <div className="absolute inset-0 bg-gradient-to-t from-ast-bg to-transparent" />
+    </div>
+  );
+}
+
 interface InteractiveChartProps {
   history: StockHistory[];
   isPositive: boolean;
   currency: string;
+  previousClose?: number;
+  newsItems?: FeedItem[];
   onHover?: (price: number | null, date: string | null) => void;
+  isLoading?: boolean;
 }
 
-function InteractiveChart({ history, isPositive, currency, onHover }: InteractiveChartProps) {
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+function InteractiveChart({ 
+  history, 
+  isPositive, 
+  currency, 
+  previousClose,
+  newsItems = [],
+  onHover,
+  isLoading 
+}: InteractiveChartProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverX, setHoverX] = useState<number | null>(null);
+  const [activeMarker, setActiveMarker] = useState<NewsMarker | null>(null);
+
+  // Show skeleton while loading
+  if (isLoading) {
+    return <ChartSkeleton />;
+  }
 
   if (history.length < 2) {
     return (
-      <div className="h-40 rounded flex items-center justify-center">
+      <div className="h-56 rounded flex items-center justify-center">
         <span className="text-ast-muted text-xs">No chart data</span>
       </div>
     );
   }
 
   const prices = history.map((h) => h.close);
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
+  const allPrices = previousClose ? [...prices, previousClose] : prices;
+  const min = Math.min(...allPrices);
+  const max = Math.max(...allPrices);
   const range = max - min || 1;
-  const padding = 8;
+  const padding = { top: 12, bottom: 20, left: 8, right: 8 };
   const width = 100;
   const height = 100;
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
 
+  // Build points array
   const points = prices.map((price, i) => {
-    const x = padding + (i / (prices.length - 1)) * (width - padding * 2);
-    const y = padding + (height - padding * 2) - ((price - min) / range) * (height - padding * 2);
+    const x = padding.left + (i / (prices.length - 1)) * chartWidth;
+    const y = padding.top + chartHeight - ((price - min) / range) * chartHeight;
     return { x, y, price, date: history[i].date };
   });
 
+  // Smooth path using cardinal spline (for visual appeal)
   const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x},${p.y}`).join(" ");
+  
   const color = isPositive ? "#00d4aa" : "#ff6b8a";
+  const gradientId = `chartGradient-${isPositive ? "pos" : "neg"}`;
+
+  // Previous close reference line
+  const prevCloseY = previousClose 
+    ? padding.top + chartHeight - ((previousClose - min) / range) * chartHeight
+    : null;
+
+  // Map news items to chart positions
+  const newsMarkers: NewsMarker[] = useMemo(() => {
+    if (!newsItems.length) return [];
+    
+    const markers: NewsMarker[] = [];
+    const dateMap = new Map(points.map((p, i) => [p.date, { x: p.x, y: p.y, index: i }]));
+    
+    for (const item of newsItems) {
+      if (!item.published_at) continue;
+      const itemDate = new Date(item.published_at).toISOString().split("T")[0];
+      
+      // Find closest date in chart
+      let closest = points[0];
+      let minDiff = Infinity;
+      for (const point of points) {
+        const diff = Math.abs(new Date(point.date).getTime() - new Date(itemDate).getTime());
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = point;
+        }
+      }
+      
+      // Only show if within chart range (within 1 day tolerance)
+      if (minDiff <= 24 * 60 * 60 * 1000 * 2) {
+        markers.push({
+          date: itemDate,
+          x: closest.x,
+          y: closest.y,
+          item,
+        });
+      }
+    }
+    
+    return markers;
+  }, [newsItems, points]);
+
+  // Interpolate price at any X position (smooth tracking)
+  const interpolateAtX = useCallback((xPos: number): { price: number; date: string; y: number } | null => {
+    if (points.length < 2) return null;
+    
+    // Clamp to chart bounds
+    const clampedX = Math.max(padding.left, Math.min(padding.left + chartWidth, xPos));
+    
+    // Find surrounding points
+    let leftIdx = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      if (points[i + 1].x >= clampedX) {
+        leftIdx = i;
+        break;
+      }
+      leftIdx = i;
+    }
+    
+    const rightIdx = Math.min(leftIdx + 1, points.length - 1);
+    const left = points[leftIdx];
+    const right = points[rightIdx];
+    
+    if (left.x === right.x) {
+      return { price: left.price, date: left.date, y: left.y };
+    }
+    
+    // Linear interpolation
+    const t = (clampedX - left.x) / (right.x - left.x);
+    const price = left.price + t * (right.price - left.price);
+    const y = left.y + t * (right.y - left.y);
+    const date = t < 0.5 ? left.date : right.date;
+    
+    return { price, date, y };
+  }, [points, padding.left, chartWidth]);
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const svg = e.currentTarget;
     const rect = svg.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * width;
-    const index = Math.round(((x - padding) / (width - padding * 2)) * (points.length - 1));
-    const clampedIndex = Math.max(0, Math.min(points.length - 1, index));
-    setHoverIndex(clampedIndex);
-    if (onHover && points[clampedIndex]) {
-      onHover(points[clampedIndex].price, points[clampedIndex].date);
+    const xPos = ((e.clientX - rect.left) / rect.width) * width;
+    
+    setHoverX(xPos);
+    setActiveMarker(null);
+    
+    const interpolated = interpolateAtX(xPos);
+    if (interpolated && onHover) {
+      onHover(interpolated.price, interpolated.date);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length !== 1) return;
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const xPos = ((e.touches[0].clientX - rect.left) / rect.width) * width;
+    
+    setHoverX(xPos);
+    setActiveMarker(null);
+    
+    const interpolated = interpolateAtX(xPos);
+    if (interpolated && onHover) {
+      onHover(interpolated.price, interpolated.date);
     }
   };
 
   const handleMouseLeave = () => {
-    setHoverIndex(null);
+    setHoverX(null);
+    setActiveMarker(null);
     if (onHover) onHover(null, null);
   };
 
-  const hoverPoint = hoverIndex !== null ? points[hoverIndex] : null;
+  const handleMarkerClick = (marker: NewsMarker, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setActiveMarker(activeMarker?.item.id === marker.item.id ? null : marker);
+  };
+
+  // Get interpolated position for hover
+  const hoverData = hoverX !== null ? interpolateAtX(hoverX) : null;
 
   return (
-    <div className="h-40 w-full relative">
+    <div className="h-56 w-full relative select-none">
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-full"
+        className="w-full h-full transition-opacity duration-300"
         preserveAspectRatio="none"
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        style={{ cursor: "crosshair" }}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleMouseLeave}
+        style={{ cursor: "crosshair", touchAction: "none" }}
       >
-        {/* Gradient fill under line */}
+        {/* Gradient definition */}
         <defs>
-          <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
         </defs>
-        
-        {/* Filled area */}
+
+        {/* Previous close reference line */}
+        {prevCloseY !== null && (
+          <>
+            <line
+              x1={padding.left}
+              y1={prevCloseY}
+              x2={width - padding.right}
+              y2={prevCloseY}
+              stroke="#666"
+              strokeWidth="1"
+              strokeDasharray="3,3"
+              vectorEffect="non-scaling-stroke"
+              opacity="0.5"
+            />
+            <text
+              x={width - padding.right - 1}
+              y={prevCloseY - 2}
+              fill="#666"
+              fontSize="6"
+              textAnchor="end"
+              style={{ fontFamily: "system-ui" }}
+            >
+              Prev
+            </text>
+          </>
+        )}
+
+        {/* Filled area under line */}
         <path
-          d={`${pathD} L ${points[points.length - 1].x},${height - padding} L ${padding},${height - padding} Z`}
-          fill="url(#chartGradient)"
+          d={`${pathD} L ${points[points.length - 1].x},${height - padding.bottom} L ${padding.left},${height - padding.bottom} Z`}
+          fill={`url(#${gradientId})`}
+          className="transition-all duration-500"
         />
-        
-        {/* Line */}
+
+        {/* Main price line */}
         <path
           d={pathD}
           fill="none"
@@ -134,26 +321,57 @@ function InteractiveChart({ history, isPositive, currency, onHover }: Interactiv
           vectorEffect="non-scaling-stroke"
           strokeLinecap="round"
           strokeLinejoin="round"
+          className="transition-all duration-500"
         />
 
-        {/* Hover line and dot */}
-        {hoverPoint && (
-          <>
+        {/* News markers */}
+        {newsMarkers.map((marker, i) => (
+          <g key={marker.item.id} onClick={(e) => handleMarkerClick(marker, e)} style={{ cursor: "pointer" }}>
+            {/* Vertical line from point to bottom */}
             <line
-              x1={hoverPoint.x}
-              y1={padding}
-              x2={hoverPoint.x}
-              y2={height - padding}
-              stroke={color}
+              x1={marker.x}
+              y1={marker.y}
+              x2={marker.x}
+              y2={height - padding.bottom}
+              stroke="#fbbf24"
               strokeWidth="1"
               strokeDasharray="2,2"
               vectorEffect="non-scaling-stroke"
-              opacity="0.5"
+              opacity="0.6"
             />
+            {/* Marker dot */}
             <circle
-              cx={hoverPoint.x}
-              cy={hoverPoint.y}
+              cx={marker.x}
+              cy={marker.y}
               r="4"
+              fill="#fbbf24"
+              stroke="#0d1117"
+              strokeWidth="1.5"
+              vectorEffect="non-scaling-stroke"
+              className="transition-transform hover:scale-150"
+            />
+          </g>
+        ))}
+
+        {/* Hover crosshair and dot (smooth interpolation) */}
+        {hoverData && hoverX !== null && (
+          <>
+            {/* Vertical line */}
+            <line
+              x1={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
+              y1={padding.top}
+              x2={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
+              y2={height - padding.bottom}
+              stroke={color}
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+              opacity="0.4"
+            />
+            {/* Dot on line */}
+            <circle
+              cx={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
+              cy={hoverData.y}
+              r="5"
               fill={color}
               stroke="#0d1117"
               strokeWidth="2"
@@ -162,6 +380,30 @@ function InteractiveChart({ history, isPositive, currency, onHover }: Interactiv
           </>
         )}
       </svg>
+
+      {/* News marker tooltip */}
+      {activeMarker && (
+        <div 
+          className="absolute z-10 bg-ast-surface border border-ast-border rounded-lg shadow-xl p-3 max-w-[200px]"
+          style={{
+            left: `${(activeMarker.x / width) * 100}%`,
+            top: `${(activeMarker.y / height) * 100}%`,
+            transform: "translate(-50%, -120%)",
+          }}
+        >
+          <a 
+            href={activeMarker.item.url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="block text-xs text-ast-text hover:text-ast-accent line-clamp-3"
+          >
+            {activeMarker.item.title}
+          </a>
+          <div className="text-[10px] text-ast-muted mt-1">
+            {formatDateShort(activeMarker.date)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -186,6 +428,7 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
   const [chartRange, setChartRange] = useState<ChartRange>("3mo");
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
+  const [pendingRange, setPendingRange] = useState<ChartRange | null>(null);
 
   const relatedItems = useMemo(() => {
     if (!companyData) return [];
@@ -213,11 +456,18 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
         setStockData(null);
       } finally {
         setLoading(false);
+        setPendingRange(null);
       }
     };
 
     fetchStock();
   }, [companyData, chartRange]);
+
+  const handleRangeChange = (newRange: ChartRange) => {
+    if (newRange === chartRange) return;
+    setPendingRange(newRange);
+    setChartRange(newRange);
+  };
 
   const quote = stockData?.quote;
   const history = stockData?.history || [];
@@ -241,21 +491,37 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
         <div className="flex-1 overflow-y-auto">
           {!companyData || !companyData.ticker ? (
             <div className="p-5 text-ast-muted text-sm">No market data available for "{companyName}"</div>
-          ) : loading && !stockData ? (
-            <div className="p-5 text-ast-muted text-sm animate-pulse">Loading market data...</div>
           ) : (
             <>
-              {quote && quote.price != null && (
-                <div className="px-5 py-4 border-b border-ast-border">
-                  <div className="flex items-baseline gap-3">
-                    <span className="text-2xl font-semibold text-ast-text">{formatCurrency(quote.price, quote.currency)}</span>
-                    <span className={isPositive ? "text-ast-mint" : "text-ast-pink"}>
-                      {isPositive ? "▲" : "▼"} {formatCurrency(Math.abs(quote.change ?? 0), quote.currency)} ({(quote.changePercent ?? 0).toFixed(2)}%)
-                    </span>
+              {/* Price display - show during load too */}
+              <div className="px-5 py-4 border-b border-ast-border">
+                {loading && !stockData ? (
+                  <div className="animate-pulse">
+                    <div className="h-8 w-32 bg-ast-surface rounded mb-2" />
+                    <div className="h-4 w-24 bg-ast-surface rounded" />
                   </div>
-                </div>
-              )}
+                ) : quote && quote.price != null ? (
+                  <>
+                    {/* Show hover price or current price */}
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-3xl font-semibold text-ast-text">
+                        {formatCurrency(hoverPrice ?? quote.price, quote.currency)}
+                      </span>
+                      {hoverPrice === null ? (
+                        <span className={isPositive ? "text-ast-mint" : "text-ast-pink"}>
+                          {isPositive ? "▲" : "▼"} {formatCurrency(Math.abs(quote.change ?? 0), quote.currency)} ({(quote.changePercent ?? 0).toFixed(2)}%)
+                        </span>
+                      ) : (
+                        <span className="text-ast-muted text-sm">{hoverDate}</span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-ast-muted text-sm">Unable to load price data</div>
+                )}
+              </div>
 
+              {/* Stats row */}
               {quote && quote.price != null && (
                 <div className="grid grid-cols-3 gap-4 px-5 py-3 border-b border-ast-border bg-ast-surface/30">
                   <div className="text-center">
@@ -273,39 +539,33 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
                 </div>
               )}
 
+              {/* Chart section */}
               <div className="px-5 py-4 border-b border-ast-border">
-                {/* Hover price display */}
-                {hoverPrice !== null ? (
-                  <div className="mb-2">
-                    <div className="text-xl font-semibold text-ast-text">{formatCurrency(hoverPrice, quote?.currency)}</div>
-                    <div className="text-xs text-ast-muted">{hoverDate}</div>
-                  </div>
-                ) : (
-                  <div className="mb-2 h-8" /> 
-                )}
-                
-                {/* Chart */}
                 <InteractiveChart 
                   history={history} 
                   isPositive={isPositive}
                   currency={quote?.currency || "USD"}
+                  previousClose={quote?.previousClose}
+                  newsItems={relatedItems}
+                  isLoading={loading || pendingRange !== null}
                   onHover={(price, date) => {
                     setHoverPrice(price);
                     setHoverDate(date);
                   }}
                 />
                 
-                {/* Range selector */}
-                <div className="flex justify-center gap-1 mt-3">
+                {/* Range selector - pill style */}
+                <div className="flex justify-center gap-1 mt-4 bg-ast-surface/50 rounded-full p-1 mx-auto w-fit">
                   {(Object.keys(RANGE_CONFIG) as ChartRange[]).map((r) => (
                     <button
                       key={r}
-                      onClick={() => setChartRange(r)}
-                      className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      onClick={() => handleRangeChange(r)}
+                      disabled={loading}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all duration-200 ${
                         chartRange === r 
-                          ? "bg-ast-accent/20 text-ast-accent" 
-                          : "text-ast-muted hover:text-ast-text"
-                      }`}
+                          ? "bg-ast-accent text-ast-bg shadow-sm" 
+                          : "text-ast-muted hover:text-ast-text hover:bg-ast-surface"
+                      } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       {RANGE_CONFIG[r].label}
                     </button>
@@ -313,31 +573,43 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
                 </div>
               </div>
 
+              {/* Links */}
               {companyData.irUrl && (
                 <div className="px-5 py-3 border-b border-ast-border flex gap-2">
-                  <a href={companyData.irUrl} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-surface border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center">
+                  <a href={companyData.irUrl} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-surface border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center transition-colors">
                     📊 Investor Relations
                   </a>
                   {companyData.secUrl && (
-                    <a href={companyData.secUrl} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-surface border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center">
+                    <a href={companyData.secUrl} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-surface border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center transition-colors">
                       📄 SEC Filings
                     </a>
                   )}
                 </div>
               )}
 
+              {/* Coverage section */}
               <div className="px-5 py-4">
-                <div className="text-xs text-ast-accent uppercase font-semibold mb-3">Recent Coverage ({relatedItems.length})</div>
+                <div className="text-xs text-ast-accent uppercase font-semibold mb-3">
+                  Recent Coverage ({relatedItems.length})
+                  {relatedItems.length > 0 && (
+                    <span className="text-ast-muted font-normal ml-2">· shown on chart</span>
+                  )}
+                </div>
                 {relatedItems.length === 0 ? (
                   <p className="text-ast-muted text-xs">No recent coverage found.</p>
                 ) : (
                   <div className="space-y-3">
                     {relatedItems.map((item) => (
                       <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="block group">
-                        <p className="text-xs text-ast-text group-hover:text-ast-accent line-clamp-2">{item.title}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] text-ast-muted">{item.sources?.name}</span>
-                          <span className="text-[10px] text-ast-muted">{getHoursAgo(item.published_at)}</span>
+                        <div className="flex items-start gap-2">
+                          <span className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-xs text-ast-text group-hover:text-ast-accent line-clamp-2">{item.title}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] text-ast-muted">{item.sources?.name}</span>
+                              <span className="text-[10px] text-ast-muted">{getHoursAgo(item.published_at)}</span>
+                            </div>
+                          </div>
                         </div>
                       </a>
                     ))}
