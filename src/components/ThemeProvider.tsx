@@ -27,15 +27,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>("dark");
   const [mounted, setMounted] = useState(false);
 
-  // Load theme from localStorage on mount
+  // Load theme from localStorage on mount (default to dark)
   useEffect(() => {
     setMounted(true);
     const stored = localStorage.getItem("ast-theme") as Theme | null;
     if (stored) {
       setTheme(stored);
-    } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
-      setTheme("light");
     }
+    // Keep dark as default - don't auto-switch to light based on system preference
   }, []);
 
   // Apply theme to document

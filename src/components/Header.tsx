@@ -16,24 +16,42 @@ function ThemeToggle() {
   
   // Don't render until mounted to avoid hydration mismatch
   if (!mounted) {
-    return <div className="w-6 h-6" />; // Placeholder for layout stability
+    return <div className="w-14 h-7" />; // Placeholder for layout stability
   }
+  
+  const isDark = theme === "dark";
   
   return (
     <button
       onClick={toggleTheme}
-      className="text-ast-muted hover:text-ast-accent transition-colors p-1 rounded"
-      title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+      className="relative flex items-center w-14 h-7 rounded-full p-1 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-ast-accent/50"
+      style={{ 
+        backgroundColor: isDark ? "var(--ast-surface)" : "#e2e8f0",
+        border: `1px solid ${isDark ? "var(--ast-border)" : "#cbd5e1"}`,
+      }}
+      title={`Switch to ${isDark ? "light" : "dark"} mode`}
+      aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
     >
-      {theme === "dark" ? (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+      {/* Track icons */}
+      <span className="absolute left-1.5 top-1/2 -translate-y-1/2">
+        <svg className={`w-3.5 h-3.5 transition-opacity ${isDark ? "opacity-100 text-ast-gold" : "opacity-30 text-gray-400"}`} fill="currentColor" viewBox="0 0 24 24">
+          <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
         </svg>
-      ) : (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+      </span>
+      <span className="absolute right-1.5 top-1/2 -translate-y-1/2">
+        <svg className={`w-3.5 h-3.5 transition-opacity ${!isDark ? "opacity-100 text-amber-500" : "opacity-30 text-gray-500"}`} fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.303a.75.75 0 00-1.061-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.697 7.757a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z" />
         </svg>
-      )}
+      </span>
+      
+      {/* Sliding knob */}
+      <span 
+        className={`absolute w-5 h-5 rounded-full shadow-md transition-all duration-300 ${
+          isDark 
+            ? "left-1 bg-ast-accent" 
+            : "left-[calc(100%-1.5rem)] bg-white"
+        }`}
+      />
     </button>
   );
 }
