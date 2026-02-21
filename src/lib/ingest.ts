@@ -50,12 +50,18 @@ interface SourceRow {
   created_at: string;
 }
 
+// Lazy singleton - avoids creating new client on every call
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _supabase: any = null;
 function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } }
+    );
+  }
+  return _supabase;
 }
 
 /**
@@ -107,38 +113,44 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
     } else {
       result.inserted = data?.length ?? 0;
 
-      // Tag newly inserted items
+      // Tag newly inserted items (batched for performance)
       if (data?.length) {
-        for (const item of data) {
+        // Step 1: Compute all tags in parallel (AI calls run concurrently)
+        const tagPromises = data.map(async (item: { id: string; title: string; content: string | null }) => {
           const ruleTags = tagItem(item.title, item.content, source.source_type);
           const aiTags = await tagItemWithAI(item.title, item.content);
-
-          // Merge rule-based + AI tags (deduplicate companies and themes)
-          const allTags = {
-            category: ruleTags.category,
-            platform: ruleTags.platform,
-            theme: [...new Set([...ruleTags.theme, ...aiTags.theme])],
-            company: [...new Set([...ruleTags.company, ...aiTags.company])],
+          return {
+            id: item.id,
+            tags: {
+              category: ruleTags.category,
+              platform: ruleTags.platform,
+              theme: [...new Set([...ruleTags.theme, ...aiTags.theme])],
+              company: [...new Set([...ruleTags.company, ...aiTags.company])],
+            },
           };
+        });
+        const itemsWithTags = await Promise.all(tagPromises);
 
-          // Store in items.tags jsonb
-          await supabase
-            .from("items")
-            .update({ tags: allTags })
-            .eq("id", item.id);
+        // Step 2: Batch update items.tags (parallel DB writes)
+        await Promise.all(
+          itemsWithTags.map(({ id, tags }) =>
+            supabase.from("items").update({ tags }).eq("id", id)
+          )
+        );
 
-          // Store in item_tags (normalized for filtering)
-          const tagRows: { item_id: string; dimension: string; value: string; manual: boolean }[] = [];
-          for (const [dimension, values] of Object.entries(allTags)) {
+        // Step 3: Collect all item_tags rows for single batch upsert
+        const allTagRows: { item_id: string; dimension: string; value: string; manual: boolean }[] = [];
+        for (const { id, tags } of itemsWithTags) {
+          for (const [dimension, values] of Object.entries(tags) as [string, string[]][]) {
             for (const value of values) {
-              tagRows.push({ item_id: item.id, dimension, value, manual: false });
+              allTagRows.push({ item_id: id, dimension, value, manual: false });
             }
           }
-          if (tagRows.length > 0) {
-            await supabase
-              .from("item_tags")
-              .upsert(tagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
-          }
+        }
+        if (allTagRows.length > 0) {
+          await supabase
+            .from("item_tags")
+            .upsert(allTagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
         }
       }
     }
@@ -202,7 +214,7 @@ async function updateSourceHealth(
       await supabase.rpc("increment_source_errors", {
         sid: sourceId,
         err: errorMsg,
-      }).then(async (res) => {
+      }).then(async (res: { error: Error | null }) => {
         // Fallback if RPC doesn't exist yet
         if (res.error) {
           const { data: source } = await supabase
