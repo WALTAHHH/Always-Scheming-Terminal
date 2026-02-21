@@ -12,12 +12,14 @@ interface CompanyTrayProps {
   onSelectCompany: (name: string | null) => void;
 }
 
-type ChartRange = "1w" | "1mo" | "6mo" | "1y";
+type ChartRange = "1d" | "1w" | "1mo" | "3mo" | "6mo" | "1y";
 type IndexWeighting = "equal" | "mcap";
 
 const RANGE_CONFIG: Record<ChartRange, { range: string; interval: string; label: string }> = {
+  "1d": { range: "1d", interval: "5m", label: "1D" },
   "1w": { range: "5d", interval: "1h", label: "1W" },
   "1mo": { range: "1mo", interval: "1d", label: "1M" },
+  "3mo": { range: "3mo", interval: "1d", label: "3M" },
   "6mo": { range: "6mo", interval: "1d", label: "6M" },
   "1y": { range: "1y", interval: "1wk", label: "1Y" },
 };

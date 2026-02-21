@@ -508,7 +508,7 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
   return (
     <div className="fixed inset-0 z-[9999]">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute right-0 top-0 h-full w-full sm:max-w-xl lg:max-w-2xl bg-ast-bg border-l border-ast-border flex flex-col shadow-2xl">
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[90vw] sm:max-w-5xl bg-ast-bg border-l border-ast-border flex flex-col shadow-2xl">
         {/* Header */}
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between">
           <div>
