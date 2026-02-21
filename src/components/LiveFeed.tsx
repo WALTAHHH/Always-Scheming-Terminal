@@ -32,11 +32,34 @@ interface PanelVisibility {
   companies: boolean;
 }
 
+// Detect mobile/PWA for single-panel mode
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 640; // sm breakpoint
+      const pwa = window.matchMedia('(display-mode: standalone)').matches ||
+                  (window.navigator as { standalone?: boolean }).standalone === true;
+      setIsMobile(mobile || pwa);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
+  return isMobile;
+}
+
 export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProps) {
   const [items, setItems] = useState<FeedItem[]>(initialItems);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingMore, setLoadingMore] = useState(false);
   const [newCount, setNewCount] = useState(0);
+  
+  // Mobile/PWA detection for single-panel mode
+  const isMobile = useIsMobile();
   
   // Layout state
   const [leftWidth, setLeftWidth] = useState(50);
@@ -81,6 +104,21 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       } catch {}
     }
   }, []);
+
+  // Enforce single-panel mode on mobile/PWA
+  useEffect(() => {
+    if (isMobile) {
+      // On mobile, ensure only one panel is active
+      setPanels((prev) => {
+        const activeCount = [prev.feed, prev.signal, prev.companies].filter(Boolean).length;
+        if (activeCount !== 1) {
+          // Default to feed panel
+          return { feed: true, signal: false, companies: false };
+        }
+        return prev;
+      });
+    }
+  }, [isMobile]);
 
   // Horizontal drag (left/right split)
   const handleMouseDownH = useCallback((e: React.MouseEvent) => {
@@ -144,14 +182,23 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     };
   }, [isDraggingV, topHeight]);
 
-  // Toggle panel visibility
+  // Toggle panel visibility (single-panel mode on mobile/PWA)
   const togglePanel = useCallback((panel: keyof PanelVisibility) => {
     setPanels((prev) => {
-      const next = { ...prev, [panel]: !prev[panel] };
+      let next: PanelVisibility;
+      
+      if (isMobile) {
+        // Mobile/PWA: only one panel at a time (radio button behavior)
+        next = { feed: false, signal: false, companies: false, [panel]: true };
+      } else {
+        // Desktop: toggle individual panels
+        next = { ...prev, [panel]: !prev[panel] };
+      }
+      
       localStorage.setItem(STORAGE_KEY_PANELS, JSON.stringify(next));
       return next;
     });
-  }, []);
+  }, [isMobile]);
 
   // Adjust split positions
   const adjustLeftWidth = useCallback((delta: number) => {
@@ -362,7 +409,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
           <>
             <div 
               className="overflow-y-auto"
-              style={{ width: `${effectiveLeftWidth}%` }}
+              style={{ width: isMobile ? "100%" : `${effectiveLeftWidth}%` }}
             >
               <Feed
                 items={items}
@@ -373,8 +420,8 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
               />
             </div>
             
-            {/* Horizontal divider */}
-            {showRightPane && (
+            {/* Horizontal divider (desktop only) */}
+            {showRightPane && !isMobile && (
               <div
                 onMouseDown={handleMouseDownH}
                 className={`w-1 flex-shrink-0 cursor-col-resize border-x border-ast-border hover:bg-ast-accent/30 transition-colors ${
@@ -390,7 +437,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
           <div 
             ref={rightPaneRef}
             className="flex flex-col"
-            style={{ width: `${effectiveRightWidth}%` }}
+            style={{ width: isMobile ? "100%" : `${effectiveRightWidth}%` }}
           >
             {/* Top: Signal */}
             {panels.signal && (
@@ -402,8 +449,8 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
                   <SignalPanel items={items} />
                 </div>
                 
-                {/* Vertical divider */}
-                {showBothRight && (
+                {/* Vertical divider (desktop only) */}
+                {showBothRight && !isMobile && (
                   <div
                     onMouseDown={handleMouseDownV}
                     className={`h-1 flex-shrink-0 cursor-row-resize border-y border-ast-border hover:bg-ast-mint/30 transition-colors ${

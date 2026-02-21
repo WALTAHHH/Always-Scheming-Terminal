@@ -452,7 +452,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
 
         {/* Slide-down filter panel */}
         {mobileOpen && (
-          <div className="px-3 pb-3 space-y-2 border-t border-ast-border/50 pt-2">
+          <div className="px-3 pb-3 space-y-2 border-t border-ast-border/50 pt-2 relative z-50 bg-ast-bg">
             <MobileFilterList
               label="Source"
               options={sourceOptions}
