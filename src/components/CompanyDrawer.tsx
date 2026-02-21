@@ -258,17 +258,25 @@ function InteractiveChart({
   const hoverData = hoverX !== null ? interpolateAtX(hoverX) : null;
 
   return (
-    <div className="h-80 w-full relative select-none">
+    <div 
+      className="h-80 w-full relative select-none cursor-crosshair"
+      onMouseMove={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const xPos = ((e.clientX - rect.left) / rect.width) * width;
+        setHoverX(xPos);
+        setActiveMarker(null);
+        const interpolated = interpolateAtX(xPos);
+        if (interpolated && onHover) {
+          onHover(interpolated.price, interpolated.date);
+        }
+      }}
+      onMouseLeave={handleMouseLeave}
+    >
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-full transition-opacity duration-300"
+        className="w-full h-full pointer-events-none"
         preserveAspectRatio="none"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleMouseLeave}
-        style={{ cursor: "crosshair", touchAction: "none" }}
       >
         {/* Gradient definition */}
         <defs>
@@ -362,18 +370,18 @@ function InteractiveChart({
               y1={padding.top}
               x2={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
               y2={height - padding.bottom}
-              stroke={color}
+              stroke="#ffffff"
               strokeWidth="1"
               vectorEffect="non-scaling-stroke"
-              opacity="0.4"
+              opacity="0.5"
             />
             {/* Dot on line */}
             <circle
               cx={Math.max(padding.left, Math.min(width - padding.right, hoverX))}
               cy={hoverData.y}
-              r="5"
+              r="6"
               fill={color}
-              stroke="#0d1117"
+              stroke="#ffffff"
               strokeWidth="2"
               vectorEffect="non-scaling-stroke"
             />
@@ -586,17 +594,17 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
                   }}
                 />
                 
-                {/* Range selector - pill style */}
-                <div className="flex justify-center gap-1 mt-4 bg-ast-surface/50 rounded-full p-1 mx-auto w-fit">
+                {/* Range selector - minimal text style */}
+                <div className="flex justify-end gap-1 mt-3 text-xs">
                   {(Object.keys(RANGE_CONFIG) as ChartRange[]).map((r) => (
                     <button
                       key={r}
                       onClick={() => handleRangeChange(r)}
                       disabled={loading}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all duration-200 ${
+                      className={`px-2 py-1 rounded transition-colors ${
                         chartRange === r 
-                          ? "bg-ast-accent text-ast-bg shadow-sm" 
-                          : "text-ast-muted hover:text-ast-text hover:bg-ast-surface"
+                          ? "text-ast-accent font-semibold" 
+                          : "text-ast-muted hover:text-ast-text"
                       } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       {RANGE_CONFIG[r].label}
