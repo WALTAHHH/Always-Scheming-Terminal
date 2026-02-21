@@ -75,6 +75,7 @@ function FilterDropdown({
     <div 
       className="fixed bg-ast-surface border border-ast-border rounded-lg shadow-xl min-w-[180px] max-h-[300px] overflow-y-auto"
       style={{ top: position.top, left: position.left, zIndex: 99999 }}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       {options.map((opt) => (
         <button
