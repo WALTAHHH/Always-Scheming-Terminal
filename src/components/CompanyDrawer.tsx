@@ -444,6 +444,12 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [pendingRange, setPendingRange] = useState<ChartRange | null>(null);
+  
+  // Cache previous history to prevent flicker during range changes
+  const prevHistoryRef = useRef<StockHistory[]>([]);
+  if (stockData?.history && stockData.history.length > 0) {
+    prevHistoryRef.current = stockData.history;
+  }
 
   const relatedItems = useMemo(() => {
     if (!companyData) return [];
@@ -517,7 +523,8 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
   };
 
   const quote = stockData?.quote;
-  const history = stockData?.history || [];
+  // Use cached history during loading to prevent flicker
+  const history = stockData?.history?.length ? stockData.history : prevHistoryRef.current;
   const isPositive = (quote?.change ?? 0) >= 0;
 
   return (
