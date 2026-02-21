@@ -254,7 +254,7 @@ function CompanyModal({
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       
       {/* Modal */}
-      <div className="relative bg-ast-surface border border-ast-border rounded-lg shadow-2xl w-[400px] max-h-[80vh] overflow-hidden flex flex-col">
+      <div className="relative bg-ast-surface border border-ast-border rounded-lg shadow-2xl w-[520px] max-w-[95vw] max-h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between flex-shrink-0">
           <div>
@@ -330,7 +330,7 @@ function CompanyModal({
                     ))}
                   </div>
                 </div>
-                <div className="h-32 bg-ast-bg/50 rounded overflow-hidden">
+                <div className="h-40 bg-ast-bg/50 rounded overflow-hidden">
                   {history.length > 0 ? (
                     <MiniChart history={history} isPositive={isPositive} />
                   ) : (
@@ -535,7 +535,7 @@ function IndexModal({
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       
       {/* Modal */}
-      <div className="relative bg-ast-surface border border-ast-border rounded-lg shadow-2xl w-[560px] max-h-[85vh] overflow-hidden flex flex-col">
+      <div className="relative bg-ast-surface border border-ast-border rounded-lg shadow-2xl w-[680px] max-w-[95vw] max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between flex-shrink-0">
           <div>
@@ -614,7 +614,7 @@ function IndexModal({
                 ))}
               </div>
             </div>
-            <div className="h-52 bg-ast-bg/50 rounded overflow-hidden">
+            <div className="h-64 bg-ast-bg/50 rounded overflow-hidden">
               {indexData.history.length > 1 ? (
                 <InteractiveChart history={indexData.history} isPositive={isPositive} height={208} />
               ) : (

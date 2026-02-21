@@ -3,6 +3,11 @@
 import posthog from 'posthog-js';
 import { useEffect } from 'react';
 
+// iOS Navigator extension for standalone detection
+interface IOSNavigator extends Navigator {
+  standalone?: boolean;
+}
+
 // Detect if running as installed PWA
 function isPWA(): boolean {
   if (typeof window === 'undefined') return false;
@@ -11,8 +16,7 @@ function isPWA(): boolean {
   const displayMode = window.matchMedia('(display-mode: standalone)').matches;
   
   // Check iOS standalone mode
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const iosStandalone = (window.navigator as any).standalone === true;
+  const iosStandalone = (window.navigator as IOSNavigator).standalone === true;
   
   // Check if launched from TWA (Trusted Web Activity)
   const referrer = document.referrer.includes('android-app://');

@@ -1,7 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import YahooFinance from "yahoo-finance2";
+import { rateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
 const yahooFinance = new YahooFinance();
+
+// Yahoo Finance quote response shape (fields we use)
+interface YahooQuote {
+  symbol?: string;
+  regularMarketPrice?: number;
+  regularMarketChange?: number;
+  regularMarketChangePercent?: number;
+  marketCap?: number;
+  regularMarketPreviousClose?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  currency?: string;
+  exchange?: string;
+}
+
+// Yahoo Finance chart response shape
+interface YahooChartQuote {
+  date: Date | string;
+  close?: number | null;
+}
+
+interface YahooChart {
+  quotes?: YahooChartQuote[];
+}
 
 export interface StockQuote {
   ticker: string;
@@ -97,7 +122,24 @@ const RANGE_MAP: Record<string, { period1: Date; interval: "1d" | "1wk" | "1mo" 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ ticker: string }> }
-): Promise<NextResponse<StockResponse>> {
+): Promise<NextResponse<StockResponse | { error: string }>> {
+  // Rate limiting
+  const clientIP = getClientIP(request);
+  const rateLimitResult = rateLimit(`stock:${clientIP}`, RATE_LIMITS.stock);
+  if (!rateLimitResult.success) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Please try again later." },
+      { 
+        status: 429,
+        headers: {
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(rateLimitResult.resetTime),
+          "Retry-After": String(Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000)),
+        }
+      }
+    );
+  }
+
   const { ticker } = await params;
   const { searchParams } = new URL(request.url);
   const range = searchParams.get("range") || "1mo";
@@ -125,10 +167,9 @@ export async function GET(
       return NextResponse.json({ quote: null, history: [], error: "No quote data" });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const q = quoteData as any;
+    const q = quoteData as YahooQuote;
     const quote: StockQuote = {
-      ticker: q.symbol,
+      ticker: q.symbol || ticker,
       price: q.regularMarketPrice || 0,
       change: q.regularMarketChange || 0,
       changePercent: q.regularMarketChangePercent || 0,
@@ -140,13 +181,14 @@ export async function GET(
       exchange: q.exchange || "",
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const chart = chartData as any;
+    const chart = chartData as YahooChart;
     const history: StockHistory[] = (chart.quotes || [])
-      .filter((q: { close?: number | null }) => q.close !== null && q.close !== undefined)
-      .map((q: { date: Date | string; close: number }) => ({
-        date: new Date(q.date).toISOString().split("T")[0],
-        close: q.close as number,
+      .filter((item): item is YahooChartQuote & { close: number } => 
+        item.close !== null && item.close !== undefined
+      )
+      .map((item) => ({
+        date: new Date(item.date).toISOString().split("T")[0],
+        close: item.close,
       }));
 
     const response: StockResponse = { quote, history };

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { KeyboardNav } from "@/components/KeyboardNav";
 import { FeedbackButton } from "@/components/FeedbackButton";
 import { PostHogProvider } from "@/components/PostHogProvider";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -44,11 +45,13 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-ast-bg text-ast-text font-mono antialiased min-h-screen">
-        <PostHogProvider>
-          <KeyboardNav />
-          {children}
-          <FeedbackButton />
-        </PostHogProvider>
+        <ThemeProvider>
+          <PostHogProvider>
+            <KeyboardNav />
+            {children}
+            <FeedbackButton />
+          </PostHogProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

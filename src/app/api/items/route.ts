@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
+import { rateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function GET(req: NextRequest) {
+  // Rate limiting
+  const clientIP = getClientIP(req);
+  const rateLimitResult = rateLimit(`items:${clientIP}`, RATE_LIMITS.public);
+  if (!rateLimitResult.success) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded" },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000)) } }
+    );
+  }
   const { searchParams } = req.nextUrl;
   const limit = Math.min(Number(searchParams.get("limit")) || 50, 200);
   const offset = Number(searchParams.get("offset")) || 0;

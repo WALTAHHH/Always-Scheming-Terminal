@@ -108,10 +108,11 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Only allow safe fields
-  const allowed = ["name", "url", "feed_url", "source_type", "active"];
-  const safeUpdates: Record<string, any> = {};
+  type AllowedKey = "name" | "url" | "feed_url" | "source_type" | "active";
+  const allowed: AllowedKey[] = ["name", "url", "feed_url", "source_type", "active"];
+  const safeUpdates: Partial<Record<AllowedKey, string | boolean>> = {};
   for (const key of allowed) {
-    if (key in updates) safeUpdates[key] = (updates as any)[key];
+    if (key in updates) safeUpdates[key] = updates[key];
   }
 
   const { data, error } = await supabase

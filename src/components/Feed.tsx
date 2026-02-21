@@ -1,12 +1,39 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import type { FeedItem } from "@/lib/database.types";
 import type { FilterState } from "./FilterBar";
 import { FilterBar, EMPTY_FILTERS } from "./FilterBar";
 import { ClusterRow } from "./ClusterRow";
 import { clusterItems, type StoryCluster } from "@/lib/cluster";
 import { scoreCluster } from "@/lib/importance";
+
+// Parse filters from URL search params
+function parseFiltersFromParams(params: URLSearchParams): FilterState {
+  return {
+    sources: params.getAll("source"),
+    categories: params.getAll("category"),
+    platforms: params.getAll("platform"),
+    themes: params.getAll("theme"),
+    companies: params.getAll("company"),
+    search: params.get("q") || "",
+    mode: (params.get("mode") as "and" | "or") || "or",
+  };
+}
+
+// Serialize filters to URL search params
+function filtersToParams(filters: FilterState): URLSearchParams {
+  const params = new URLSearchParams();
+  filters.sources.forEach(s => params.append("source", s));
+  filters.categories.forEach(c => params.append("category", c));
+  filters.platforms.forEach(p => params.append("platform", p));
+  filters.themes.forEach(t => params.append("theme", t));
+  filters.companies.forEach(c => params.append("company", c));
+  if (filters.search) params.set("q", filters.search);
+  if (filters.mode !== "or") params.set("mode", filters.mode);
+  return params;
+}
 
 export type SortMode = "recent" | "importance";
 
@@ -177,9 +204,35 @@ function DateGroupHeader({
 }
 
 export function Feed({ items, sources, hasMore, loadingMore, onLoadMore }: FeedProps) {
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  
+  // Initialize filters from URL params
+  const [filters, setFilters] = useState<FilterState>(() => 
+    parseFiltersFromParams(searchParams)
+  );
   const [sortMode, setSortMode] = useState<SortMode>("importance");
   const sentinelRef = useRef<HTMLDivElement>(null);
+  
+  // Update URL when filters change (debounced)
+  const updateUrlRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    // Skip on initial mount if filters match URL
+    const urlFilters = parseFiltersFromParams(searchParams);
+    const filtersMatch = JSON.stringify(filters) === JSON.stringify(urlFilters);
+    if (filtersMatch) return;
+    
+    // Debounce URL updates to avoid rapid history pushes
+    if (updateUrlRef.current) clearTimeout(updateUrlRef.current);
+    updateUrlRef.current = setTimeout(() => {
+      const params = filtersToParams(filters);
+      const newUrl = params.toString() ? `${pathname}?${params}` : pathname;
+      router.replace(newUrl, { scroll: false });
+    }, 300);
+    
+    return () => { if (updateUrlRef.current) clearTimeout(updateUrlRef.current); };
+  }, [filters, pathname, router, searchParams]);
 
   // Intersection observer for infinite scroll
   useEffect(() => {

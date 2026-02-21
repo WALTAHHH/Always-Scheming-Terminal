@@ -2,19 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme CSS Variables */
+:root, .dark {
+  --ast-bg: #0a0a0f;
+  --ast-surface: #1e1e1e;
+  --ast-border: #2a2a2a;
+  --ast-text: #d4d4d4;
+  --ast-muted: #888888;
+  --ast-accent: #77c4d9;
+  --ast-pink: #dd72dd;
+  --ast-mint: #6decb9;
+  --ast-gold: #f2cb05;
+  --ast-pale: #f3ece9;
+  --ast-tag: #1a1a2e;
+}
+
+.light {
+  --ast-bg: #f8f9fa;
+  --ast-surface: #ffffff;
+  --ast-border: #e2e4e7;
+  --ast-text: #1a1a1a;
+  --ast-muted: #6b7280;
+  --ast-accent: #0891b2;
+  --ast-pink: #c026d3;
+  --ast-mint: #059669;
+  --ast-gold: #d97706;
+  --ast-pale: #1a1a1a;
+  --ast-tag: #f0f9ff;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0a0f;
+  background: var(--ast-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: var(--ast-border);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: var(--ast-muted);
 }
 
 /* Hide scrollbar utility */
