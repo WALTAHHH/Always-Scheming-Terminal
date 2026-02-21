@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { tagItem, tagItemWithAI } from "./tagger";
 
 const parser = new Parser({
-  timeout: 8000,
+  timeout: 8000, // Reduced from 15s for faster failure on stale feeds
   headers: {
     "User-Agent": "AlwaysSchemingTerminal/1.0",
   },
@@ -20,9 +20,8 @@ async function fetchWithRetry(url: string, maxRetries = 2): Promise<Parser.Outpu
       return await parser.parseURL(url);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      // Don't retry on final attempt
       if (attempt < maxRetries) {
-        const delayMs = 1000 * Math.pow(2, attempt); // 1s, 2s
+        const delayMs = 1000 * Math.pow(2, attempt);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
@@ -51,14 +50,13 @@ interface SourceRow {
   created_at: string;
 }
 
-// Supabase singleton - created once at module level
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
-
-type SupabaseClient = typeof supabase;
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+}
 
 /**
  * Fetch and ingest RSS items for a single source.
@@ -73,6 +71,8 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
     inserted: 0,
     errors: [],
   };
+
+  const supabase = getSupabase();
 
   try {
     const feed = await fetchWithRetry(source.feed_url);
