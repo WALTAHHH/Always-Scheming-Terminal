@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { findCompanyByName, type CompanyData } from "@/lib/companies";
 import type { FeedItem } from "@/lib/database.types";
 import { TimeAgo } from "./TimeAgo";
+import { openCompanyDrawer } from "./CompanyDrawer";
 
 interface CompanyTrayProps {
   items: FeedItem[];
@@ -1062,19 +1063,6 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const selectedCompanyData = selectedCompany ? findCompanyByName(selectedCompany) : null;
-
-  const modal = selectedCompany && selectedCompanyData && mounted ? (
-    <CompanyModal
-      companyData={selectedCompanyData}
-      stockData={getStockData(selectedCompanyData.ticker)}
-      items={items}
-      chartRange={chartRange}
-      onRangeChange={setChartRange}
-      onClose={() => onSelectCompany(null)}
-    />
-  ) : null;
-
   // Calculate index data for modal (same logic as IndexOverview)
   const indexDataForModal = useMemo(() => {
     if (activeBasket !== "AS Index") return null;
@@ -1216,16 +1204,13 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
               companyData={data}
               stockData={getStockData(data?.ticker)}
               mentionCount={mentions}
-              isExpanded={selectedCompany === name}
-              onClick={() => onSelectCompany(name)}
+              isExpanded={false}
+              onClick={() => openCompanyDrawer(name)}
             />
           ))}
         </div>
       </div>
 
-      {/* Modal portal */}
-      {mounted && modal && createPortal(modal, document.body)}
-      
       {/* Index Modal portal */}
       {mounted && showIndexModal && indexDataForModal && createPortal(
         <IndexModal
