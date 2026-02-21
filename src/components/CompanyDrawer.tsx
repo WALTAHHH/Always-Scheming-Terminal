@@ -463,6 +463,38 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
     fetchStock();
   }, [companyData, chartRange]);
 
+  // Keyboard shortcuts for chart ranges
+  useEffect(() => {
+    const RANGE_KEYS: Record<string, ChartRange> = {
+      "1": "1d",
+      "2": "1w",
+      "3": "1mo",
+      "4": "3mo",
+      "5": "ytd",
+      "6": "1y",
+      "7": "all",
+    };
+
+    function handleKeyDown(e: KeyboardEvent) {
+      // Ignore if typing in input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      const range = RANGE_KEYS[e.key];
+      if (range && !loading) {
+        e.preventDefault();
+        handleRangeChange(range);
+      }
+      
+      // Escape to close
+      if (e.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [loading, onClose]);
+
   const handleRangeChange = (newRange: ChartRange) => {
     if (newRange === chartRange) return;
     setPendingRange(newRange);
@@ -476,7 +508,7 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
   return (
     <div className="fixed inset-0 z-[9999]">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-ast-bg border-l border-ast-border flex flex-col shadow-2xl">
+      <div className="absolute right-0 top-0 h-full w-full sm:max-w-md bg-ast-bg border-l border-ast-border flex flex-col shadow-2xl">
         {/* Header */}
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between">
           <div>

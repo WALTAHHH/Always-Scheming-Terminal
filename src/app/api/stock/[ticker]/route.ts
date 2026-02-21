@@ -25,6 +25,56 @@ export interface StockResponse {
   quote: StockQuote | null;
   history: StockHistory[];
   error?: string;
+  cached?: boolean;
+}
+
+// ── In-memory cache ──
+interface CacheEntry {
+  data: StockResponse;
+  timestamp: number;
+}
+
+const cache = new Map<string, CacheEntry>();
+
+// Cache TTL by range (in ms)
+const CACHE_TTL: Record<string, number> = {
+  "1d": 2 * 60 * 1000,      // 2 min for intraday
+  "5d": 5 * 60 * 1000,      // 5 min for 1 week
+  "1mo": 5 * 60 * 1000,     // 5 min
+  "3mo": 10 * 60 * 1000,    // 10 min
+  "ytd": 10 * 60 * 1000,    // 10 min
+  "1y": 15 * 60 * 1000,     // 15 min
+  "5y": 30 * 60 * 1000,     // 30 min for long-term
+};
+
+function getCacheKey(ticker: string, range: string): string {
+  return `${ticker.toUpperCase()}:${range}`;
+}
+
+function getFromCache(key: string, ttl: number): StockResponse | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  
+  if (Date.now() - entry.timestamp > ttl) {
+    cache.delete(key);
+    return null;
+  }
+  
+  return { ...entry.data, cached: true };
+}
+
+function setCache(key: string, data: StockResponse): void {
+  cache.set(key, { data, timestamp: Date.now() });
+  
+  // Prune old entries if cache gets too large (> 100 entries)
+  if (cache.size > 100) {
+    const now = Date.now();
+    for (const [k, v] of cache.entries()) {
+      if (now - v.timestamp > 30 * 60 * 1000) {
+        cache.delete(k);
+      }
+    }
+  }
 }
 
 // Helper to get start of year
@@ -51,6 +101,15 @@ export async function GET(
   const { ticker } = await params;
   const { searchParams } = new URL(request.url);
   const range = searchParams.get("range") || "1mo";
+
+  const cacheKey = getCacheKey(ticker, range);
+  const ttl = CACHE_TTL[range] || CACHE_TTL["1mo"];
+
+  // Check cache first
+  const cached = getFromCache(cacheKey, ttl);
+  if (cached) {
+    return NextResponse.json(cached);
+  }
 
   try {
     // Fetch quote and historical data using yahoo-finance2
@@ -90,7 +149,12 @@ export async function GET(
         close: q.close as number,
       }));
 
-    return NextResponse.json({ quote, history });
+    const response: StockResponse = { quote, history };
+    
+    // Cache successful responses
+    setCache(cacheKey, response);
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error(`Stock API error for ${ticker}:`, error);
     return NextResponse.json({
