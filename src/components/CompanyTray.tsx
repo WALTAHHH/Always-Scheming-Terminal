@@ -932,16 +932,16 @@ function IndexOverview({
           </button>
         </div>
 
-        {/* Range selector */}
-        <div className="flex gap-1">
+        {/* Range selector - minimal style */}
+        <div className="flex gap-0.5 text-[10px]">
           {(Object.keys(RANGE_CONFIG) as ChartRange[]).map((r) => (
             <button
               key={r}
               onClick={() => onRangeChange(r)}
-              className={`px-2 py-1 text-[10px] rounded border transition-colors ${
+              className={`px-1.5 py-0.5 rounded transition-colors ${
                 chartRange === r
-                  ? "border-ast-accent text-ast-accent bg-ast-accent/10"
-                  : "border-ast-border text-ast-muted hover:text-ast-text"
+                  ? "text-ast-accent font-medium"
+                  : "text-ast-muted hover:text-ast-text"
               }`}
             >
               {RANGE_CONFIG[r].label}

@@ -63,7 +63,7 @@ interface NewsMarker {
 // ── Chart skeleton for loading state ──
 function ChartSkeleton() {
   return (
-    <div className="h-64 w-full relative animate-pulse">
+    <div className="h-80 w-full relative animate-pulse">
       <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
         <path
           d="M 8,70 Q 25,65 35,50 T 55,55 T 75,40 T 92,45"
@@ -109,7 +109,7 @@ function InteractiveChart({
 
   if (history.length < 2) {
     return (
-      <div className="h-64 rounded flex items-center justify-center">
+      <div className="h-80 rounded flex items-center justify-center">
         <span className="text-ast-muted text-xs">No chart data</span>
       </div>
     );
@@ -258,7 +258,7 @@ function InteractiveChart({
   const hoverData = hoverX !== null ? interpolateAtX(hoverX) : null;
 
   return (
-    <div className="h-64 w-full relative select-none">
+    <div className="h-80 w-full relative select-none">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
@@ -508,7 +508,7 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
   return (
     <div className="fixed inset-0 z-[9999]">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[90vw] sm:max-w-5xl bg-ast-bg border-l border-ast-border flex flex-col shadow-2xl">
+      <div className="absolute inset-y-0 right-0 w-full sm:w-[92vw] sm:max-w-6xl bg-ast-bg border-l border-ast-border flex flex-col shadow-2xl">
         {/* Header */}
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between">
           <div>
