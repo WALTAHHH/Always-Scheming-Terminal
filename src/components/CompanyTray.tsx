@@ -195,11 +195,13 @@ function InteractiveChart({
   isPositive, 
   height = 96,
   previousClose,
+  onHover,
 }: { 
   history: StockHistory[]; 
   isPositive: boolean; 
   height?: number;
   previousClose?: number;
+  onHover?: (price: number | null, date: string | null) => void;
 }) {
   const [hoverX, setHoverX] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -261,10 +263,22 @@ function InteractiveChart({
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    setHoverX((e.clientX - rect.left) / rect.width);
-  }, []);
+    const xPct = (e.clientX - rect.left) / rect.width;
+    setHoverX(xPct);
+    
+    // Call onHover with interpolated price
+    if (onHover && chartData) {
+      const point = getInterpolatedPoint(xPct);
+      if (point) {
+        onHover(point.price, point.date);
+      }
+    }
+  }, [onHover, chartData, getInterpolatedPoint]);
 
-  const handleMouseLeave = useCallback(() => setHoverX(null), []);
+  const handleMouseLeave = useCallback(() => {
+    setHoverX(null);
+    if (onHover) onHover(null, null);
+  }, [onHover]);
 
   // Early return AFTER all hooks
   if (!chartData) {
@@ -376,6 +390,8 @@ function CompanyModal({
   onRangeChange: (range: ChartRange) => void;
   onClose: () => void;
 }) {
+  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
   const { quote, history, loading } = stockData;
   const isPositive = (quote?.change ?? 0) >= 0;
 
@@ -421,15 +437,21 @@ function CompanyModal({
             <div className="text-ast-muted text-sm animate-pulse">Loading market data...</div>
           ) : (
             <>
-              {/* Price */}
+              {/* Price - updates on hover */}
               {quote && (
                 <div className="mb-4">
                   <span className="text-3xl font-semibold text-ast-text">
-                    {formatCurrency(quote.price, quote.currency)}
+                    {formatCurrency(hoverPrice ?? quote.price, quote.currency)}
                   </span>
-                  <span className={`ml-3 text-sm font-medium ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
-                    {isPositive ? "▲" : "▼"} {formatCurrency(Math.abs(quote.change), quote.currency)} ({quote.changePercent.toFixed(2)}%)
-                  </span>
+                  {hoverDate ? (
+                    <span className="ml-3 text-sm text-ast-muted">
+                      {new Date(hoverDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </span>
+                  ) : (
+                    <span className={`ml-3 text-sm font-medium ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
+                      {isPositive ? "▲" : "▼"} {formatCurrency(Math.abs(quote.change), quote.currency)} ({quote.changePercent.toFixed(2)}%)
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -473,7 +495,13 @@ function CompanyModal({
                 </div>
                 <div className="h-48 bg-ast-bg/50 rounded overflow-hidden">
                   {history.length > 0 ? (
-                    <InteractiveChart history={history} isPositive={isPositive} height={192} previousClose={quote?.previousClose} />
+                    <InteractiveChart 
+                      history={history} 
+                      isPositive={isPositive} 
+                      height={192} 
+                      previousClose={quote?.previousClose} 
+                      onHover={(price, date) => { setHoverPrice(price); setHoverDate(date); }}
+                    />
                   ) : (
                     <div className="h-full flex items-center justify-center text-ast-muted text-xs">No chart data</div>
                   )}
@@ -539,6 +567,8 @@ function IndexModal({
   onRangeChange: (r: ChartRange) => void;
   onClose: () => void;
 }) {
+  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
   const isPositive = indexData.change >= 0;
   const currentValue = indexData.history[indexData.history.length - 1]?.close || 100;
 
@@ -567,7 +597,8 @@ function IndexModal({
                 <span className="text-ast-muted hover:text-ast-accent cursor-help">ⓘ</span>
                 <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-ast-bg border border-ast-border rounded-lg shadow-xl text-xs text-ast-text w-72 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
                   <p className="font-medium mb-1">What is the AS Primitives Index?</p>
-                  <p className="text-ast-muted leading-relaxed">A basket of 13 gaming-adjacent public companies spanning Input (hardware), Interface (platforms), and Infrastructure (cloud/AI). Toggle between equal-weighted and market-cap-weighted views.</p>
+                  <p className="text-ast-muted leading-relaxed mb-2">A basket of 13 gaming-adjacent public companies spanning Input (hardware), Interface (platforms), and Infrastructure (cloud/AI). Toggle between equal-weighted and market-cap-weighted views.</p>
+                  <a href="https://always-scheming.fyi" target="_blank" rel="noopener noreferrer" className="text-ast-accent hover:underline">Learn more about our philosophy →</a>
                 </div>
               </div>
             </div>
@@ -588,10 +619,13 @@ function IndexModal({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5">
-          {/* Index value */}
+          {/* Index value - updates on hover */}
           <div className="text-3xl font-semibold text-ast-text mb-4">
-            {currentValue.toFixed(2)}
+            {(hoverPrice ?? currentValue).toFixed(2)}
             <span className="text-sm text-ast-muted ml-1">pts</span>
+            {hoverDate && (
+              <span className="text-sm text-ast-muted ml-2">{new Date(hoverDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+            )}
           </div>
 
           {/* Stats row */}
@@ -647,7 +681,12 @@ function IndexModal({
             </div>
             <div className="h-64 bg-ast-bg/50 rounded overflow-hidden">
               {indexData.history.length > 1 ? (
-                <InteractiveChart history={indexData.history} isPositive={isPositive} height={208} />
+                <InteractiveChart 
+                  history={indexData.history} 
+                  isPositive={isPositive} 
+                  height={208} 
+                  onHover={(price, date) => { setHoverPrice(price); setHoverDate(date); }}
+                />
               ) : (
                 <div className="h-full flex items-center justify-center text-ast-muted text-xs">
                   No chart data
@@ -704,6 +743,14 @@ function IndexOverview({
   onRangeChange: (r: ChartRange) => void;
   onOpenModal: () => void;
 }) {
+  const [hoverPrice, setHoverPrice] = useState<number | null>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
+
+  const handleHover = useCallback((price: number | null, date: string | null) => {
+    setHoverPrice(price);
+    setHoverDate(date);
+  }, []);
+
   // Calculate composite index
   const indexData = useMemo(() => {
     // Get all stocks with valid data
@@ -824,7 +871,8 @@ function IndexOverview({
               <span className="text-ast-muted hover:text-ast-accent cursor-help text-xs">ⓘ</span>
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-ast-surface border border-ast-border rounded-lg shadow-xl text-xs text-ast-text w-64 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
                 <p className="font-medium mb-1">What is this?</p>
-                <p className="text-ast-muted leading-relaxed">A basket of 13 gaming-adjacent public companies spanning Input (hardware), Interface (platforms), and Infrastructure (cloud/AI). Equal or market-cap weighted.</p>
+                <p className="text-ast-muted leading-relaxed mb-2">A basket of 13 gaming-adjacent public companies spanning Input (hardware), Interface (platforms), and Infrastructure (cloud/AI). Equal or market-cap weighted.</p>
+                <a href="https://always-scheming.fyi" target="_blank" rel="noopener noreferrer" className="text-ast-accent hover:underline">Learn more about our philosophy →</a>
               </div>
             </div>
             <span className="text-[10px] text-ast-muted">
@@ -840,18 +888,23 @@ function IndexOverview({
           )}
         </div>
 
-        {/* Index value */}
+        {/* Index value - shows hover price when hovering */}
         {indexData.history.length > 0 && (
-          <div className="text-2xl font-semibold text-ast-text mb-2">
-            {indexData.history[indexData.history.length - 1]?.close.toFixed(2)}
+          <div className="mb-2">
+            <span className="text-2xl font-semibold text-ast-text">
+              {(hoverPrice ?? indexData.history[indexData.history.length - 1]?.close)?.toFixed(2)}
+            </span>
             <span className="text-xs text-ast-muted ml-1">pts</span>
+            {hoverDate && (
+              <span className="text-xs text-ast-muted ml-2">{new Date(hoverDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+            )}
           </div>
         )}
 
         {/* Interactive Chart */}
         {indexData.history.length > 1 && (
           <div className="h-32 mb-3">
-            <InteractiveChart history={indexData.history} isPositive={isPositive} height={128} />
+            <InteractiveChart history={indexData.history} isPositive={isPositive} height={128} onHover={handleHover} />
           </div>
         )}
       </button>
