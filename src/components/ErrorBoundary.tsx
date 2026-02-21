@@ -100,3 +100,36 @@ export function CompanyDrawerBoundary({ children }: { children: ReactNode }) {
     </ErrorBoundary>
   );
 }
+
+export function CompanyTrayBoundary({ children }: { children: ReactNode }) {
+  return (
+    <ErrorBoundary
+      name="CompanyTray"
+      fallback={
+        <div className="h-full flex flex-col bg-ast-bg">
+          <div className="px-3 py-2 border-b border-ast-border">
+            <span className="text-ast-mint text-xs font-semibold tracking-wide">📈 PUBLIC MARKETS</span>
+          </div>
+          <div className="flex-1 flex items-center justify-center p-4">
+            <div className="text-center">
+              <div className="text-ast-pink text-sm font-medium mb-2">
+                Market data unavailable
+              </div>
+              <div className="text-ast-muted text-xs mb-3">
+                Stock data failed to load
+              </div>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-3 py-1.5 text-xs rounded border border-ast-accent/30 text-ast-accent hover:bg-ast-accent/10 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      {children}
+    </ErrorBoundary>
+  );
+}

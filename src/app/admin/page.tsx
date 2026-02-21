@@ -34,6 +34,60 @@ type Tab = "sources" | "health";
 type SortField = "name" | "type" | "articles" | "last_fetch" | "latest_article" | "status" | "errors";
 type SortDir = "asc" | "desc";
 
+// Skeleton loading component
+function AdminSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      {/* Header skeleton */}
+      <div className="flex items-center justify-between">
+        <div className="h-5 w-24 bg-ast-surface rounded" />
+        <div className="h-8 w-28 bg-ast-surface rounded" />
+      </div>
+
+      {/* Summary cards skeleton */}
+      <div className="grid grid-cols-5 gap-3">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="border border-ast-border rounded-lg p-3 bg-ast-surface/50">
+            <div className="h-3 w-16 bg-ast-bg rounded mb-2" />
+            <div className="h-8 w-12 bg-ast-bg rounded mb-1" />
+            <div className="h-2 w-20 bg-ast-bg rounded" />
+          </div>
+        ))}
+      </div>
+
+      {/* Table skeleton */}
+      <div className="border border-ast-border rounded-lg overflow-hidden">
+        <div className="bg-ast-surface px-3 py-2 border-b border-ast-border flex items-center gap-3">
+          <div className="h-3 w-16 bg-ast-bg rounded" />
+          <div className="flex-1" />
+          <div className="h-3 w-12 bg-ast-bg rounded" />
+          <div className="h-3 w-16 bg-ast-bg rounded" />
+          <div className="h-3 w-20 bg-ast-bg rounded" />
+        </div>
+        <div className="divide-y divide-ast-border/50">
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="px-3 py-3 flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-ast-muted/30" />
+              <div className="flex-1">
+                <div className="h-4 w-32 bg-ast-surface rounded mb-1" />
+                <div className="h-2 w-48 bg-ast-surface/50 rounded" />
+              </div>
+              <div className="h-3 w-12 bg-ast-surface rounded" />
+              <div className="h-3 w-16 bg-ast-surface rounded" />
+              <div className="h-3 w-20 bg-ast-surface rounded" />
+              <div className="h-5 w-8 bg-ast-surface rounded" />
+              <div className="flex gap-1">
+                <div className="h-6 w-12 bg-ast-surface rounded" />
+                <div className="h-6 w-14 bg-ast-surface rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return "never";
   const d = new Date(dateStr);
@@ -678,7 +732,7 @@ export default function AdminPage() {
       {/* Content */}
       <main className="max-w-5xl mx-auto px-4 py-6">
         {loading ? (
-          <div className="text-center py-12 text-ast-muted text-sm">Loading...</div>
+          <AdminSkeleton />
         ) : tab === "sources" ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between">

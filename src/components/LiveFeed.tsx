@@ -7,6 +7,7 @@ import { NewItemsBanner } from "./NewItemsBanner";
 import { SignalPanel } from "./SignalPanel";
 import { CompanyTray } from "./CompanyTray";
 import { CompanyDrawerPortal, setGlobalItems } from "./CompanyDrawer";
+import { CompanyTrayBoundary } from "./ErrorBoundary";
 import { clusterItems } from "@/lib/cluster";
 
 interface LiveFeedProps {
@@ -419,11 +420,13 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
                 className="overflow-hidden"
                 style={{ height: showBothRight ? `${100 - topHeight}%` : "100%" }}
               >
-                <CompanyTray 
-                  items={items} 
-                  selectedCompany={selectedCompany}
-                  onSelectCompany={setSelectedCompany}
-                />
+                <CompanyTrayBoundary>
+                  <CompanyTray 
+                    items={items} 
+                    selectedCompany={selectedCompany}
+                    onSelectCompany={setSelectedCompany}
+                  />
+                </CompanyTrayBoundary>
               </div>
             )}
           </div>
