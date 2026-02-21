@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { findCompanyByName, type CompanyData } from "@/lib/companies";
 import type { FeedItem } from "@/lib/database.types";
@@ -204,40 +204,41 @@ function InteractiveChart({
   const [hoverX, setHoverX] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  if (history.length < 2) {
-    return <div style={{ height }} className="bg-ast-surface/30 rounded flex items-center justify-center">
-      <span className="text-ast-muted text-[10px]">No data</span>
-    </div>;
-  }
-
-  const prices = history.map((h) => h.close);
-  const allPrices = previousClose ? [...prices, previousClose] : prices;
-  const min = Math.min(...allPrices);
-  const max = Math.max(...allPrices);
-  const range = max - min || 1;
-  
   const padding = { top: 5, bottom: 5, left: 0, right: 0 };
-  const chartHeight = 100 - padding.top - padding.bottom;
+  const chartHeightPct = 100 - padding.top - padding.bottom;
 
-  const points = prices.map((price, i) => {
-    const x = (i / (prices.length - 1)) * 100;
-    const y = padding.top + chartHeight - ((price - min) / range) * chartHeight;
-    return { x, y, price, date: history[i].date };
-  });
+  // Compute all chart data in useMemo to ensure hooks are always called
+  const chartData = useMemo(() => {
+    if (history.length < 2) return null;
+    
+    const prices = history.map((h) => h.close);
+    const allPrices = previousClose ? [...prices, previousClose] : prices;
+    const min = Math.min(...allPrices);
+    const max = Math.max(...allPrices);
+    const range = max - min || 1;
 
-  const pathD = `M ${points.map(p => `${p.x},${p.y}`).join(" L ")}`;
-  const areaD = `${pathD} L 100,${padding.top + chartHeight} L 0,${padding.top + chartHeight} Z`;
-  const color = isPositive ? "#00d4aa" : "#ff6b8a";
-  const gradientId = `trayGradient-${isPositive ? "pos" : "neg"}-${height}`;
-  
-  // Previous close reference line
-  const prevCloseY = previousClose 
-    ? padding.top + chartHeight - ((previousClose - min) / range) * chartHeight
-    : null;
+    const points = prices.map((price, i) => {
+      const x = (i / (prices.length - 1)) * 100;
+      const y = padding.top + chartHeightPct - ((price - min) / range) * chartHeightPct;
+      return { x, y, price, date: history[i].date };
+    });
+
+    const pathD = `M ${points.map(p => `${p.x},${p.y}`).join(" L ")}`;
+    const areaD = `${pathD} L 100,${padding.top + chartHeightPct} L 0,${padding.top + chartHeightPct} Z`;
+    const color = isPositive ? "#00d4aa" : "#ff6b8a";
+    const gradientId = `trayGradient-${isPositive ? "pos" : "neg"}-${height}`;
+    
+    const prevCloseY = previousClose 
+      ? padding.top + chartHeightPct - ((previousClose - min) / range) * chartHeightPct
+      : null;
+
+    return { points, pathD, areaD, color, gradientId, prevCloseY };
+  }, [history, isPositive, previousClose, height, padding.top, chartHeightPct]);
 
   // Interpolate price at hover position
-  const getInterpolatedPoint = (xPercent: number) => {
-    if (points.length < 2) return null;
+  const getInterpolatedPoint = useCallback((xPercent: number) => {
+    if (!chartData || chartData.points.length < 2) return null;
+    const { points } = chartData;
     const x = xPercent * 100;
     let leftIdx = 0;
     for (let i = 0; i < points.length - 1; i++) {
@@ -255,16 +256,24 @@ function InteractiveChart({
       price: left.price + t * (right.price - left.price),
       date: left.date,
     };
-  };
+  }, [chartData]);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     setHoverX((e.clientX - rect.left) / rect.width);
-  };
+  }, []);
 
-  const handleMouseLeave = () => setHoverX(null);
+  const handleMouseLeave = useCallback(() => setHoverX(null), []);
 
+  // Early return AFTER all hooks
+  if (!chartData) {
+    return <div style={{ height }} className="bg-ast-surface/30 rounded flex items-center justify-center">
+      <span className="text-ast-muted text-[10px]">No data</span>
+    </div>;
+  }
+
+  const { points, pathD, areaD, color, gradientId, prevCloseY } = chartData;
   const hoverPoint = hoverX !== null ? getInterpolatedPoint(hoverX) : null;
 
   const formatDate = (dateStr: string) => {
@@ -311,7 +320,7 @@ function InteractiveChart({
         {hoverPoint && (
           <line 
             x1={hoverPoint.x} y1={padding.top} 
-            x2={hoverPoint.x} y2={padding.top + chartHeight} 
+            x2={hoverPoint.x} y2={padding.top + chartHeightPct} 
             stroke="#ffffff" 
             strokeWidth="1" 
             vectorEffect="non-scaling-stroke"
