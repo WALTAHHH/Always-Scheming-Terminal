@@ -102,60 +102,49 @@ function InteractiveChart({
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [activeMarker, setActiveMarker] = useState<NewsMarker | null>(null);
 
-  // Show skeleton only on initial load (no history yet)
-  if (isLoading && history.length < 2) {
-    return <ChartSkeleton />;
-  }
-
-  if (history.length < 2) {
-    return (
-      <div className="h-80 rounded flex items-center justify-center">
-        <span className="text-ast-muted text-xs">No chart data</span>
-      </div>
-    );
-  }
-
-  const prices = history.map((h) => h.close);
-  const allPrices = previousClose ? [...prices, previousClose] : prices;
-  const min = Math.min(...allPrices);
-  const max = Math.max(...allPrices);
-  const range = max - min || 1;
+  // Compute chart data (always, for hooks stability)
   const padding = { top: 12, bottom: 20, left: 8, right: 8 };
   const width = 100;
   const height = 100;
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  // Build points array
-  const points = prices.map((price, i) => {
-    const x = padding.left + (i / (prices.length - 1)) * chartWidth;
-    const y = padding.top + chartHeight - ((price - min) / range) * chartHeight;
-    return { x, y, price, date: history[i].date };
-  });
+  const chartData = useMemo(() => {
+    if (history.length < 2) return null;
+    
+    const prices = history.map((h) => h.close);
+    const allPrices = previousClose ? [...prices, previousClose] : prices;
+    const min = Math.min(...allPrices);
+    const max = Math.max(...allPrices);
+    const range = max - min || 1;
 
-  // Smooth path using cardinal spline (for visual appeal)
-  const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x},${p.y}`).join(" ");
-  
-  const color = isPositive ? "#00d4aa" : "#ff6b8a";
-  const gradientId = `chartGradient-${isPositive ? "pos" : "neg"}`;
+    const points = prices.map((price, i) => {
+      const x = padding.left + (i / (prices.length - 1)) * chartWidth;
+      const y = padding.top + chartHeight - ((price - min) / range) * chartHeight;
+      return { x, y, price, date: history[i].date };
+    });
 
-  // Previous close reference line
-  const prevCloseY = previousClose 
-    ? padding.top + chartHeight - ((previousClose - min) / range) * chartHeight
-    : null;
+    const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x},${p.y}`).join(" ");
+    const color = isPositive ? "#00d4aa" : "#ff6b8a";
+    const gradientId = `chartGradient-${isPositive ? "pos" : "neg"}`;
+    const prevCloseY = previousClose 
+      ? padding.top + chartHeight - ((previousClose - min) / range) * chartHeight
+      : null;
+
+    return { points, pathD, color, gradientId, prevCloseY, min, max };
+  }, [history, isPositive, previousClose, padding.left, padding.top, chartWidth, chartHeight]);
 
   // Map news items to chart positions
   const newsMarkers: NewsMarker[] = useMemo(() => {
-    if (!newsItems.length) return [];
+    if (!newsItems.length || !chartData) return [];
     
+    const { points } = chartData;
     const markers: NewsMarker[] = [];
-    const dateMap = new Map(points.map((p, i) => [p.date, { x: p.x, y: p.y, index: i }]));
     
     for (const item of newsItems) {
       if (!item.published_at) continue;
       const itemDate = new Date(item.published_at).toISOString().split("T")[0];
       
-      // Find closest date in chart
       let closest = points[0];
       let minDiff = Infinity;
       for (const point of points) {
@@ -166,34 +155,24 @@ function InteractiveChart({
         }
       }
       
-      // Only show if within chart range (within 1 day tolerance)
       if (minDiff <= 24 * 60 * 60 * 1000 * 2) {
-        markers.push({
-          date: itemDate,
-          x: closest.x,
-          y: closest.y,
-          item,
-        });
+        markers.push({ date: itemDate, x: closest.x, y: closest.y, item });
       }
     }
     
     return markers;
-  }, [newsItems, points]);
+  }, [newsItems, chartData]);
 
-  // Interpolate price at any X position (smooth tracking)
+  // Interpolate price at any X position
   const interpolateAtX = useCallback((xPos: number): { price: number; date: string; y: number } | null => {
-    if (points.length < 2) return null;
+    if (!chartData || chartData.points.length < 2) return null;
+    const { points } = chartData;
     
-    // Clamp to chart bounds
     const clampedX = Math.max(padding.left, Math.min(padding.left + chartWidth, xPos));
     
-    // Find surrounding points
     let leftIdx = 0;
     for (let i = 0; i < points.length - 1; i++) {
-      if (points[i + 1].x >= clampedX) {
-        leftIdx = i;
-        break;
-      }
+      if (points[i + 1].x >= clampedX) { leftIdx = i; break; }
       leftIdx = i;
     }
     
@@ -201,18 +180,30 @@ function InteractiveChart({
     const left = points[leftIdx];
     const right = points[rightIdx];
     
-    if (left.x === right.x) {
-      return { price: left.price, date: left.date, y: left.y };
-    }
+    if (left.x === right.x) return { price: left.price, date: left.date, y: left.y };
     
-    // Linear interpolation
     const t = (clampedX - left.x) / (right.x - left.x);
-    const price = left.price + t * (right.price - left.price);
-    const y = left.y + t * (right.y - left.y);
-    const date = t < 0.5 ? left.date : right.date;
-    
-    return { price, date, y };
-  }, [points, padding.left, chartWidth]);
+    return {
+      price: left.price + t * (right.price - left.price),
+      y: left.y + t * (right.y - left.y),
+      date: t < 0.5 ? left.date : right.date,
+    };
+  }, [chartData, padding.left, chartWidth]);
+
+  // Early returns AFTER all hooks
+  if (isLoading && !chartData) {
+    return <ChartSkeleton />;
+  }
+
+  if (!chartData) {
+    return (
+      <div className="h-80 rounded flex items-center justify-center">
+        <span className="text-ast-muted text-xs">No chart data</span>
+      </div>
+    );
+  }
+
+  const { points, pathD, color, gradientId, prevCloseY } = chartData;
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const svg = e.currentTarget;
