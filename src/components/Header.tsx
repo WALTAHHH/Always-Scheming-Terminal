@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { ShortcutsHelp } from "./ShortcutsHelp";
@@ -7,6 +8,16 @@ import { useTheme } from "./ThemeProvider";
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  // Don't render until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return <div className="w-6 h-6" />; // Placeholder for layout stability
+  }
   
   return (
     <button
