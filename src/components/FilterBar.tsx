@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { ALL_CATEGORIES } from "@/lib/tagger";
+import { ALL_CATEGORIES, ALL_PLATFORMS, ALL_THEMES } from "@/lib/tagger";
 
 interface TagOption {
   value: string;
@@ -284,6 +284,18 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
     count: tagCounts.category?.[cat] || 0,
   })).sort((a, b) => b.count - a.count);
 
+  // Platform options: always show all platforms, even with 0 count
+  const platformOptions: TagOption[] = ALL_PLATFORMS.map((plat) => ({
+    value: plat,
+    count: tagCounts.platform?.[plat] || 0,
+  })).sort((a, b) => b.count - a.count);
+
+  // Theme options: always show all themes, even with 0 count
+  const themeOptions: TagOption[] = ALL_THEMES.map((theme) => ({
+    value: theme,
+    count: tagCounts.theme?.[theme] || 0,
+  })).sort((a, b) => b.count - a.count);
+
   const sourceOptions: TagOption[] = sources.map((s) => ({
     value: s.name,
     count: tagCounts._sources?.[s.name] || 0,
@@ -323,7 +335,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
         />
         <FilterDropdown
           label="Platform"
-          options={toOptions("platform")}
+          options={platformOptions}
           selected={filters.platforms}
           isOpen={openDropdown === "platform"}
           onToggleOpen={() => setOpenDropdown(openDropdown === "platform" ? null : "platform")}
@@ -333,7 +345,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
         />
         <FilterDropdown
           label="Theme"
-          options={toOptions("theme")}
+          options={themeOptions}
           selected={filters.themes}
           isOpen={openDropdown === "theme"}
           onToggleOpen={() => setOpenDropdown(openDropdown === "theme" ? null : "theme")}
@@ -459,7 +471,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
             />
             <MobileFilterList
               label="Platform"
-              options={toOptions("platform")}
+              options={platformOptions}
               selected={filters.platforms}
               onToggleValue={(v) =>
                 updateFilters({ platforms: toggleInArray(filters.platforms, v) })
@@ -467,7 +479,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
             />
             <MobileFilterList
               label="Theme"
-              options={toOptions("theme")}
+              options={themeOptions}
               selected={filters.themes}
               onToggleValue={(v) =>
                 updateFilters({ themes: toggleInArray(filters.themes, v) })

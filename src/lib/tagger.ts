@@ -322,6 +322,12 @@ export const ALL_CATEGORIES = [
   "opinion",
 ];
 
+// All possible platforms (for UI to show even when count is 0)
+export const ALL_PLATFORMS = Object.keys(PLATFORM_RULES);
+
+// All possible themes (for UI to show even when count is 0)
+export const ALL_THEMES = Object.keys(THEME_RULES);
+
 export interface TagResult {
   category: string[];
   platform: string[];
