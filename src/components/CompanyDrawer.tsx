@@ -102,8 +102,8 @@ function InteractiveChart({
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [activeMarker, setActiveMarker] = useState<NewsMarker | null>(null);
 
-  // Show skeleton while loading
-  if (isLoading) {
+  // Show skeleton only on initial load (no history yet)
+  if (isLoading && history.length < 2) {
     return <ChartSkeleton />;
   }
 
@@ -272,10 +272,16 @@ function InteractiveChart({
       }}
       onMouseLeave={handleMouseLeave}
     >
+      {/* Loading overlay - subtle, doesn't hide chart */}
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-ast-bg/30 z-10">
+          <div className="w-5 h-5 border-2 border-ast-accent border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-full pointer-events-none"
+        className={`w-full h-full pointer-events-none transition-opacity duration-200 ${isLoading ? 'opacity-50' : ''}`}
         preserveAspectRatio="none"
       >
         {/* Gradient definition */}
