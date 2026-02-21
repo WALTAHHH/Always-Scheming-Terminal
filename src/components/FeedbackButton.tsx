@@ -47,12 +47,12 @@ export function FeedbackButton() {
       <button
         onClick={() => setIsOpen(true)}
         className="
-          fixed bottom-6 right-6 z-50
+          fixed bottom-6 right-6 z-[9999]
           flex items-center gap-2
           px-4 py-3 rounded-lg
-          bg-ast-surface border border-ast-border
-          text-ast-text hover:text-ast-accent
-          hover:border-ast-accent
+          bg-ast-accent text-ast-bg
+          border-2 border-white
+          hover:bg-ast-pink
           transition-all duration-200
           shadow-lg hover:shadow-xl
           group
