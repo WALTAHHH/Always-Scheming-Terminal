@@ -16,7 +16,6 @@ A decision-support intelligence layer for gaming industry professionals. Think B
 
 - A general news aggregator (gaming industry only)
 - A social media dashboard (no Twitter/X in v1)
-- A financial terminal (no stock data in v1)
 - A content treadmill (automated ingestion, not manual publishing)
 
 ## Target Users
@@ -80,6 +79,41 @@ All ingested content is automatically tagged by AI. Tags are extracted, not matc
 ### Company List
 
 50+ public and private gaming companies. To be drafted and maintained as a living document. Not a hard filter for v1 — AI extracts company mentions from content freely. The list serves as a reference for verification and future features (company profiles, financial data).
+
+---
+
+## Financial Data Capabilities
+
+> **Note:** Stock data is now available despite earlier "not in v1" statements. This section documents current capabilities.
+
+### What Works Today
+
+- **Company Drawer** — Click any company tag to open a detailed drawer with:
+  - Real-time quote: price, change, change %, market cap
+  - 52-week high/low, previous close
+  - Interactive historical charts (1D, 1W, 1M, 3M, YTD, 1Y, 5Y)
+  - News events overlaid on price chart
+  - IR and SEC filing links
+
+### API: `/api/stock/[ticker]`
+
+- **Source:** `yahoo-finance2` npm package (free, no API key required)
+- **Caching:** 2-30 min TTL depending on range
+- **Rate limiting:** Per client IP
+
+### Company Coverage
+
+- 40+ gaming companies defined in `src/lib/companies.ts`
+- All 13 AS Primitives Index companies included
+- Each company has: name, ticker, exchange, IR URL, SEC URL, aliases, market cap
+
+### Not Yet Implemented
+
+Available via Yahoo Finance `quoteSummary` endpoint — requires extending the API:
+
+- **Fundamentals:** revenue, margins, P/E, P/S, EV/EBITDA
+- **Balance sheet:** cash, debt, FCF
+- **Index view:** Aggregate AS Primitives Index performance
 
 ---
 
