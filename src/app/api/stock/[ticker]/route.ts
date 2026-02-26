@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import YahooFinance from "yahoo-finance2";
 import { rateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
-const yahooFinance = new YahooFinance();
+const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
 // Yahoo Finance quote response shape (fields we use)
 interface YahooQuote {
@@ -46,9 +46,40 @@ export interface StockHistory {
   close: number;
 }
 
+export interface StockFundamentals {
+  // Revenue & Growth
+  revenue: number | null;
+  revenueGrowth: number | null;
+  
+  // Margins
+  grossMargin: number | null;
+  operatingMargin: number | null;
+  profitMargin: number | null;
+  
+  // Valuation
+  trailingPE: number | null;
+  forwardPE: number | null;
+  priceToBook: number | null;
+  priceToSales: number | null;
+  evToRevenue: number | null;
+  evToEbitda: number | null;
+  pegRatio: number | null;
+  
+  // Balance Sheet
+  totalCash: number | null;
+  totalDebt: number | null;
+  freeCashFlow: number | null;
+  
+  // Other
+  beta: number | null;
+  sharesOutstanding: number | null;
+  enterpriseValue: number | null;
+}
+
 export interface StockResponse {
   quote: StockQuote | null;
   history: StockHistory[];
+  fundamentals?: StockFundamentals | null;
   error?: string;
   cached?: boolean;
 }
@@ -70,6 +101,7 @@ const CACHE_TTL: Record<string, number> = {
   "ytd": 10 * 60 * 1000,    // 10 min
   "1y": 15 * 60 * 1000,     // 15 min
   "5y": 30 * 60 * 1000,     // 30 min for long-term
+  "fundamentals": 60 * 60 * 1000, // 1 hour for fundamentals (changes infrequently)
 };
 
 function getCacheKey(ticker: string, range: string): string {
@@ -108,6 +140,72 @@ function getYTDStart(): Date {
   return new Date(now.getFullYear(), 0, 1);
 }
 
+// Fundamentals cache (separate from price cache)
+const fundamentalsCache = new Map<string, CacheEntry>();
+
+function getFundamentalsFromCache(ticker: string): StockFundamentals | null {
+  const key = `fundamentals:${ticker.toUpperCase()}`;
+  const entry = fundamentalsCache.get(key);
+  if (!entry) return null;
+  
+  if (Date.now() - entry.timestamp > CACHE_TTL.fundamentals) {
+    fundamentalsCache.delete(key);
+    return null;
+  }
+  
+  return entry.data as unknown as StockFundamentals;
+}
+
+function setFundamentalsCache(ticker: string, data: StockFundamentals): void {
+  const key = `fundamentals:${ticker.toUpperCase()}`;
+  fundamentalsCache.set(key, { data: data as unknown as StockResponse, timestamp: Date.now() });
+}
+
+// Fetch fundamentals from quoteSummary
+async function fetchFundamentals(ticker: string): Promise<StockFundamentals | null> {
+  try {
+    const summary = await yahooFinance.quoteSummary(ticker, {
+      modules: ["financialData", "defaultKeyStatistics"],
+    });
+    
+    const fd = summary.financialData;
+    const ks = summary.defaultKeyStatistics;
+    
+    return {
+      // Revenue & Growth
+      revenue: fd?.totalRevenue ?? null,
+      revenueGrowth: fd?.revenueGrowth ?? null,
+      
+      // Margins
+      grossMargin: fd?.grossMargins ?? null,
+      operatingMargin: fd?.operatingMargins ?? null,
+      profitMargin: fd?.profitMargins ?? null,
+      
+      // Valuation
+      trailingPE: ks?.trailingPE ?? null,
+      forwardPE: ks?.forwardPE ?? null,
+      priceToBook: ks?.priceToBook ?? null,
+      priceToSales: ks?.priceToSalesTrailing12Months ?? null,
+      evToRevenue: ks?.enterpriseToRevenue ?? null,
+      evToEbitda: ks?.enterpriseToEbitda ?? null,
+      pegRatio: ks?.pegRatio ?? null,
+      
+      // Balance Sheet
+      totalCash: fd?.totalCash ?? null,
+      totalDebt: fd?.totalDebt ?? null,
+      freeCashFlow: fd?.freeCashflow ?? null,
+      
+      // Other
+      beta: ks?.beta ?? null,
+      sharesOutstanding: ks?.sharesOutstanding ?? null,
+      enterpriseValue: ks?.enterpriseValue ?? null,
+    };
+  } catch (error) {
+    console.error(`Fundamentals fetch error for ${ticker}:`, error);
+    return null;
+  }
+}
+
 // Map range strings to yahoo-finance2 period format
 const RANGE_MAP: Record<string, { period1: Date; interval: "1d" | "1wk" | "1mo" | "1h" | "5m" }> = {
   "1d": { period1: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), interval: "5m" },
@@ -143,6 +241,7 @@ export async function GET(
   const { ticker } = await params;
   const { searchParams } = new URL(request.url);
   const range = searchParams.get("range") || "1mo";
+  const includeFundamentals = searchParams.get("fundamentals") === "true";
 
   const cacheKey = getCacheKey(ticker, range);
   const ttl = CACHE_TTL[range] || CACHE_TTL["1mo"];
@@ -150,6 +249,17 @@ export async function GET(
   // Check cache first
   const cached = getFromCache(cacheKey, ttl);
   if (cached) {
+    // If fundamentals requested, add them (may be cached separately)
+    if (includeFundamentals) {
+      let fundamentals = getFundamentalsFromCache(ticker);
+      if (!fundamentals) {
+        fundamentals = await fetchFundamentals(ticker);
+        if (fundamentals) {
+          setFundamentalsCache(ticker, fundamentals);
+        }
+      }
+      return NextResponse.json({ ...cached, fundamentals });
+    }
     return NextResponse.json(cached);
   }
 
@@ -195,6 +305,18 @@ export async function GET(
     
     // Cache successful responses
     setCache(cacheKey, response);
+
+    // Fetch fundamentals if requested
+    if (includeFundamentals) {
+      let fundamentals = getFundamentalsFromCache(ticker);
+      if (!fundamentals) {
+        fundamentals = await fetchFundamentals(ticker);
+        if (fundamentals) {
+          setFundamentalsCache(ticker, fundamentals);
+        }
+      }
+      return NextResponse.json({ ...response, fundamentals });
+    }
 
     return NextResponse.json(response);
   } catch (error) {
