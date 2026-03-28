@@ -102,4 +102,10 @@ export const V1_SOURCES = [
     feed_url: "https://www.eurogamer.net/feed",
     source_type: "news",
   },
+  {
+    name: "David Kaye",
+    url: "https://blog.davidkaye.co",
+    feed_url: "https://blog.davidkaye.co/feed",
+    source_type: "newsletter",
+  },
 ] as const;
