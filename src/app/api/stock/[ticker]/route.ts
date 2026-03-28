@@ -4,6 +4,13 @@ import { rateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
 const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
+// Helper to safely extract number values from yahoo-finance2 responses
+// (some fields return {} instead of undefined when missing)
+function toNumber(val: unknown): number | null {
+  if (typeof val === "number" && !isNaN(val)) return val;
+  return null;
+}
+
 // Yahoo Finance quote response shape (fields we use)
 interface YahooQuote {
   symbol?: string;
@@ -173,32 +180,32 @@ async function fetchFundamentals(ticker: string): Promise<StockFundamentals | nu
     
     return {
       // Revenue & Growth
-      revenue: fd?.totalRevenue ?? null,
-      revenueGrowth: fd?.revenueGrowth ?? null,
+      revenue: toNumber(fd?.totalRevenue),
+      revenueGrowth: toNumber(fd?.revenueGrowth),
       
       // Margins
-      grossMargin: fd?.grossMargins ?? null,
-      operatingMargin: fd?.operatingMargins ?? null,
-      profitMargin: fd?.profitMargins ?? null,
+      grossMargin: toNumber(fd?.grossMargins),
+      operatingMargin: toNumber(fd?.operatingMargins),
+      profitMargin: toNumber(fd?.profitMargins),
       
       // Valuation
-      trailingPE: ks?.trailingPE ?? null,
-      forwardPE: ks?.forwardPE ?? null,
-      priceToBook: ks?.priceToBook ?? null,
-      priceToSales: ks?.priceToSalesTrailing12Months ?? null,
-      evToRevenue: ks?.enterpriseToRevenue ?? null,
-      evToEbitda: ks?.enterpriseToEbitda ?? null,
-      pegRatio: ks?.pegRatio ?? null,
+      trailingPE: toNumber(ks?.trailingPE),
+      forwardPE: toNumber(ks?.forwardPE),
+      priceToBook: toNumber(ks?.priceToBook),
+      priceToSales: toNumber(ks?.priceToSalesTrailing12Months),
+      evToRevenue: toNumber(ks?.enterpriseToRevenue),
+      evToEbitda: toNumber(ks?.enterpriseToEbitda),
+      pegRatio: toNumber(ks?.pegRatio),
       
       // Balance Sheet
-      totalCash: fd?.totalCash ?? null,
-      totalDebt: fd?.totalDebt ?? null,
-      freeCashFlow: fd?.freeCashflow ?? null,
+      totalCash: toNumber(fd?.totalCash),
+      totalDebt: toNumber(fd?.totalDebt),
+      freeCashFlow: toNumber(fd?.freeCashflow),
       
       // Other
-      beta: ks?.beta ?? null,
-      sharesOutstanding: ks?.sharesOutstanding ?? null,
-      enterpriseValue: ks?.enterpriseValue ?? null,
+      beta: toNumber(ks?.beta),
+      sharesOutstanding: toNumber(ks?.sharesOutstanding),
+      enterpriseValue: toNumber(ks?.enterpriseValue),
     };
   } catch (error) {
     console.error(`Fundamentals fetch error for ${ticker}:`, error);
