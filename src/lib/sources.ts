@@ -108,4 +108,10 @@ export const V1_SOURCES = [
     feed_url: "https://blog.davidkaye.co/feed",
     source_type: "newsletter",
   },
+  {
+    name: "Metaversus (Ryan Foo)",
+    url: "https://metaversus.substack.com",
+    feed_url: "https://metaversus.substack.com/feed",
+    source_type: "newsletter",
+  },
 ] as const;
