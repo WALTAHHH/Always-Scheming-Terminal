@@ -9,6 +9,7 @@ import { CompanyTray } from "./CompanyTray";
 import { CompanyDrawerPortal, setGlobalItems } from "./CompanyDrawer";
 import { CompanyTrayBoundary } from "./ErrorBoundary";
 import { clusterItems } from "@/lib/cluster";
+import { MobileSwipeView } from "./MobileSwipeView";
 
 interface LiveFeedProps {
   initialItems: FeedItem[];
@@ -361,6 +362,56 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     };
   }, [items]);
 
+  // Mobile panels config for swipe view
+  const mobilePanels = useMemo(() => [
+    {
+      id: "feed",
+      label: "Feed",
+      color: "ast-accent",
+      content: (
+        <Feed
+          items={items}
+          sources={sources}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={loadMore}
+        />
+      ),
+    },
+    {
+      id: "signal",
+      label: "Signal",
+      color: "ast-gold",
+      content: <SignalPanel items={items} />,
+    },
+    {
+      id: "companies",
+      label: "Companies",
+      color: "ast-mint",
+      content: (
+        <CompanyTray
+          items={items}
+          selectedCompany={selectedCompany}
+          onSelectCompany={setSelectedCompany}
+        />
+      ),
+    },
+  ], [items, sources, hasMore, loadingMore, loadMore, selectedCompany]);
+
+  // Mobile view
+  if (isMobile) {
+    return (
+      <>
+        <NewItemsBanner count={newCount} onClick={loadNewItems} />
+        <div className="h-[calc(100vh-6rem)]">
+          <MobileSwipeView panels={mobilePanels} />
+        </div>
+        <CompanyDrawerPortal />
+      </>
+    );
+  }
+
+  // Desktop view
   return (
     <>
       <NewItemsBanner count={newCount} onClick={loadNewItems} />
