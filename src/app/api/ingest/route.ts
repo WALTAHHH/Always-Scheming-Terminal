@@ -4,14 +4,17 @@ import { ingestAll } from "@/lib/ingest";
 export const maxDuration = 60; // Vercel function timeout
 
 export async function POST(req: NextRequest) {
-  // Auth: require valid Bearer token only when an Authorization header is
-  // present (external cron jobs).  Same-origin browser requests (e.g. the
-  // admin "Fetch All" button) won't send a header and are allowed through.
-  const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
-  if (authHeader && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // If CRON_SECRET is configured, require it via Authorization header.
+  // This secures both external cron jobs AND direct API calls.
+  // The admin UI (same-origin) must also send the header — set NEXT_PUBLIC_CRON_SECRET
+  // or use the admin page which reads it from the server environment.
+  if (cronSecret) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   try {

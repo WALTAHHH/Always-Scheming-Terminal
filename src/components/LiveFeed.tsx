@@ -67,6 +67,8 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   const [topHeight, setTopHeight] = useState(60);
   const [isDraggingH, setIsDraggingH] = useState(false);
   const [isDraggingV, setIsDraggingV] = useState(false);
+  const leftWidthRef = useRef(50);
+  const topHeightRef = useRef(60);
   const [panels, setPanels] = useState<PanelVisibility>({ feed: true, signal: true, companies: true });
   
   // Company tray state
@@ -136,14 +138,14 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       const x = e.clientX - rect.left;
       const percentage = (x / rect.width) * 100;
       const clamped = Math.min(Math.max(percentage, MIN_PANE_WIDTH), MAX_PANE_WIDTH);
+      leftWidthRef.current = clamped;
       setLeftWidth(clamped);
     };
 
     const handleMouseUp = () => {
       setIsDraggingH(false);
-      localStorage.setItem(STORAGE_KEY_HORIZONTAL, leftWidth.toString());
+      localStorage.setItem(STORAGE_KEY_HORIZONTAL, leftWidthRef.current.toString());
     };
-
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
     return () => {
@@ -167,12 +169,13 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       const y = e.clientY - rect.top;
       const percentage = (y / rect.height) * 100;
       const clamped = Math.min(Math.max(percentage, MIN_PANE_HEIGHT), MAX_PANE_HEIGHT);
+      topHeightRef.current = clamped;
       setTopHeight(clamped);
     };
 
     const handleMouseUp = () => {
       setIsDraggingV(false);
-      localStorage.setItem(STORAGE_KEY_VERTICAL, topHeight.toString());
+      localStorage.setItem(STORAGE_KEY_VERTICAL, topHeightRef.current.toString());
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -257,7 +260,11 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
 
   const checkForNew = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ limit: "50" });
+      // Use the newest known item's published_at as a "since" cursor.
+      // Fetch up to 100 to catch bursts; compare by ID to deduplicate.
+      const newest = items.length > 0 ? (items[0].published_at || items[0].ingested_at) : null;
+      const params = new URLSearchParams({ limit: "100" });
+      if (newest) params.set("since", newest);
       const res = await fetch(`/api/items?${params}`);
       if (!res.ok) return;
 

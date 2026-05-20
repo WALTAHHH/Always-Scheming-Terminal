@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("q");
   const company = searchParams.get("company");
   const before = searchParams.get("before"); // cursor: published_at ISO timestamp
+  const since = searchParams.get("since");   // cursor: only items newer than this
 
   const supabase = createServerClient();
 
@@ -28,12 +29,19 @@ export async function GET(req: NextRequest) {
     .eq("sources.active", true)
     .order("published_at", { ascending: false, nullsFirst: false });
 
-  // Cursor-based pagination: fetch items older than this timestamp
+  // Cursor-based OR offset pagination — never both simultaneously.
+  // If `before` is provided, use cursor approach (no range).
+  // If only `offset` is provided (no before), use range.
   if (before) {
-    query = query.lt("published_at", before);
+    query = query.lt("published_at", before).limit(limit + 1);
+  } else {
+    query = query.range(offset, offset + limit);
   }
 
-  query = query.range(offset, offset + limit - 1);
+  // `since` filter for live-poll: only items newer than this timestamp
+  if (since) {
+    query = query.gt("published_at", since);
+  }
 
   // Filter by source name
   if (source) {
@@ -57,10 +65,10 @@ export async function GET(req: NextRequest) {
   }
 
   const items = data || [];
-  const hasMore = items.length === limit;
-
+  // We fetched limit+1 items to detect hasMore — slice back to limit for the response
+  const hasMore = items.length > limit;
   return NextResponse.json({
-    items,
+    items: hasMore ? items.slice(0, limit) : items,
     total: count,
     limit,
     offset,

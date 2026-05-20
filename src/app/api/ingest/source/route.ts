@@ -4,6 +4,14 @@ import { ingestOne } from "@/lib/ingest";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   const body = await req.json();
   const { source_id } = body;
 

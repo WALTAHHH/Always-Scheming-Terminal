@@ -533,7 +533,12 @@ function FetchAllButton({ onDone }: { onDone: () => void }) {
     setFetching(true);
     setToast(null);
     try {
-      const res = await fetch("/api/ingest", { method: "POST" });
+      const res = await fetch("/api/ingest", {
+        method: "POST",
+        headers: process.env.NEXT_PUBLIC_CRON_SECRET
+          ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET}` }
+          : {},
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ingestion failed");
       const s = data.summary;
@@ -791,7 +796,12 @@ function FetchButton({ sourceId, onDone }: { sourceId: string; onDone: () => voi
     try {
       const res = await fetch("/api/ingest/source", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(process.env.NEXT_PUBLIC_CRON_SECRET
+            ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET}` }
+            : {}),
+        },
         body: JSON.stringify({ source_id: sourceId }),
       });
       const data = await res.json();
