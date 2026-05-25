@@ -398,58 +398,64 @@ export function tagItem(
   };
 }
 
+
+const AI_TIMEOUT_MS = 4000;
+
 /**
- * AI-based tagging for companies and themes.
- * Returns additional tags to merge with rule-based results.
- * Requires OPENAI_API_KEY in env.
+ * Wraps a promise with a hard timeout. Resolves with fallback value if exceeded.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+/**
+ * AI-based tagging using Google Gemini Flash.
+ * Augments rule-based tags with companies/themes the rules miss.
+ * Falls back to empty arrays on any failure or timeout.
+ * Requires GOOGLE_AI_API_KEY in env.
  */
 export async function tagItemWithAI(
   title: string,
   content: string | null
 ): Promise<{ company: string[]; theme: string[] }> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) {
     return { company: [], theme: [] };
   }
 
   const excerpt = content ? content.slice(0, 500) : "";
 
-  try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0,
-        max_tokens: 200,
-        messages: [
-          {
-            role: "system",
-            content: `Extract gaming industry tags from this article. Return JSON only, no markdown.
+  const prompt = `Extract gaming industry tags from this article. Return JSON only, no markdown.
 Format: {"companies":["Company Name"],"themes":["theme-slug"]}
 Valid themes: ai, ugc, live-services, cloud-gaming, vr-ar, blockchain, esports, indie, mobile-first, free-to-play, premium, subscription
-Only include what's clearly mentioned. Empty arrays if none found.`,
-          },
-          {
-            role: "user",
-            content: `Title: ${title}\nContent: ${excerpt}`,
-          },
-        ],
-      }),
-    });
+Only include what's clearly mentioned. Empty arrays if none found.
+
+Title: ${title}
+Content: ${excerpt}`;
+
+  const call = async (): Promise<{ company: string[]; theme: string[] }> => {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 200 },
+        }),
+      }
+    );
 
     if (!response.ok) {
-      console.error(`OpenAI API error: ${response.status}`);
+      console.error(`Gemini API error: ${response.status}`);
       return { company: [], theme: [] };
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || "{}";
-
-    // Parse JSON, handling potential markdown wrapping
+    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const parsed = JSON.parse(cleaned);
 
@@ -457,6 +463,10 @@ Only include what's clearly mentioned. Empty arrays if none found.`,
       company: Array.isArray(parsed.companies) ? parsed.companies : [],
       theme: Array.isArray(parsed.themes) ? parsed.themes : [],
     };
+  };
+
+  try {
+    return await withTimeout(call(), AI_TIMEOUT_MS, { company: [], theme: [] });
   } catch (err) {
     console.error("AI tagging failed:", err);
     return { company: [], theme: [] };
