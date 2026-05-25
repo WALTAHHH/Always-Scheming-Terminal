@@ -43,6 +43,8 @@ interface FeedProps {
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  filters?: FilterState;
+  onFiltersChange?: (f: FilterState) => void;
 }
 
 /**
@@ -72,7 +74,7 @@ function computeTagCounts(items: FeedItem[]): Record<string, Record<string, numb
   return counts;
 }
 
-function matchesFilter(item: FeedItem, filters: FilterState): boolean {
+export function matchesFilter(item: FeedItem, filters: FilterState): boolean {
   const tags = (item.tags as Record<string, string[]>) || {};
   const sourceName = item.sources?.name || "";
 
@@ -203,15 +205,23 @@ function DateGroupHeader({
   );
 }
 
-export function Feed({ items, sources, hasMore, loadingMore, onLoadMore }: FeedProps) {
+export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters: externalFilters, onFiltersChange }: FeedProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   
   // Initialize filters from URL params
-  const [filters, setFilters] = useState<FilterState>(() => 
+  const [internalFilters, setInternalFilters] = useState<FilterState>(() => 
     parseFiltersFromParams(searchParams)
   );
+
+  // Use external filters if provided (controlled mode), otherwise internal
+  const filters = externalFilters ?? internalFilters;
+  const setFilters = useCallback((f: FilterState) => {
+    setInternalFilters(f);
+    onFiltersChange?.(f);
+  }, [onFiltersChange]);
+
   const [sortMode, setSortMode] = useState<SortMode>("importance");
   const sentinelRef = useRef<HTMLDivElement>(null);
   

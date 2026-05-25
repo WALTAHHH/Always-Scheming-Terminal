@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { FeedItem } from "@/lib/database.types";
-import { Feed } from "./Feed";
+import { Feed, matchesFilter } from "./Feed";
+import type { FilterState } from "./FilterBar";
+import { EMPTY_FILTERS } from "./FilterBar";
 import { NewItemsBanner } from "./NewItemsBanner";
 import { SignalPanel } from "./SignalPanel";
 import { CompanyTray } from "./CompanyTray";
@@ -58,6 +60,13 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingMore, setLoadingMore] = useState(false);
   const [newCount, setNewCount] = useState(0);
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+
+  // Filtered items — shared by Feed and SignalPanel so they stay in sync
+  const filteredItems = useMemo(
+    () => items.filter((item) => matchesFilter(item, filters)),
+    [items, filters]
+  );
   
   // Mobile/PWA detection for single-panel mode
   const isMobile = useIsMobile();
@@ -382,6 +391,8 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
           hasMore={hasMore}
           loadingMore={loadingMore}
           onLoadMore={loadMore}
+          filters={filters}
+          onFiltersChange={setFilters}
         />
       ),
     },
@@ -389,7 +400,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       id: "signal",
       label: "Signal",
       color: "ast-gold",
-      content: <SignalPanel items={items} />,
+        content: <SignalPanel items={filteredItems} />,
     },
     {
       id: "companies",
@@ -475,6 +486,8 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
                 hasMore={hasMore}
                 loadingMore={loadingMore}
                 onLoadMore={loadMore}
+                filters={filters}
+                onFiltersChange={setFilters}
               />
             </div>
             
@@ -504,7 +517,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
                   className="overflow-y-auto"
                   style={{ height: showBothRight ? `${topHeight}%` : "100%" }}
                 >
-                  <SignalPanel items={items} />
+                  <SignalPanel items={filteredItems} />
                 </div>
                 
                 {/* Vertical divider (desktop only) */}

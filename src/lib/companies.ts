@@ -1,6 +1,8 @@
 /**
  * Gaming company data for the company drawer feature.
  * Maps company names (as they appear in tags) to ticker symbols and IR links.
+ * Private companies have ticker: "" — drawer shows segment info instead of stock data.
+ * Subsidiaries have parentCompany set — drawer shows a note with parent ticker.
  */
 
 export interface CompanyData {
@@ -11,6 +13,12 @@ export interface CompanyData {
   secUrl?: string;
   aliases: string[];
   marketCapB?: number; // Market cap in billions USD (for index weighting)
+  /** Set for private companies or companies with no public listing */
+  isPrivate?: boolean;
+  /** Parent company name if this is a subsidiary (e.g. "Microsoft" for Activision Blizzard) */
+  parentCompany?: string;
+  /** Human-readable segment label for private company drawer */
+  segment?: string;
 }
 
 export const GAMING_COMPANIES: CompanyData[] = [
@@ -41,12 +49,12 @@ export const GAMING_COMPANIES: CompanyData[] = [
     marketCapB: 38, // ~$38B
   },
   {
-    name: "Unity",
+    name: "Unity Technologies",
     ticker: "U",
     exchange: "NYSE",
     irUrl: "https://investors.unity.com/",
-    aliases: ["Unity Software", "Unity Technologies"],
-    marketCapB: 9, // ~$9B
+    aliases: ["Unity", "Unity Software"],
+    marketCapB: 9,
   },
   {
     name: "AppLovin",
@@ -61,6 +69,8 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NASDAQ",
     irUrl: "https://www.microsoft.com/en-us/investor",
     aliases: ["Activision", "Blizzard", "King", "Call of Duty", "ABK"],
+    parentCompany: "Microsoft",
+    segment: "Studio (Microsoft subsidiary)",
   },
   {
     name: "Tencent",
@@ -85,12 +95,12 @@ export const GAMING_COMPANIES: CompanyData[] = [
     aliases: ["Nintendo Co", "Nintendo Co Ltd"],
   },
   {
-    name: "Sony",
+    name: "Sony Interactive",
     ticker: "SONY",
     exchange: "NYSE",
     irUrl: "https://www.sony.com/en/SonyInfo/IR/",
-    aliases: ["Sony Interactive Entertainment", "PlayStation", "SIE", "Sony Group"],
-    marketCapB: 115, // ~$115B
+    aliases: ["Sony", "Sony Interactive Entertainment", "PlayStation", "SIE", "Sony Group"],
+    marketCapB: 115,
   },
   {
     name: "Capcom",
@@ -133,6 +143,8 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NASDAQ",
     irUrl: "https://www.microsoft.com/en-us/investor",
     aliases: ["Bethesda Softworks", "Bethesda Game Studios", "ZeniMax"],
+    parentCompany: "Microsoft",
+    segment: "Studio (Microsoft subsidiary)",
   },
   // ── Aream / InvestGame Coverage ──
   {
@@ -248,11 +260,11 @@ export const GAMING_COMPANIES: CompanyData[] = [
     aliases: ["Bandai Namco Holdings", "Bandai"],
   },
   {
-    name: "Sega Sammy",
+    name: "Sega",
     ticker: "6460.T",
     exchange: "TSE",
     irUrl: "https://www.segasammy.co.jp/en/ir/",
-    aliases: ["Sega", "SEGA", "Sega Holdings"],
+    aliases: ["Sega Sammy", "SEGA", "Sega Holdings", "Sega Sammy Holdings"],
   },
   {
     name: "Konami",
@@ -325,7 +337,314 @@ export const GAMING_COMPANIES: CompanyData[] = [
     exchange: "NYSE",
     irUrl: "https://investor.snap.com/",
     aliases: ["Snap Inc", "Snapchat", "Spectacles", "Lens Studio"],
-    marketCapB: 18, // ~$18B
+    marketCapB: 18,
+  },
+  // ── Public companies missing from original list ──
+  {
+    name: "Epic Games",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://www.epicgames.com/site/en-US/news",
+    aliases: ["Epic", "Unreal Engine", "Epic Games Store", "Fortnite"],
+    isPrivate: true,
+    segment: "Platform / Publisher",
+  },
+  {
+    name: "miHoYo",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://www.hoyoverse.com/en-us/",
+    aliases: ["HoYoverse", "Genshin Impact", "Honkai Star Rail", "miHoYo"],
+    isPrivate: true,
+    segment: "Asian Publisher (Private)",
+  },
+  {
+    name: "Riot Games",
+    ticker: "0700.HK",
+    exchange: "HKEX",
+    irUrl: "https://www.tencent.com/en-us/investors.html",
+    aliases: ["Riot", "League of Legends", "Valorant"],
+    parentCompany: "Tencent",
+    segment: "Studio (Tencent subsidiary)",
+  },
+  {
+    name: "Bungie",
+    ticker: "SONY",
+    exchange: "NYSE",
+    irUrl: "https://www.sony.com/en/SonyInfo/IR/",
+    aliases: ["Bungie Inc", "Destiny 2", "Marathon"],
+    parentCompany: "Sony Interactive",
+    segment: "Studio (Sony subsidiary)",
+  },
+  {
+    name: "Supercell",
+    ticker: "0700.HK",
+    exchange: "HKEX",
+    irUrl: "https://www.tencent.com/en-us/investors.html",
+    aliases: ["Clash of Clans", "Brawl Stars", "Clash Royale"],
+    parentCompany: "Tencent",
+    segment: "Mobile Studio (Tencent subsidiary)",
+  },
+  {
+    name: "Scopely",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://scopely.com/",
+    aliases: ["Monopoly Go", "Scopely Inc"],
+    isPrivate: true,
+    segment: "Mobile Publisher",
+  },
+  {
+    name: "Larian Studios",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://larian.com/",
+    aliases: ["Larian", "Baldur's Gate 3", "Baldurs Gate"],
+    isPrivate: true,
+    segment: "PC/Console Studio (Private)",
+  },
+  {
+    name: "FromSoftware",
+    ticker: "9468.T",
+    exchange: "TSE",
+    irUrl: "https://www.kadokawa.co.jp/en/ir/",
+    aliases: ["From Software", "Elden Ring", "Dark Souls", "Armored Core"],
+    parentCompany: "Kadokawa",
+    segment: "Studio (Kadokawa subsidiary)",
+  },
+  {
+    name: "Annapurna Interactive",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://annapurnainteractive.com/",
+    aliases: ["Annapurna Games", "Annapurna"],
+    isPrivate: true,
+    segment: "Indie Publisher (Private)",
+  },
+  {
+    name: "Devolver Digital",
+    ticker: "DEVB.ST",
+    exchange: "STO",
+    irUrl: "https://www.devolverdigital.com/",
+    aliases: ["Devolver"],
+  },
+  {
+    name: "11 bit studios",
+    ticker: "11B.WA",
+    exchange: "WSE",
+    irUrl: "https://ir.11bitstudios.com/",
+    aliases: ["11 bit", "Frostpunk", "This War of Mine"],
+  },
+  {
+    name: "Coffee Stain Group",
+    ticker: "EMBRAC-B.ST",
+    exchange: "STO",
+    irUrl: "https://embracer.com/investors/",
+    aliases: ["Coffee Stain", "Coffee Stain Studios", "Deep Rock Galactic", "Satisfactory"],
+    parentCompany: "Embracer Group",
+    segment: "Studio (Embracer subsidiary)",
+  },
+  {
+    name: "Niantic",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://nianticlabs.com/",
+    aliases: ["Niantic Labs", "Pokemon Go", "Pokémon Go"],
+    isPrivate: true,
+    segment: "Mobile / AR (Private)",
+  },
+  {
+    name: "Moon Active",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://moonactive.com/",
+    aliases: ["Coin Master"],
+    isPrivate: true,
+    segment: "Mobile (Private)",
+  },
+  {
+    name: "Dream Games",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://www.dreamgames.com/",
+    aliases: ["Royal Match"],
+    isPrivate: true,
+    segment: "Mobile (Private)",
+  },
+  {
+    name: "Habby",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://habby.com/",
+    aliases: ["Archero", "Survivor.io"],
+    isPrivate: true,
+    segment: "Mobile (Private)",
+  },
+  {
+    name: "Jam City",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://jamcity.com/",
+    aliases: [],
+    isPrivate: true,
+    segment: "Mobile (Private)",
+  },
+  {
+    name: "Rovio",
+    ticker: "6460.T",
+    exchange: "TSE",
+    irUrl: "https://www.segasammy.co.jp/en/ir/",
+    aliases: ["Angry Birds"],
+    parentCompany: "Sega",
+    segment: "Mobile Studio (Sega subsidiary)",
+  },
+  {
+    name: "Voodoo",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://www.voodoo.io/",
+    aliases: [],
+    isPrivate: true,
+    segment: "Mobile (Private)",
+  },
+  {
+    name: "Tripledot Studios",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://tripledotstudios.com/",
+    aliases: ["Tripledot"],
+    isPrivate: true,
+    segment: "Mobile (Private)",
+  },
+  {
+    name: "ByteDance",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://www.bytedance.com/en/",
+    aliases: ["Nuverse", "TikTok"],
+    isPrivate: true,
+    segment: "Tech / Gaming (Private)",
+  },
+  {
+    name: "Kakao Games",
+    ticker: "293490.KS",
+    exchange: "KRX",
+    irUrl: "https://ir.kakaogames.com/",
+    aliases: ["Kakao"],
+  },
+  {
+    name: "Pearl Abyss",
+    ticker: "263750.KS",
+    exchange: "KRX",
+    irUrl: "https://ir.pearlabyss.com/en/",
+    aliases: ["Black Desert", "Crimson Desert"],
+  },
+  {
+    name: "Shift Up",
+    ticker: "462870.KS",
+    exchange: "KRX",
+    irUrl: "https://www.shift-up.co.kr/",
+    aliases: ["Stellar Blade", "NIKKE"],
+  },
+  {
+    name: "NCSoft",
+    ticker: "036570.KS",
+    exchange: "KRX",
+    irUrl: "https://ir.ncsoft.com/en",
+    aliases: ["Throne and Liberty", "Guild Wars"],
+  },
+  {
+    name: "Com2uS",
+    ticker: "078340.KS",
+    exchange: "KRX",
+    irUrl: "https://company.com2us.com/investor/",
+    aliases: ["Summoners War"],
+  },
+  {
+    name: "Lilith Games",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://www.lilithgames.com/",
+    aliases: ["Lilith"],
+    isPrivate: true,
+    segment: "Mobile (Private)",
+  },
+  {
+    name: "Miniclip",
+    ticker: "0700.HK",
+    exchange: "HKEX",
+    irUrl: "https://www.tencent.com/en-us/investors.html",
+    aliases: ["8 Ball Pool"],
+    parentCompany: "Tencent",
+    segment: "Mobile (Tencent subsidiary)",
+  },
+  {
+    name: "Xsolla",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://xsolla.com/",
+    aliases: [],
+    isPrivate: true,
+    segment: "Gaming Infrastructure (Private)",
+  },
+  {
+    name: "Overwolf",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://www.overwolf.com/",
+    aliases: ["CurseForge"],
+    isPrivate: true,
+    segment: "Gaming Infrastructure (Private)",
+  },
+  {
+    name: "Discord",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://discord.com/",
+    aliases: [],
+    isPrivate: true,
+    segment: "Gaming Infrastructure (Private)",
+  },
+  {
+    name: "Twitch",
+    ticker: "AMZN",
+    exchange: "NASDAQ",
+    irUrl: "https://ir.aboutamazon.com/",
+    aliases: [],
+    parentCompany: "Amazon",
+    segment: "Streaming (Amazon subsidiary)",
+  },
+  {
+    name: "Savvy Games Group",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://savvygames.com/",
+    aliases: ["Savvy Games", "Savvy Gaming"],
+    isPrivate: true,
+    segment: "Investment / Holding (Saudi PIF)",
+  },
+  {
+    name: "Kadokawa",
+    ticker: "9468.T",
+    exchange: "TSE",
+    irUrl: "https://www.kadokawa.co.jp/en/ir/",
+    aliases: ["Kadokawa Corporation"],
+  },
+  {
+    name: "CVC Capital Partners",
+    ticker: "CVC.AS",
+    exchange: "AMS",
+    irUrl: "https://www.cvc.com/investors/",
+    aliases: ["CVC Capital"],
+  },
+  {
+    name: "Access Industries",
+    ticker: "",
+    exchange: "",
+    irUrl: "https://www.accessindustries.com/",
+    aliases: [],
+    isPrivate: true,
+    segment: "Investment / Holding (Private)",
   },
 ];
 

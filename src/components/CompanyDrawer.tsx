@@ -526,8 +526,11 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-ast-text">{companyData?.name || companyName}</h2>
-            {companyData?.ticker && (
+            {companyData?.ticker && !companyData?.parentCompany && (
               <span className="text-ast-accent text-sm">{companyData.ticker} · {companyData.exchange}</span>
+            )}
+            {companyData?.parentCompany && (
+              <span className="text-ast-muted text-sm">via {companyData.parentCompany} · {companyData.ticker}</span>
             )}
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded border border-ast-border text-ast-muted hover:text-ast-text flex items-center justify-center">✕</button>
@@ -535,7 +538,34 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
 
         <div className="flex-1 overflow-y-auto">
           {!companyData || !companyData.ticker ? (
-            <div className="p-5 text-ast-muted text-sm">No market data available for "{companyName}"</div>
+            <div className="p-5 space-y-3">
+              {companyData?.segment && (
+                <div className="text-ast-muted text-xs uppercase tracking-wide">{companyData.segment}</div>
+              )}
+              {companyData?.parentCompany && (
+                <div className="text-sm text-ast-text">
+                  Subsidiary of{" "}
+                  <span className="text-ast-accent">{companyData.parentCompany}</span>
+                  {" "}— stock data shown under parent
+                </div>
+              )}
+              {companyData?.isPrivate && (
+                <div className="text-sm text-ast-muted">Private company — no public market data</div>
+              )}
+              {companyData?.irUrl && (
+                <a
+                  href={companyData.irUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block text-xs text-ast-accent hover:underline"
+                >
+                  Company website ↗
+                </a>
+              )}
+              {!companyData && (
+                <div className="text-ast-muted text-sm">No data available for &quot;{companyName}&quot;</div>
+              )}
+            </div>
           ) : (
             <>
               {/* Price display - show during load too */}
