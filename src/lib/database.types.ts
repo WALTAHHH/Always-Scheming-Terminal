@@ -216,17 +216,110 @@ export interface Database {
           created_at?: string;
         };
       };
+      entities: {
+        Row: {
+          id: string;
+          canonical_name: string;
+          entity_type: 'company' | 'person' | 'game' | 'event' | 'org';
+          ticker: string | null;
+          exchange: string | null;
+          is_public: boolean;
+          parent_id: string | null;
+          description: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          canonical_name: string;
+          entity_type: 'company' | 'person' | 'game' | 'event' | 'org';
+          ticker?: string | null;
+          exchange?: string | null;
+          is_public?: boolean;
+          parent_id?: string | null;
+          description?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          canonical_name?: string;
+          entity_type?: 'company' | 'person' | 'game' | 'event' | 'org';
+          ticker?: string | null;
+          exchange?: string | null;
+          is_public?: boolean;
+          parent_id?: string | null;
+          description?: string | null;
+          created_at?: string;
+        };
+      };
+      entity_aliases: {
+        Row: {
+          id: string;
+          entity_id: string;
+          alias: string;
+          alias_type: 'canonical' | 'ticker' | 'common' | 'game_title' | 'abbreviation' | 'former_name' | 'product';
+        };
+        Insert: {
+          id?: string;
+          entity_id: string;
+          alias: string;
+          alias_type: 'canonical' | 'ticker' | 'common' | 'game_title' | 'abbreviation' | 'former_name' | 'product';
+        };
+        Update: {
+          id?: string;
+          entity_id?: string;
+          alias?: string;
+          alias_type?: 'canonical' | 'ticker' | 'common' | 'game_title' | 'abbreviation' | 'former_name' | 'product';
+        };
+      };
+      api_keys: {
+        Row: {
+          id: string;
+          key_hash: string;
+          label: string;
+          owner: string;
+          scopes: Json;
+          rate_limit_rpm: number;
+          last_used_at: string | null;
+          created_at: string;
+          revoked_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          key_hash: string;
+          label: string;
+          owner: string;
+          scopes?: Json;
+          rate_limit_rpm?: number;
+          last_used_at?: string | null;
+          created_at?: string;
+          revoked_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          key_hash?: string;
+          label?: string;
+          owner?: string;
+          scopes?: Json;
+          rate_limit_rpm?: number;
+          last_used_at?: string | null;
+          created_at?: string;
+          revoked_at?: string | null;
+        };
+      };
     };
   };
 }
 
 // Convenience types
 export type Source = Database["public"]["Tables"]["sources"]["Row"];
-export type Item = Database["public"]["Tables"]["content"]["Row"];
+export type Item = Database["public"]["Tables"]["items"]["Row"];
 export type ItemTag = Database["public"]["Tables"]["content_tags"]["Row"];
 export type Company = Database["public"]["Tables"]["companies"]["Row"];
 export type IngestionLog = Database["public"]["Tables"]["ingestion_logs"]["Row"];
 export type Signal = Database["public"]["Tables"]["signals"]["Row"];
+export type Entity = Database["public"]["Tables"]["entities"]["Row"];
+export type EntityAlias = Database["public"]["Tables"]["entity_aliases"]["Row"];
+export type ApiKey = Database["public"]["Tables"]["api_keys"]["Row"];
 
 // Extended item with source info for the feed
 export type FeedItem = Item & {

@@ -20,7 +20,7 @@ type SignalInsert = Database["public"]["Tables"]["signals"]["Insert"];
 interface ItemForGate {
   id: string;
   title: string;
-  content: string | null;
+  body: string | null;
   tags: Record<string, string[]>;
   sources?: { source_type: string };
 }
@@ -164,7 +164,7 @@ interface ExtractSignalOptions {
   item: {
     id: string;
     title: string;
-    content: string | null;
+    body: string | null;
     tags: Record<string, string[]>;
     sources?: { source_type: string };
   };
