@@ -108,7 +108,7 @@ export function matchesFilter(item: FeedItem, filters: FilterState): boolean {
     const q = filters.search.toLowerCase();
     checks.push(
       item.title.toLowerCase().includes(q) ||
-        (item.content || "").toLowerCase().includes(q)
+        (item.body || "").toLowerCase().includes(q)
     );
   }
 

@@ -9,7 +9,7 @@ export async function GET() {
   const supabase = createServerClient();
 
   const { data, error } = await supabase
-    .from("item_tags")
+    .from("content_tags")
     .select("value")
     .eq("dimension", "company") as { data: { value: string }[] | null; error: any };
 

@@ -56,39 +56,45 @@ export interface Database {
           source_id: string | null;
           external_id: string | null;
           title: string;
-          content: string | null;
+          body: string | null;
           url: string;
           author: string | null;
           published_at: string | null;
           ingested_at: string;
           tags: Json;
+          content_type: string;
+          signals_extracted_at: string | null;
         };
         Insert: {
           id?: string;
           source_id?: string | null;
           external_id?: string | null;
           title: string;
-          content?: string | null;
+          body?: string | null;
           url: string;
           author?: string | null;
           published_at?: string | null;
           ingested_at?: string;
           tags?: Json;
+          content_type?: string;
+          signals_extracted_at?: string | null;
         };
         Update: {
           id?: string;
           source_id?: string | null;
           external_id?: string | null;
           title?: string;
-          content?: string | null;
+          body?: string | null;
           url?: string;
           author?: string | null;
           published_at?: string | null;
           ingested_at?: string;
           tags?: Json;
+          content_type?: string;
+          signals_extracted_at?: string | null;
         };
       };
-      item_tags: {
+      content_tags: {
         Row: {
           id: string;
           item_id: string;
@@ -96,7 +102,7 @@ export interface Database {
           value: string;
           confidence: number | null;
           manual: boolean;
-          entity_id: string | null; // MANUALLY ADDED — pending migration 006_item_tags_entity_fk.sql
+          entity_id: string | null; // MANUALLY ADDED — pending migration 006_content_tags_entity_fk.sql
         };
         Insert: {
           id?: string;
@@ -105,7 +111,7 @@ export interface Database {
           value: string;
           confidence?: number | null;
           manual?: boolean;
-          entity_id?: string | null; // MANUALLY ADDED — pending migration 006_item_tags_entity_fk.sql
+          entity_id?: string | null; // MANUALLY ADDED — pending migration 006_content_tags_entity_fk.sql
         };
         Update: {
           id?: string;
@@ -114,7 +120,7 @@ export interface Database {
           value?: string;
           confidence?: number | null;
           manual?: boolean;
-          entity_id?: string | null; // MANUALLY ADDED — pending migration 006_item_tags_entity_fk.sql
+          entity_id?: string | null; // MANUALLY ADDED — pending migration 006_content_tags_entity_fk.sql
         };
       };
       companies: {
@@ -216,8 +222,8 @@ export interface Database {
 
 // Convenience types
 export type Source = Database["public"]["Tables"]["sources"]["Row"];
-export type Item = Database["public"]["Tables"]["items"]["Row"];
-export type ItemTag = Database["public"]["Tables"]["item_tags"]["Row"];
+export type Item = Database["public"]["Tables"]["content"]["Row"];
+export type ItemTag = Database["public"]["Tables"]["content_tags"]["Row"];
 export type Company = Database["public"]["Tables"]["companies"]["Row"];
 export type IngestionLog = Database["public"]["Tables"]["ingestion_logs"]["Row"];
 export type Signal = Database["public"]["Tables"]["signals"]["Row"];

@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient();
 
   let query = supabase
-    .from("items")
+    .from("content")
     .select("*, sources!inner(name, url, source_type, active)", { count: "exact" })
     .eq("sources.active", true)
     .order("published_at", { ascending: false, nullsFirst: false });

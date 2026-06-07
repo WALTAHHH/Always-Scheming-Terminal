@@ -38,7 +38,7 @@ export async function GET() {
 
   // Get article counts per source
   const { data: countData } = await supabase
-    .from("items")
+    .from("content")
     .select("source_id") as { data: { source_id: string | null }[] | null; error: any };
 
   const articleCounts: Record<string, number> = {};
@@ -50,7 +50,7 @@ export async function GET() {
 
   // Get latest article date per source
   const { data: latestData } = await supabase
-    .from("items")
+    .from("content")
     .select("source_id, published_at")
     .order("published_at", { ascending: false, nullsFirst: false }) as {
     data: { source_id: string | null; published_at: string | null }[] | null;
@@ -140,7 +140,7 @@ export async function DELETE(req: NextRequest) {
 
   // Delete related items first (foreign key constraint)
   const { error: itemsError } = await supabase
-    .from("items")
+    .from("content")
     .delete()
     .eq("source_id", id);
 

@@ -28,8 +28,8 @@ async function backfill() {
 
   while (true) {
     const { data: items, error } = await supabase
-      .from("items")
-      .select("id, title, content, tags, source_id, sources(source_type)")
+      .from("content")
+      .select("id, title, body, tags, source_id, sources(source_type)")
       .range(offset, offset + PAGE_SIZE - 1)
       .order("published_at", { ascending: false, nullsFirst: false });
 
@@ -43,7 +43,7 @@ async function backfill() {
     for (const item of items) {
       total++;
       const sourceType = (item.sources as any)?.source_type || "news";
-      const result = tagItem(item.title, item.content, sourceType);
+      const result = tagItem(item.title, item.body, sourceType);
 
       if (result.company.length === 0) continue;
 
@@ -59,7 +59,7 @@ async function backfill() {
       };
 
       const { error: updateErr } = await supabase
-        .from("items")
+        .from("content")
         .update({ tags: updatedTags })
         .eq("id", item.id);
 
@@ -68,7 +68,7 @@ async function backfill() {
         continue;
       }
 
-      // Upsert into item_tags for filtering
+      // Upsert into content_tags for filtering
       const tagRows = mergedCompanies.map((c) => ({
         item_id: item.id,
         dimension: "company",
@@ -78,7 +78,7 @@ async function backfill() {
 
       if (tagRows.length > 0) {
         const { error: tagErr } = await supabase
-          .from("item_tags")
+          .from("content_tags")
           .upsert(tagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
 
         if (tagErr) {
@@ -100,7 +100,7 @@ async function backfill() {
 
   // Show top companies
   const { data: topCompanies } = await supabase
-    .from("item_tags")
+    .from("content_tags")
     .select("value")
     .eq("dimension", "company");
 
