@@ -15,39 +15,65 @@ interface EntityMatch {
   entity_type: string;
 }
 
+interface AliasRow {
+  alias: string;
+  entity_id: string;
+  entities: {
+    canonical_name: string;
+    entity_type: string;
+  };
+}
+
+// ── In-process cache to avoid full table scan on every article ──
+let aliasCache: AliasRow[] = [];
+let cacheLoadedAt = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get entity aliases with in-process caching.
+ * Refreshes from DB if cache is stale (5-min TTL).
+ * Avoids full table scan on every article during ingest.
+ */
+async function getAliases(): Promise<AliasRow[]> {
+  if (Date.now() - cacheLoadedAt > CACHE_TTL_MS) {
+    const { data, error } = await supabase
+      .from("entity_aliases")
+      .select(`
+        alias,
+        entity_id,
+        entities!inner (
+          canonical_name,
+          entity_type
+        )
+      `)
+      .limit(1000);
+
+    if (error) {
+      console.error("Failed to load entity aliases cache:", error);
+      return aliasCache; // Return stale cache on error
+    }
+
+    aliasCache = (data || []) as AliasRow[];
+    cacheLoadedAt = Date.now();
+  }
+
+  return aliasCache;
+}
+
 /**
  * Resolve company/entity names from text to canonical entities.
- * Queries entity_aliases table for matches.
+ * Uses cached entity_aliases to avoid per-item DB queries.
  * Returns array of resolved entities with their IDs.
  */
 export async function resolveEntitiesFromText(text: string): Promise<EntityMatch[]> {
-  // Extract potential entity mentions using basic text tokenization
-  // This is a simple word-based approach; could be enhanced with NER
-  const words = text.toLowerCase().split(/\s+/);
-  
-  // Query all entity aliases in one go (fuzzy matching via ilike)
-  const { data: aliases, error } = await supabase
-    .from("entity_aliases")
-    .select(`
-      entity_id,
-      alias,
-      entities!inner (
-        canonical_name,
-        entity_type
-      )
-    `)
-    .limit(1000);
-
-  if (error || !aliases) {
-    console.error("Entity resolution error:", error);
-    return [];
-  }
+  // Get cached aliases (refreshes if stale)
+  const aliases = await getAliases();
 
   // Match aliases against text using word boundaries
   const matched = new Set<string>();
   const results: EntityMatch[] = [];
 
-  for (const row of aliases as any) {
+  for (const row of aliases) {
     const alias = row.alias.toLowerCase();
     const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const re = new RegExp(`\\b${escaped}\\b`, "i");
@@ -68,25 +94,22 @@ export async function resolveEntitiesFromText(text: string): Promise<EntityMatch
 /**
  * Given an array of company names (from legacy tagger), resolve them to entity IDs.
  * This is used during the transition period to map old company tags to new entities.
+ * Uses cached aliases to avoid DB queries.
  */
 export async function resolveCompanyNamesToEntityIds(companyNames: string[]): Promise<Map<string, string>> {
   if (companyNames.length === 0) {
     return new Map();
   }
 
-  const { data: aliases, error } = await supabase
-    .from("entity_aliases")
-    .select("alias, entity_id")
-    .in("alias", companyNames);
-
-  if (error || !aliases) {
-    console.error("Company name resolution error:", error);
-    return new Map();
-  }
-
+  const aliases = await getAliases();
   const map = new Map<string, string>();
-  for (const row of aliases as any) {
-    map.set(row.alias, row.entity_id);
+
+  for (const name of companyNames) {
+    const normalized = name.toLowerCase();
+    const match = aliases.find(a => a.alias.toLowerCase() === normalized);
+    if (match) {
+      map.set(name, match.entity_id);
+    }
   }
 
   return map;
