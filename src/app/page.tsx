@@ -14,7 +14,7 @@ async function getItems(): Promise<{ items: FeedItem[]; hasMore: boolean }> {
 
   const supabase = createServerClient();
   const { data, error } = await supabase
-    .from("items")
+    .from("content")
     .select("*, sources!inner(name, url, source_type, active)")
     .eq("sources.active", true)
     .order("published_at", { ascending: false, nullsFirst: false })

@@ -15,8 +15,8 @@ async function main() {
 
   // Get items with sources
   const { data: items, error } = await supabase
-    .from("items")
-    .select("id, title, content, source_id, sources(source_type)")
+    .from("content")
+    .select("id, title, body, source_id, sources(source_type)")
     .order("published_at", { ascending: false });
 
   if (error || !items) {
@@ -31,8 +31,8 @@ async function main() {
 
   for (const item of items) {
     const sourceType = (item as any).sources?.source_type || "news";
-    const ruleTags = tagItem(item.title, item.content, sourceType);
-    const aiTags = await tagItemWithAI(item.title, item.content);
+    const ruleTags = tagItem(item.title, item.body, sourceType);
+    const aiTags = await tagItemWithAI(item.title, item.body);
 
     const allTags = {
       category: ruleTags.category,
@@ -43,11 +43,11 @@ async function main() {
 
     // Update items.tags jsonb
     await supabase
-      .from("items")
+      .from("content")
       .update({ tags: allTags })
       .eq("id", item.id);
 
-    // Upsert into item_tags
+    // Upsert into content_tags
     const tagRows: { item_id: string; dimension: string; value: string; manual: boolean }[] = [];
     for (const [dimension, values] of Object.entries(allTags)) {
       for (const value of values) {
@@ -56,7 +56,7 @@ async function main() {
     }
     if (tagRows.length > 0) {
       await supabase
-        .from("item_tags")
+        .from("content_tags")
         .upsert(tagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
       tagCount += tagRows.length;
     }

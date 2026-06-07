@@ -97,7 +97,7 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
       source_id: source.id,
       external_id: item.guid || item.link || item.title || "",
       title: item.title || "(no title)",
-      content: item.contentSnippet || item.content || null,
+      body: item.bodySnippet || item.body || null,
       url: item.link || source.url,
       author: item.creator || item.author || null,
       published_at: item.isoDate || null,
@@ -106,9 +106,9 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
 
     // Upsert — on conflict (source_id, external_id) do nothing
     const { data, error } = await supabase
-      .from("items")
+      .from("content")
       .upsert(rows, { onConflict: "source_id,external_id", ignoreDuplicates: true })
-      .select("id, title, content");
+      .select("id, title, body");
 
     if (error) {
       result.errors.push(`DB: ${error.message}`);
@@ -118,9 +118,9 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
       // Tag newly inserted items (batched for performance)
       if (data?.length) {
         // Step 1: Compute all tags in parallel (AI calls run concurrently)
-        const tagPromises = data.map(async (item: { id: string; title: string; content: string | null }) => {
-          const ruleTags = tagItem(item.title, item.content, source.source_type);
-          const aiTags = await tagItemWithAI(item.title, item.content);
+        const tagPromises = data.map(async (item: { id: string; title: string; body: string | null }) => {
+          const ruleTags = tagItem(item.title, item.body, source.source_type);
+          const aiTags = await tagItemWithAI(item.title, item.body);
           return {
             id: item.id,
             tags: {
@@ -136,11 +136,11 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
         // Step 2: Batch update items.tags (parallel DB writes)
         await Promise.all(
           itemsWithTags.map(({ id, tags }) =>
-            supabase.from("items").update({ tags }).eq("id", id)
+            supabase.from("content").update({ tags }).eq("id", id)
           )
         );
 
-        // Step 3: Collect all item_tags rows for single batch upsert
+        // Step 3: Collect all content_tags rows for single batch upsert
         const allTagRows: { item_id: string; dimension: string; value: string; manual: boolean }[] = [];
         for (const { id, tags } of itemsWithTags) {
           for (const [dimension, values] of Object.entries(tags) as [string, string[]][]) {
@@ -151,7 +151,7 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
         }
         if (allTagRows.length > 0) {
           await supabase
-            .from("item_tags")
+            .from("content_tags")
             .upsert(allTagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
         }
 
@@ -176,12 +176,12 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
                 // Build a map of alias -> entity_id
                 const aliasMap = new Map(aliases.map((a: { alias: string; entity_id: string }) => [a.alias.toLowerCase(), a.entity_id]));
 
-                // Update item_tags rows with entity_id
+                // Update content_tags rows with entity_id
                 for (const company of companyTags) {
                   const entityId = aliasMap.get(company.toLowerCase());
                   if (entityId) {
                     await supabase
-                      .from("item_tags")
+                      .from("content_tags")
                       .update({ entity_id: entityId })
                       .eq("item_id", id)
                       .eq("dimension", "company")
@@ -195,7 +195,7 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
             const itemForSignal = {
               id,
               title: data.find((d: { id: string }) => d.id === id)?.title || "",
-              content: data.find((d: { id: string }) => d.id === id)?.content || null,
+              body: data.find((d: { id: string }) => d.id === id)?.body || null,
               tags,
               sources: { source_type: source.source_type },
             };

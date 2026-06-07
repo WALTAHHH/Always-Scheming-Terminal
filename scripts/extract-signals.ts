@@ -67,7 +67,7 @@ const VALID_SIGNAL_TYPES = new Set([
 async function getEligibleItems(): Promise<EligibleItem[]> {
   // Get items that don't have signals yet
   const { data: items, error } = await supabase
-    .from("items")
+    .from("content")
     .select(`
       id,
       title,
@@ -105,7 +105,7 @@ async function getEligibleItems(): Promise<EligibleItem[]> {
   // Fetch tags for all unprocessed items in a single query (fix N+1)
   const unprocessedItemIds = unprocessedItems.map((i: any) => i.id);
   const { data: allTags } = await supabase
-    .from("item_tags")
+    .from("content_tags")
     .select("item_id, dimension, value")
     .in("item_id", unprocessedItemIds);
 
@@ -128,7 +128,7 @@ async function getEligibleItems(): Promise<EligibleItem[]> {
       id: item.id,
       title: item.title,
       url: item.url,
-      content: item.content,
+      content: item.body,
       published_at: item.published_at,
       companies,
       categories,
@@ -148,7 +148,7 @@ function shouldExtractSignal(item: EligibleItem): boolean {
   }
 
   // Skip if content is null or too short
-  if (!item.content || item.content.length < 100) {
+  if (!item.body || item.body.length < 100) {
     return false;
   }
 
@@ -168,7 +168,7 @@ COMPANIES MENTIONED: ${item.companies.join(", ") || "none"}
 CATEGORIES: ${item.categories.join(", ") || "none"}
 
 CONTENT:
-${item.content}
+${item.body}
 
 ---
 

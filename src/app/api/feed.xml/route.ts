@@ -19,7 +19,7 @@ export async function GET() {
   const supabase = createServerClient();
 
   const { data, error } = (await supabase
-    .from("items")
+    .from("content")
     .select("*, sources!inner(name, url, source_type, active)")
     .eq("sources.active" as string, true)
     .order("published_at", { ascending: false, nullsFirst: false })
@@ -41,8 +41,8 @@ export async function GET() {
       const sourceName = source?.name ?? "Unknown";
       const title = item.title ? escapeXml(item.title) : "Untitled";
       const link = item.url ? escapeXml(item.url) : "";
-      const description = item.content
-        ? escapeXml(truncate(item.content, 500))
+      const description = item.body
+        ? escapeXml(truncate(item.body, 500))
         : "";
       const pubDate = item.published_at
         ? new Date(item.published_at).toUTCString()

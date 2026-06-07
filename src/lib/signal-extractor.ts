@@ -188,7 +188,7 @@ export async function extractSignal(options: ExtractSignalOptions): Promise<void
     }
 
     // Extract signal via LLM
-    const signal = await extractSignalWithLLM(item.title, item.content);
+    const signal = await extractSignalWithLLM(item.title, item.body);
     if (!signal) {
       // LLM failed or timed out — log but don't break ingestion
       console.warn(`[signal-extractor] Failed to extract signal for item ${item.id}`);

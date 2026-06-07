@@ -109,7 +109,7 @@ export function FeedRow({ item }: FeedRowProps) {
   
   const sourceType = item.sources?.source_type || "news";
   const borderColor = SOURCE_COLORS[sourceType] || "border-l-ast-accent";
-  const fullContent = cleanContent(item.content);
+  const fullContent = cleanContent(item.body);
   const hasMoreContent = fullContent.length > 180;
   const faviconUrl = getFaviconUrl(item.sources?.url);
 
@@ -167,9 +167,9 @@ export function FeedRow({ item }: FeedRowProps) {
             <h3 className="text-ast-text text-sm font-medium leading-snug group-hover:text-ast-accent transition-colors">
               {item.title}
             </h3>
-            {item.content && !expanded && (
+            {item.body && !expanded && (
               <p className="text-ast-muted text-xs mt-1 leading-relaxed hidden sm:block">
-                {truncate(item.content, 180)}
+                {truncate(item.body, 180)}
               </p>
             )}
             <TagChips tags={item.tags as Record<string, string[]> | null} />

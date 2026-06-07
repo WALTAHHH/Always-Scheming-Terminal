@@ -10,7 +10,7 @@ export async function GET() {
 
   // Get all unique tags grouped by dimension
   const { data, error } = await supabase
-    .from("item_tags")
+    .from("content_tags")
     .select("dimension, value") as { data: { dimension: string; value: string }[] | null; error: any };
 
   if (error) {
