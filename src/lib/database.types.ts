@@ -178,7 +178,6 @@ export interface Database {
           duration_ms?: number;
         };
       };
-      // MANUALLY ADDED — pending migration 007_signals.sql + supabase gen types regen
       signals: {
         Row: {
           id: string;
@@ -221,6 +220,7 @@ export type Item = Database["public"]["Tables"]["items"]["Row"];
 export type ItemTag = Database["public"]["Tables"]["item_tags"]["Row"];
 export type Company = Database["public"]["Tables"]["companies"]["Row"];
 export type IngestionLog = Database["public"]["Tables"]["ingestion_logs"]["Row"];
+export type Signal = Database["public"]["Tables"]["signals"]["Row"];
 
 // Extended item with source info for the feed
 export type FeedItem = Item & {
