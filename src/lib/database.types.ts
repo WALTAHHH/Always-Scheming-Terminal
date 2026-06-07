@@ -96,6 +96,7 @@ export interface Database {
           value: string;
           confidence: number | null;
           manual: boolean;
+          entity_id: string | null; // MANUALLY ADDED — pending migration 006_item_tags_entity_fk.sql
         };
         Insert: {
           id?: string;
@@ -104,6 +105,7 @@ export interface Database {
           value: string;
           confidence?: number | null;
           manual?: boolean;
+          entity_id?: string | null; // MANUALLY ADDED — pending migration 006_item_tags_entity_fk.sql
         };
         Update: {
           id?: string;
@@ -112,6 +114,7 @@ export interface Database {
           value?: string;
           confidence?: number | null;
           manual?: boolean;
+          entity_id?: string | null; // MANUALLY ADDED — pending migration 006_item_tags_entity_fk.sql
         };
       };
       companies: {
@@ -173,6 +176,39 @@ export interface Database {
           errors?: string[];
           success?: boolean;
           duration_ms?: number;
+        };
+      };
+      // MANUALLY ADDED — pending migration 007_signals.sql + supabase gen types regen
+      signals: {
+        Row: {
+          id: string;
+          item_id: string;
+          signal_type: 'acquisition' | 'fundraising' | 'earnings' | 'layoffs' | 'leadership' | 'product_launch' | 'regulatory' | 'platform_change' | 'macro';
+          summary: string;
+          investment_relevance_score: number;
+          raw_llm_output: Json | null;
+          model_used: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          item_id: string;
+          signal_type: 'acquisition' | 'fundraising' | 'earnings' | 'layoffs' | 'leadership' | 'product_launch' | 'regulatory' | 'platform_change' | 'macro';
+          summary: string;
+          investment_relevance_score: number;
+          raw_llm_output?: Json | null;
+          model_used?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          item_id?: string;
+          signal_type?: 'acquisition' | 'fundraising' | 'earnings' | 'layoffs' | 'leadership' | 'product_launch' | 'regulatory' | 'platform_change' | 'macro';
+          summary?: string;
+          investment_relevance_score?: number;
+          raw_llm_output?: Json | null;
+          model_used?: string | null;
+          created_at?: string;
         };
       };
     };
