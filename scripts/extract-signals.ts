@@ -98,30 +98,42 @@ async function getEligibleItems(): Promise<EligibleItem[]> {
   // Filter to only unprocessed items
   const unprocessedItems = items.filter((item: any) => !processedItemIds.has(item.id));
 
-  // Fetch tags for each item
-  const eligibleItems: EligibleItem[] = [];
+  if (unprocessedItems.length === 0) {
+    return [];
+  }
 
-  for (const item of unprocessedItems) {
-    const itemAny = item as any;
-    const { data: tags } = await supabase
-      .from("item_tags")
-      .select("dimension, value")
-      .eq("item_id", itemAny.id);
+  // Fetch tags for all unprocessed items in a single query (fix N+1)
+  const unprocessedItemIds = unprocessedItems.map((i: any) => i.id);
+  const { data: allTags } = await supabase
+    .from("item_tags")
+    .select("item_id, dimension, value")
+    .in("item_id", unprocessedItemIds);
 
-    const tagsAny = tags as any;
-    const companies = tagsAny?.filter((t: any) => t.dimension === "company").map((t: any) => t.value) || [];
-    const categories = tagsAny?.filter((t: any) => t.dimension === "category").map((t: any) => t.value) || [];
+  // Group tags by item_id
+  const tagsByItemId = new Map<string, { dimension: string; value: string }[]>();
+  (allTags as any)?.forEach((tag: any) => {
+    if (!tagsByItemId.has(tag.item_id)) {
+      tagsByItemId.set(tag.item_id, []);
+    }
+    tagsByItemId.get(tag.item_id)!.push({ dimension: tag.dimension, value: tag.value });
+  });
 
-    eligibleItems.push({
-      id: itemAny.id,
-      title: itemAny.title,
-      url: itemAny.url,
-      content: itemAny.content,
-      published_at: itemAny.published_at,
+  // Build eligible items with their tags
+  const eligibleItems: EligibleItem[] = unprocessedItems.map((item: any) => {
+    const tags = tagsByItemId.get(item.id) || [];
+    const companies = tags.filter((t) => t.dimension === "company").map((t) => t.value);
+    const categories = tags.filter((t) => t.dimension === "category").map((t) => t.value);
+
+    return {
+      id: item.id,
+      title: item.title,
+      url: item.url,
+      content: item.content,
+      published_at: item.published_at,
       companies,
       categories,
-    });
-  }
+    };
+  });
 
   return eligibleItems;
 }
