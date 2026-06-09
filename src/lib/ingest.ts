@@ -2,6 +2,7 @@ import Parser from "rss-parser";
 import { createClient } from "@supabase/supabase-js";
 import { tagItem, tagItemWithAI } from "./tagger";
 import { extractSignal } from "./signal-extractor";
+import { resolveEntitiesFromText } from "./entity-resolver";
 
 const parser = new Parser({
   timeout: 8000, // Reduced from 15s for faster failure on stale feeds
@@ -156,46 +157,36 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
         }
 
         // Step 4: Entity resolution + signal extraction
-        // For each item, resolve company tags to entity_ids, then try to extract signal
+        // For each item, resolve entities from text and update item_tags with entity_ids
         for (const { id, tags } of itemsWithTags) {
           try {
-            // Resolve entities for company tags
-            const companyTags = tags.company || [];
-            let hasResolvedEntity = false;
+            const itemData = data.find((d: { id: string }) => d.id === id);
+            if (!itemData) continue;
 
-            if (companyTags.length > 0) {
-              // Query entity_aliases to resolve company names to entity_ids
-              const { data: aliases } = await supabase
-                .from("entity_aliases")
-                .select("alias, entity_id")
-                .in("alias", companyTags.map((c: string) => c.toLowerCase()));
+            const text = `${itemData.title} ${itemData.body || ""}`;
+            
+            // Resolve entities from text using entity_resolver
+            const resolvedEntities = await resolveEntitiesFromText(text);
+            const hasResolvedEntity = resolvedEntities.length > 0;
 
-              if (aliases && aliases.length > 0) {
-                hasResolvedEntity = true;
-
-                // Build a map of alias -> entity_id
-                const aliasMap = new Map(aliases.map((a: { alias: string; entity_id: string }) => [a.alias.toLowerCase(), a.entity_id]));
-
-                // Update content_tags rows with entity_id
-                for (const company of companyTags) {
-                  const entityId = aliasMap.get(company.toLowerCase());
-                  if (entityId) {
-                    await supabase
-                      .from("content_tags")
-                      .update({ entity_id: entityId })
-                      .eq("item_id", id)
-                      .eq("dimension", "company")
-                      .eq("value", company);
-                  }
-                }
-              }
+            // Update content_tags rows with resolved entity_ids
+            for (const entity of resolvedEntities) {
+              await supabase
+                .from("content_tags")
+                .upsert({
+                  item_id: id,
+                  dimension: "company",
+                  value: entity.canonical_name,
+                  entity_id: entity.entity_id,
+                  manual: false,
+                }, { onConflict: "item_id,dimension,value", ignoreDuplicates: false });
             }
 
             // Try signal extraction (non-blocking, errors logged internally)
             const itemForSignal = {
               id,
-              title: data.find((d: { id: string }) => d.id === id)?.title || "",
-              body: data.find((d: { id: string }) => d.id === id)?.body || null,
+              title: itemData.title || "",
+              body: itemData.body || null,
               tags,
               sources: { source_type: source.source_type },
             };

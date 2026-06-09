@@ -35,7 +35,7 @@ interface EligibleItem {
   id: string;
   title: string;
   url: string;
-  content: string | null;
+  body: string | null;
   published_at: string | null;
   companies: string[];
   categories: string[];
@@ -128,7 +128,7 @@ async function getEligibleItems(): Promise<EligibleItem[]> {
       id: item.id,
       title: item.title,
       url: item.url,
-      content: item.body,
+      body: item.body,
       published_at: item.published_at,
       companies,
       categories,
