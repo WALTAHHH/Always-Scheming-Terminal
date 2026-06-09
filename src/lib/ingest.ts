@@ -68,6 +68,61 @@ function getSupabase() {
 }
 
 /**
+ * Apply AI tags asynchronously to items (fire-and-forget).
+ * Augments existing rule-based tags with AI-detected companies/themes.
+ * Does NOT block ingestion — failures are logged but don't propagate.
+ */
+async function applyAITagsAsync(
+  supabase: ReturnType<typeof getSupabase>,
+  items: { id: string; title: string; body: string | null; tags: { category: string[]; platform: string[]; theme: string[]; company: string[] } }[],
+  sourceType: string
+): Promise<void> {
+  // Run AI tagging in parallel for all items (with 4s timeout per call)
+  const aiTagPromises = items.map(async (item) => {
+    try {
+      const aiTags = await tagItemWithAI(item.title, item.body);
+      
+      // Merge AI tags with existing rule-based tags (dedupe)
+      const mergedTags = {
+        category: item.tags.category, // AI doesn't tag category
+        platform: item.tags.platform, // AI doesn't tag platform
+        theme: [...new Set([...item.tags.theme, ...aiTags.theme])],
+        company: [...new Set([...item.tags.company, ...aiTags.company])],
+      };
+
+      // Update content.tags JSONB column
+      await supabase.from("content").update({ tags: mergedTags }).eq("id", item.id);
+
+      // Add new AI-discovered tags to content_tags (won't duplicate existing ones)
+      const newTagRows: { item_id: string; dimension: string; value: string; manual: boolean }[] = [];
+      for (const theme of aiTags.theme) {
+        if (!item.tags.theme.includes(theme)) {
+          newTagRows.push({ item_id: item.id, dimension: "theme", value: theme, manual: false });
+        }
+      }
+      for (const company of aiTags.company) {
+        if (!item.tags.company.includes(company)) {
+          newTagRows.push({ item_id: item.id, dimension: "company", value: company, manual: false });
+        }
+      }
+
+      if (newTagRows.length > 0) {
+        await supabase
+          .from("content_tags")
+          .upsert(newTagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
+      }
+
+      return { id: item.id, success: true };
+    } catch (err) {
+      console.error(`[AI tag async] Failed for item ${item.id}:`, err);
+      return { id: item.id, success: false };
+    }
+  });
+
+  await Promise.allSettled(aiTagPromises);
+}
+
+/**
  * Fetch and ingest RSS items for a single source.
  * Deduplicates on (source_id, external_id).
  * Logs results to ingestion_logs and tracks errors on sources.
@@ -116,37 +171,37 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
     } else {
       result.inserted = data?.length ?? 0;
 
-      // Tag newly inserted items (batched for performance)
+      // Tag newly inserted items (rule-based only, AI tags applied async)
       if (data?.length) {
-        // Step 1: Compute all tags in parallel (AI calls run concurrently)
-        const tagPromises = data.map(async (item: { id: string; title: string; body: string | null }) => {
+        // Step 1: Apply rule-based tags immediately (no AI blocking)
+        const itemsWithRuleTags = data.map((item: { id: string; title: string; body: string | null }) => {
           const ruleTags = tagItem(item.title, item.body, source.source_type);
-          const aiTags = await tagItemWithAI(item.title, item.body);
           return {
             id: item.id,
+            title: item.title,
+            body: item.body,
             tags: {
               category: ruleTags.category,
               platform: ruleTags.platform,
-              theme: [...new Set([...ruleTags.theme, ...aiTags.theme])],
-              company: [...new Set([...ruleTags.company, ...aiTags.company])],
+              theme: ruleTags.theme,
+              company: ruleTags.company,
             },
           };
         });
-        const itemsWithTags = await Promise.all(tagPromises);
 
-        // Step 2: Batch update items.tags (parallel DB writes)
+        // Step 2: Batch update items.tags with rule-based tags (parallel DB writes)
         await Promise.all(
-          itemsWithTags.map(({ id, tags }) =>
-            supabase.from("content").update({ tags }).eq("id", id)
+          itemsWithRuleTags.map((item: typeof itemsWithRuleTags[0]) =>
+            supabase.from("content").update({ tags: item.tags }).eq("id", item.id)
           )
         );
 
         // Step 3: Collect all content_tags rows for single batch upsert
         const allTagRows: { item_id: string; dimension: string; value: string; manual: boolean }[] = [];
-        for (const { id, tags } of itemsWithTags) {
-          for (const [dimension, values] of Object.entries(tags) as [string, string[]][]) {
+        for (const item of itemsWithRuleTags) {
+          for (const [dimension, values] of Object.entries(item.tags) as [string, string[]][]) {
             for (const value of values) {
-              allTagRows.push({ item_id: id, dimension, value, manual: false });
+              allTagRows.push({ item_id: item.id, dimension, value, manual: false });
             }
           }
         }
@@ -156,9 +211,9 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
             .upsert(allTagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
         }
 
-        // Step 4: Entity resolution + signal extraction
-        // For each item, resolve entities from text and update item_tags with entity_ids
-        for (const { id, tags } of itemsWithTags) {
+        // Step 4: Entity resolution + signal extraction (uses rule-based tags)
+        for (const item of itemsWithRuleTags) {
+          const { id, tags } = item;
           try {
             const itemData = data.find((d: { id: string }) => d.id === id);
             if (!itemData) continue;
@@ -185,8 +240,8 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
             // Try signal extraction (non-blocking, errors logged internally)
             const itemForSignal = {
               id,
-              title: itemData.title || "",
-              body: itemData.body || null,
+              title: item.title,
+              body: item.body,
               tags,
               sources: { source_type: source.source_type },
             };
@@ -201,6 +256,11 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
             console.warn(`[ingest] Entity resolution/signal extraction failed for item ${id}:`, err);
           }
         }
+
+        // Step 5: Apply AI tags asynchronously (fire-and-forget, won't block ingestion)
+        applyAITagsAsync(supabase, itemsWithRuleTags, source.source_type).catch((err) => {
+          console.error("[ingest] AI tagging async batch failed:", err);
+        });
       }
     }
 
