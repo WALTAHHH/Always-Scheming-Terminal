@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./lib/database.types";
-import { createHash } from "crypto";
+
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -25,7 +25,11 @@ export async function middleware(request: NextRequest) {
   }
 
   const rawKey = authHeader.substring(7); // Remove "Bearer " prefix
-  const keyHash = createHash("sha256").update(rawKey).digest("hex");
+  const encoded = new TextEncoder().encode(rawKey);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  const keyHash = Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 
   // Verify key against database
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
