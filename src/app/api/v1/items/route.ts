@@ -24,18 +24,18 @@ export async function GET(request: Request) {
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
   let query = supabase
-    .from("items")
+    .from("content")
     .select(`
       id,
       title,
       url,
-      content,
+      body,
       author,
       published_at,
       ingested_at,
       source_id,
       sources (name, url, source_type),
-      item_tags (dimension, value, entity_id),
+      content_tags (dimension, value, entity_id),
       signals (id, signal_type, summary, investment_relevance_score, created_at)
     `)
     .order("published_at", { ascending: false, nullsFirst: false })
