@@ -1,8 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
 import { NextResponse } from "next/server";
-
-export const runtime = "nodejs";
+import { createHash } from "crypto";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -29,8 +28,7 @@ export async function requireApiKey(
 
   const rawKey = authHeader.substring(7);
 
-  // SHA-256 via Node crypto (we're in Node runtime here)
-  const { createHash } = await import("crypto");
+  // SHA-256 via Node crypto
   const keyHash = createHash("sha256").update(rawKey).digest("hex");
 
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
