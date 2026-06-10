@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { findCompanyByName, type CompanyData } from "@/lib/companies";
+import { fetchEntityByAlias, type EntityData } from "@/lib/entity-client";
 import type { StockResponse, StockQuote, StockHistory } from "@/app/api/stock/[ticker]/route";
 import type { FeedItem } from "@/lib/database.types";
 
@@ -424,7 +424,7 @@ function getHoursAgo(dateStr: string | null): string {
 
 interface DrawerContentProps {
   companyName: string;
-  companyData: CompanyData | null;
+  companyData: EntityData | null;
   onClose: () => void;
 }
 
@@ -444,7 +444,7 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
 
   const relatedItems = useMemo(() => {
     if (!companyData) return [];
-    const matchTerms = [companyData.name.toLowerCase(), ...companyData.aliases.map((a) => a.toLowerCase())];
+    const matchTerms = [companyData.canonical_name.toLowerCase(), ...(companyData.entity_aliases || []).map((a) => a.alias.toLowerCase())];
     return globalItems
       .filter((item) => {
         const tags = (item.tags as Record<string, string[]>) || {};
@@ -525,12 +525,12 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
         {/* Header */}
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-ast-text">{companyData?.name || companyName}</h2>
-            {companyData?.ticker && !companyData?.parentCompany && (
+            <h2 className="text-lg font-semibold text-ast-text">{companyData?.canonical_name || companyName}</h2>
+            {companyData?.ticker && !companyData?.parent_id && (
               <span className="text-ast-accent text-sm">{companyData.ticker} · {companyData.exchange}</span>
             )}
-            {companyData?.parentCompany && (
-              <span className="text-ast-muted text-sm">via {companyData.parentCompany} · {companyData.ticker}</span>
+            {companyData?.parent_id && (
+              <span className="text-ast-muted text-sm">via parent · {companyData.ticker}</span>
             )}
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded border border-ast-border text-ast-muted hover:text-ast-text flex items-center justify-center">✕</button>
@@ -542,19 +542,17 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
               {companyData?.segment && (
                 <div className="text-ast-muted text-xs uppercase tracking-wide">{companyData.segment}</div>
               )}
-              {companyData?.parentCompany && (
+              {companyData?.parent_id && (
                 <div className="text-sm text-ast-text">
-                  Subsidiary of{" "}
-                  <span className="text-ast-accent">{companyData.parentCompany}</span>
-                  {" "}— stock data shown under parent
+                  Subsidiary — stock data shown under parent ticker
                 </div>
               )}
-              {companyData?.isPrivate && (
+              {!companyData?.is_public && (
                 <div className="text-sm text-ast-muted">Private company — no public market data</div>
               )}
-              {companyData?.irUrl && (
+              {companyData?.ir_url && (
                 <a
-                  href={companyData.irUrl}
+                  href={companyData.ir_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-block text-xs text-ast-accent hover:underline"
@@ -649,13 +647,13 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
               </div>
 
               {/* Links */}
-              {companyData.irUrl && (
+              {companyData.ir_url && (
                 <div className="px-5 py-3 border-b border-ast-border flex gap-2">
-                  <a href={companyData.irUrl} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-surface border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center transition-colors">
+                  <a href={companyData.ir_url} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-surface border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center transition-colors">
                     📊 Investor Relations
                   </a>
-                  {companyData.secUrl && (
-                    <a href={companyData.secUrl} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-surface border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center transition-colors">
+                  {companyData.sec_url && (
+                    <a href={companyData.sec_url} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-surface border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center transition-colors">
                       📄 SEC Filings
                     </a>
                   )}
@@ -702,6 +700,7 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
 export function CompanyDrawerPortal() {
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [companyData, setCompanyData] = useState<EntityData | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -711,9 +710,9 @@ export function CompanyDrawerPortal() {
     };
   }, []);
 
-  const companyData = useMemo(() => {
-    if (!selectedCompany) return null;
-    return findCompanyByName(selectedCompany);
+  useEffect(() => {
+    if (!selectedCompany) { setCompanyData(null); return; }
+    fetchEntityByAlias(selectedCompany).then(setCompanyData);
   }, [selectedCompany]);
 
   if (!mounted || !selectedCompany) return null;
