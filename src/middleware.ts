@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./lib/database.types";
 
-export const runtime = "nodejs";
-
+// ── Edge-compatible middleware ──
+// Next.js middleware always runs on Edge Runtime regardless of `runtime` config.
+// supabase-js uses Node built-ins and crashes on Edge — use raw fetch instead.
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -26,46 +25,64 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  const rawKey = authHeader.substring(7); // Remove "Bearer " prefix
+  const rawKey = authHeader.substring(7);
+
+  // SHA-256 hash via Web Crypto API (Edge-compatible)
   const encoded = new TextEncoder().encode(rawKey);
   const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
   const keyHash = Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  // Verify key against database
-  const supabase = createClient<Database>(supabaseUrl, supabaseKey);
-  const { data: apiKey, error } = await supabase
-    .from("api_keys")
-    .select("*")
-    .eq("key_hash", keyHash)
-    .is("revoked_at", null)
-    .single();
+  // Verify key via Supabase REST API (raw fetch — no supabase-js)
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/api_keys?key_hash=eq.${keyHash}&revoked_at=is.null&select=id,owner,scopes,rate_limit_rpm`,
+    {
+      headers: {
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
 
-  if (error || !apiKey) {
-    return NextResponse.json(
-      { error: "Invalid or revoked API key" },
-      { status: 401 }
-    );
+  if (!res.ok) {
+    return NextResponse.json({ error: "Auth check failed" }, { status: 500 });
   }
 
-  // Update last_used_at timestamp (fire-and-forget - ignore type issues)
-  void (async () => {
-    try {
-      await supabase
-        .from("api_keys")
-        .update({ last_used_at: new Date().toISOString() } as never)
-        .eq("id", (apiKey as any).id);
-    } catch (err) {
-      console.error("Failed to update last_used_at:", err);
-    }
-  })();
+  const keys = await res.json() as Array<{
+    id: string;
+    owner: string;
+    scopes: string[];
+    rate_limit_rpm: number;
+  }>;
 
-  // Pass through with key metadata in headers (for rate limiting in route handlers)
+  if (!keys || keys.length === 0) {
+    return NextResponse.json({ error: "Invalid or revoked API key" }, { status: 401 });
+  }
+
+  const apiKey = keys[0];
+
+  // Update last_used_at — fire-and-forget, don't await
+  fetch(
+    `${supabaseUrl}/rest/v1/api_keys?id=eq.${apiKey.id}`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ last_used_at: new Date().toISOString() }),
+    }
+  ).catch(() => {}); // intentionally fire-and-forget
+
+  // Pass key metadata downstream via request headers
   const response = NextResponse.next();
-  response.headers.set("x-api-key-id", (apiKey as any).id);
-  response.headers.set("x-api-key-owner", (apiKey as any).owner);
-  response.headers.set("x-api-key-rate-limit", (apiKey as any).rate_limit_rpm.toString());
+  response.headers.set("x-api-key-id", apiKey.id);
+  response.headers.set("x-api-key-owner", apiKey.owner);
+  response.headers.set("x-api-key-rate-limit", String(apiKey.rate_limit_rpm));
 
   return response;
 }
