@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
+import { requireApiKey } from "@/lib/api-auth";
 
+export const runtime = "nodejs";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function GET(request: Request) {
+  const alias = new URL(request.url).searchParams.get('alias');
+  // Skip auth for internal alias lookups (same-origin calls from CompanyDrawer)
+  if (!alias) {
+    const auth = await requireApiKey(request);
+    if (auth instanceof NextResponse) return auth;
+  }
+
   const { searchParams } = new URL(request.url);
   
   const entityType = searchParams.get("entity_type");
