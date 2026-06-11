@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { useTheme } from "./ThemeProvider";
+import { createAuthBrowserClient } from "@/lib/supabase";
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -57,6 +59,15 @@ function ThemeToggle() {
 }
 
 export function Header() {
+  const router = useRouter();
+  const supabase = createAuthBrowserClient();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+    router.refresh();
+  };
+
   return (
     <header className="h-12 sm:h-14 border-b border-ast-border sticky top-0 z-50 bg-ast-bg/95 backdrop-blur-sm">
       <div className="h-full max-w-5xl mx-auto px-3 sm:px-4 flex items-center justify-between">
@@ -98,6 +109,13 @@ export function Header() {
           >
             ⚙ Admin
           </Link>
+          <button
+            onClick={handleSignOut}
+            className="text-ast-muted hover:text-red-400 text-xs transition-colors"
+            title="Sign out"
+          >
+            Sign out
+          </button>
           <span className="text-ast-muted text-[10px] sm:text-xs">v0.1</span>
         </div>
       </div>
