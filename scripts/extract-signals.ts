@@ -12,7 +12,7 @@ import type { Database } from "../src/lib/database.types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const geminiApiKey = process.env.GEMINI_API_KEY;
+const geminiApiKey = process.env.GOOGLE_AI_API_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error("❌ Missing Supabase credentials (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)");
@@ -20,7 +20,7 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 if (!geminiApiKey) {
-  console.error("❌ Missing GEMINI_API_KEY in environment");
+  console.error("❌ Missing GOOGLE_AI_API_KEY in environment");
   process.exit(1);
 }
 
