@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { findCompanyByName, type CompanyData } from "@/lib/companies";
+import { fetchEntityByAlias, type EntityData } from "@/lib/entity-client";
 import type { FeedItem } from "@/lib/database.types";
 import { TimeAgo } from "./TimeAgo";
 
@@ -133,7 +133,7 @@ function CompanyCard({
   onClick,
 }: { 
   name: string;
-  companyData: CompanyData | null;
+  companyData: EntityData | null;
   stockData: StockData;
   mentionCount: number;
   isExpanded: boolean;
@@ -383,7 +383,7 @@ function CompanyModal({
   onRangeChange,
   onClose,
 }: { 
-  companyData: CompanyData;
+  companyData: EntityData;
   stockData: StockData;
   items: FeedItem[];
   chartRange: ChartRange;
@@ -396,7 +396,7 @@ function CompanyModal({
   const isPositive = (quote?.change ?? 0) >= 0;
 
   const relatedItems = useMemo(() => {
-    const matchTerms = [companyData.name.toLowerCase(), ...companyData.aliases.map((a) => a.toLowerCase())];
+    const matchTerms = [companyData.canonical_name.toLowerCase(), ...(companyData.entity_aliases || []).map((a) => a.alias.toLowerCase())];
     return items
       .filter((item) => {
         const tags = (item.tags as Record<string, string[]>) || {};
@@ -422,7 +422,7 @@ function CompanyModal({
         {/* Header */}
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-lg font-semibold text-ast-text">{companyData.name}</h2>
+            <h2 className="text-lg font-semibold text-ast-text">{companyData.canonical_name}</h2>
             <div className="flex items-center gap-2">
               <span className="text-ast-accent text-sm">{companyData.ticker}</span>
               <span className="text-ast-muted text-xs">· {companyData.exchange}</span>
@@ -509,11 +509,11 @@ function CompanyModal({
               </div>
 
               {/* IR Links */}
-              {companyData.irUrl && (
+              {companyData.ir_url && (
                 <div className="flex gap-2 mb-4">
-                  <a href={companyData.irUrl} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center">📊 Investor Relations</a>
-                  {companyData.secUrl && (
-                    <a href={companyData.secUrl} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center">📄 SEC Filings</a>
+                  <a href={companyData.ir_url} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center">📊 Investor Relations</a>
+                  {companyData.sec_url && (
+                    <a href={companyData.sec_url} target="_blank" rel="noopener noreferrer" className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-xs text-ast-muted hover:text-ast-accent text-center">📄 SEC Filings</a>
                   )}
                 </div>
               )}
@@ -736,7 +736,7 @@ function IndexOverview({
   onOpenModal,
 }: {
   stockDataMap: Record<string, StockData>;
-  basketCompanies: { name: string; data: CompanyData | null; mentions: number }[];
+  basketCompanies: { name: string; data: EntityData | null; mentions: number }[];
   weighting: IndexWeighting;
   onWeightingChange: (w: IndexWeighting) => void;
   chartRange: ChartRange;
@@ -755,12 +755,14 @@ function IndexOverview({
   const indexData = useMemo(() => {
     // Get all stocks with valid data
     const validStocks = basketCompanies
-      .filter((c) => c.data?.ticker)
+      .filter((c): c is { name: string; data: import('@/lib/entity-client').EntityData & { ticker: string }; mentions: number } =>
+        !!c.data?.ticker
+      )
       .map((c) => ({
-        ticker: c.data!.ticker,
+        ticker: c.data.ticker,
         name: c.name,
-        companyData: c.data!,
-        stockData: stockDataMap[c.data!.ticker],
+        companyData: c.data,
+        stockData: stockDataMap[c.data.ticker],
       }))
       .filter((s) => s.stockData?.history?.length > 1 && s.stockData?.quote);
 
@@ -776,9 +778,9 @@ function IndexOverview({
     
     for (const stock of validStocks) {
       priceMaps[stock.ticker] = {};
-      // Prefer API market cap, fall back to static marketCapB from companies.ts
+      // Prefer live API market cap, fall back to market_cap_b from entities table
       const apiMcap = stock.stockData.quote?.marketCap || 0;
-      const staticMcap = (stock.companyData.marketCapB || 0) * 1e9;
+      const staticMcap = (stock.companyData.market_cap_b || 0) * 1e9;
       marketCaps[stock.ticker] = apiMcap > 0 ? apiMcap : (staticMcap || 1e9);
       
       for (const h of stock.stockData.history) {
@@ -986,14 +988,30 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
     return counts;
   }, [items]);
 
-  // Get company data for current basket
+  // Get company data for current basket (async — fetches from /api/v1/entities)
+  const [basketEntityMap, setBasketEntityMap] = useState<Record<string, EntityData | null>>({});
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      currentBasket.map((name) =>
+        fetchEntityByAlias(name).then((entity) => ({ name, entity }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const map: Record<string, EntityData | null> = {};
+      for (const { name, entity } of results) map[name] = entity;
+      setBasketEntityMap(map);
+    });
+    return () => { cancelled = true; };
+  }, [currentBasket]);
+
   const basketCompanies = useMemo(() => {
     return currentBasket.map((name) => ({
       name,
-      data: findCompanyByName(name),
+      data: basketEntityMap[name] ?? null,
       mentions: mentionCounts[name] || 0,
     }));
-  }, [currentBasket, mentionCounts]);
+  }, [currentBasket, basketEntityMap, mentionCounts]);
 
   // Track last fetched range to detect changes
   const [lastFetchedRange, setLastFetchedRange] = useState<ChartRange | null>(null);
@@ -1002,8 +1020,8 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
   useEffect(() => {
     const rangeChanged = lastFetchedRange !== chartRange;
     const tickersToFetch = basketCompanies
-      .filter((c) => c.data?.ticker && (rangeChanged || !stockDataMap[c.data.ticker]))
-      .map((c) => c.data!.ticker);
+      .filter((c) => c.data?.ticker && (rangeChanged || !stockDataMap[c.data.ticker!]))
+      .map((c) => c.data!.ticker!);
 
     if (tickersToFetch.length === 0) return;
 
@@ -1039,16 +1057,17 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
   // Refetch when chart range changes for expanded company
   useEffect(() => {
     if (!selectedCompany) return;
-    const companyData = findCompanyByName(selectedCompany);
+    const companyData = basketEntityMap[selectedCompany] ?? null;
     if (!companyData?.ticker) return;
 
     const config = RANGE_CONFIG[chartRange];
-    fetch(`/api/stock/${companyData.ticker}?range=${config.range}&interval=${config.interval}`)
+    const ticker = companyData.ticker;
+    fetch(`/api/stock/${ticker}?range=${config.range}&interval=${config.interval}`)
       .then((res) => res.json())
       .then((data) => {
         setStockDataMap((prev) => ({
           ...prev,
-          [companyData.ticker]: { quote: data.quote || null, history: data.history || [], loading: false },
+          [ticker]: { quote: data.quote || null, history: data.history || [], loading: false },
         }));
       })
       .catch(() => {});
@@ -1063,19 +1082,21 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
   useEffect(() => setMounted(true), []);
 
   // Selected company data for modal
-  const selectedCompanyData = selectedCompany ? findCompanyByName(selectedCompany) : null;
+  const selectedCompanyData = selectedCompany ? (basketEntityMap[selectedCompany] ?? null) : null;
 
   // Calculate index data for modal (same logic as IndexOverview)
   const indexDataForModal = useMemo(() => {
     if (activeBasket !== "AS Index") return null;
     
     const validStocks = basketCompanies
-      .filter((c) => c.data?.ticker)
+      .filter((c): c is { name: string; data: import('@/lib/entity-client').EntityData & { ticker: string }; mentions: number } =>
+        !!c.data?.ticker
+      )
       .map((c) => ({
-        ticker: c.data!.ticker,
+        ticker: c.data.ticker,
         name: c.name,
-        companyData: c.data!,
-        stockData: stockDataMap[c.data!.ticker],
+        companyData: c.data,
+        stockData: stockDataMap[c.data.ticker],
       }))
       .filter((s) => s.stockData?.history?.length > 1 && s.stockData?.quote);
 
@@ -1088,9 +1109,9 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
     
     for (const stock of validStocks) {
       priceMaps[stock.ticker] = {};
-      // Prefer API market cap, fall back to static marketCapB from companies.ts
+      // Prefer live API market cap, fall back to market_cap_b from entities table
       const apiMcap = stock.stockData.quote?.marketCap || 0;
-      const staticMcap = (stock.companyData.marketCapB || 0) * 1e9;
+      const staticMcap = (stock.companyData.market_cap_b || 0) * 1e9;
       marketCaps[stock.ticker] = apiMcap > 0 ? apiMcap : (staticMcap || 1e9);
       
       for (const h of stock.stockData.history) {
@@ -1204,7 +1225,7 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
               key={name}
               name={name}
               companyData={data}
-              stockData={getStockData(data?.ticker)}
+              stockData={getStockData(data?.ticker ?? undefined)}
               mentionCount={mentions}
               isExpanded={selectedCompany === name}
               onClick={() => onSelectCompany(name)}
@@ -1217,7 +1238,7 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
       {mounted && selectedCompany && selectedCompanyData && createPortal(
         <CompanyModal
           companyData={selectedCompanyData}
-          stockData={getStockData(selectedCompanyData.ticker)}
+          stockData={getStockData(selectedCompanyData.ticker ?? undefined)}
           items={items}
           chartRange={chartRange}
           onRangeChange={setChartRange}

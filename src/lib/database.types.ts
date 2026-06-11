@@ -226,6 +226,10 @@ export interface Database {
           is_public: boolean;
           parent_id: string | null;
           description: string | null;
+          ir_url: string | null;
+          sec_url: string | null;
+          segment: string | null;
+          market_cap_b: number | null;
           created_at: string;
         };
         Insert: {
@@ -237,6 +241,10 @@ export interface Database {
           is_public?: boolean;
           parent_id?: string | null;
           description?: string | null;
+          ir_url?: string | null;
+          sec_url?: string | null;
+          segment?: string | null;
+          market_cap_b?: number | null;
           created_at?: string;
         };
         Update: {
@@ -248,6 +256,10 @@ export interface Database {
           is_public?: boolean;
           parent_id?: string | null;
           description?: string | null;
+          ir_url?: string | null;
+          sec_url?: string | null;
+          segment?: string | null;
+          market_cap_b?: number | null;
           created_at?: string;
         };
       };

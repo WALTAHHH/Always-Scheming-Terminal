@@ -1,6 +1,7 @@
 "use client";
 
-import { isPublicCompany } from "@/lib/companies";
+import { useState, useEffect } from "react";
+import { fetchEntityByAlias, isPublicEntity } from "@/lib/entity-client";
 import { openCompanyDrawer } from "./CompanyDrawer";
 
 interface CompanyTagProps {
@@ -9,7 +10,11 @@ interface CompanyTagProps {
 }
 
 export function CompanyTag({ name, className = "" }: CompanyTagProps) {
-  const isPublic = isPublicCompany(name);
+  const [isPublic, setIsPublic] = useState(false);
+
+  useEffect(() => {
+    fetchEntityByAlias(name).then((entity) => setIsPublic(isPublicEntity(entity)));
+  }, [name]);
 
   if (isPublic) {
     return (
