@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient as createBrowserClientSSR } from "@supabase/ssr";
 import type { Database } from "./database.types";
 
 // Client-side Supabase client (uses anon key, respects RLS)
@@ -15,5 +16,13 @@ export function createServerClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
+  );
+}
+
+// SSR-compatible browser client for auth (with cookie handling)
+export function createAuthBrowserClient() {
+  return createBrowserClientSSR<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 }
