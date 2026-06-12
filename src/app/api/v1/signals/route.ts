@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       summary,
       investment_relevance_score,
       created_at,
-      items (id, title, url, published_at)
+      content (id, title, url, published_at)
     `)
     .order("created_at", { ascending: false })
     .limit(limit);
