@@ -337,3 +337,60 @@ Content: ${excerpt}`;
     return { company: [], theme: [] };
   }
 }
+
+/**
+ * Generate an AI takeaway using Google Gemini Flash.
+ * Returns a one-sentence investment signal (max 20 words) or null.
+ * Falls back to null on any failure or timeout.
+ * Requires GOOGLE_AI_API_KEY in env.
+ */
+export async function generateTakeaway(
+  title: string,
+  content: string | null
+): Promise<string | null> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  const excerpt = content ? content.slice(0, 300) : "";
+
+  const prompt = `In one sentence (max 20 words), what is the investment-relevant signal in this article? If there is no investment signal, respond with null. Article: ${title}. ${excerpt}`;
+
+  const call = async (): Promise<string | null> => {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 100 },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`Gemini API error (takeaway): ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const cleaned = text.trim();
+
+    // If response is literally "null" or empty, return null
+    if (!cleaned || cleaned.toLowerCase() === "null") {
+      return null;
+    }
+
+    return cleaned;
+  };
+
+  try {
+    return await withTimeout(call(), AI_TIMEOUT_MS, null);
+  } catch (err) {
+    console.error("Takeaway generation failed:", err);
+    return null;
+  }
+}

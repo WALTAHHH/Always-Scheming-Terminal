@@ -1,8 +1,9 @@
 import Parser from "rss-parser";
 import { createClient } from "@supabase/supabase-js";
-import { tagItem, tagItemWithAI } from "./tagger";
+import { tagItem, tagItemWithAI, generateTakeaway } from "./tagger";
 import { extractSignal } from "./signal-extractor";
 import { resolveEntitiesFromText } from "./entity-resolver";
+import { scoreItem } from "./importance";
 
 const parser = new Parser({
   timeout: 8000, // Reduced from 15s for faster failure on stale feeds
@@ -235,6 +236,35 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
                   entity_id: entity.entity_id,
                   manual: false,
                 }, { onConflict: "item_id,dimension,value", ignoreDuplicates: false });
+            }
+
+            // Generate takeaway if item meets gate criteria
+            // Only run if importance_score >= 0.3 OR category tags include high-value categories
+            const itemForScoring = {
+              ...itemData,
+              tags,
+              sources: { source_type: source.source_type },
+            };
+            const importanceScore = scoreItem(itemForScoring);
+            const categories = tags.category || [];
+            const highValueCategories = ["earnings", "m-and-a", "fundraising", "layoffs", "leadership", "regulatory"];
+            const shouldGenerateTakeaway =
+              importanceScore >= 0.3 ||
+              categories.some((cat) => highValueCategories.includes(cat));
+
+            if (shouldGenerateTakeaway) {
+              try {
+                const takeaway = await generateTakeaway(itemData.title, itemData.body);
+                if (takeaway) {
+                  await supabase
+                    .from("content")
+                    .update({ takeaway })
+                    .eq("id", id);
+                }
+              } catch (err) {
+                // Takeaway generation failure must not break ingestion
+                console.warn(`[ingest] Takeaway generation failed for item ${id}:`, err);
+              }
             }
 
             // Try signal extraction (non-blocking, errors logged internally)
