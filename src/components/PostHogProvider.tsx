@@ -2,6 +2,7 @@
 
 import posthog from 'posthog-js';
 import { useEffect } from 'react';
+import { createAuthBrowserClient } from '@/lib/supabase';
 
 // iOS Navigator extension for standalone detection
 interface IOSNavigator extends Navigator {
@@ -48,6 +49,16 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
         posthog.capture('pwa_launched');
         sessionStorage.setItem('pwa_launch_tracked', 'true');
       }
+
+      // Identify authenticated user so events are tied to a person profile
+      const supabase = createAuthBrowserClient();
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          posthog.identify(session.user.id, {
+            email: session.user.email,
+          });
+        }
+      });
     }
   }, []);
 
