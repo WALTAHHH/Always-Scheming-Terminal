@@ -237,6 +237,25 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
                 }, { onConflict: "item_id,dimension,value", ignoreDuplicates: false });
             }
 
+            // Also update content.tags JSONB so chips appear in UI
+            if (resolvedEntities.length > 0) {
+              const resolvedCompanyNames = resolvedEntities
+                .filter(e => e.entity_type === 'company')
+                .map(e => e.canonical_name);
+              
+              if (resolvedCompanyNames.length > 0) {
+                const currentTags = tags as Record<string, string[]>;
+                const mergedCompanies = [...new Set([
+                  ...(currentTags.company || []),
+                  ...resolvedCompanyNames
+                ])];
+                await supabase
+                  .from('content')
+                  .update({ tags: { ...currentTags, company: mergedCompanies } })
+                  .eq('id', id);
+              }
+            }
+
             // Try signal extraction (non-blocking, errors logged internally)
             const itemForSignal = {
               id,
