@@ -2,7 +2,7 @@ import Parser from "rss-parser";
 import { createClient } from "@supabase/supabase-js";
 import { tagItem, tagItemWithAI } from "./tagger";
 import { extractSignal } from "./signal-extractor";
-import { resolveEntitiesFromText } from "./entity-resolver";
+import { resolveEntitiesFromText, resolveCompanyNamesToEntityIds } from "./entity-resolver";
 
 const parser = new Parser({
   timeout: 8000, // Reduced from 15s for faster failure on stale feeds
@@ -229,11 +229,40 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
 
             const text = `${itemData.title} ${itemData.body || ""}`;
             
-            // Resolve entities from text using entity_resolver
-            const resolvedEntities = await resolveEntitiesFromText(text);
-            const hasResolvedEntity = resolvedEntities.length > 0;
+            // Resolve entities two ways:
+            // 1. Direct lookup: match tagger-written company tag values against entity_aliases by name
+            //    (handles cases like "Blizzard" tagged by tagger but alias is "Activision Blizzard")
+            // 2. Text scan: find additional entities mentioned in the article text
+            const companyTagValues = ((tags as Record<string, string[]>).company || []);
+            const [directEntities, textEntities] = await Promise.all([
+              resolveCompanyNamesToEntityIds(companyTagValues),
+              resolveEntitiesFromText(text),
+            ]);
 
-            // Update content_tags rows with resolved entity_ids
+            // Build merged set of resolved entities
+            const resolvedEntityMap = new Map<string, { entity_id: string; canonical_name: string; entity_type: string }>();
+            for (const textEntity of textEntities) {
+              resolvedEntityMap.set(textEntity.entity_id, textEntity);
+            }
+
+            // Direct: update existing content_tags rows that have entity_id = null
+            for (const [tagValue, entityId] of directEntities) {
+              const { error: directError } = await supabase
+                .from("content_tags")
+                .update({ entity_id: entityId })
+                .eq("content_id", id)
+                .eq("dimension", "company")
+                .eq("value", tagValue)
+                .is("entity_id", null);
+              if (directError) {
+                console.error(`[ingest] Failed to update entity_id for tag "${tagValue}":`, { error: directError });
+              }
+            }
+
+            const resolvedEntities = [...resolvedEntityMap.values()];
+            const hasResolvedEntity = directEntities.size > 0 || resolvedEntities.length > 0;
+
+            // Text-scan: upsert new rows for entities found in text but not already tagged
             for (const entity of resolvedEntities) {
               const { error: entityError } = await supabase
                 .from("content_tags")
