@@ -91,25 +91,31 @@ async function applyAITagsAsync(
       };
 
       // Update content.tags JSONB column
-      await supabase.from("content").update({ tags: mergedTags }).eq("id", item.id);
+      const { error: contentUpdateError } = await supabase.from("content").update({ tags: mergedTags }).eq("id", item.id);
+      if (contentUpdateError) {
+        console.error(`[AI tag async] Failed to update content.tags for item ${item.id}:`, { error: contentUpdateError });
+      }
 
       // Add new AI-discovered tags to content_tags (won't duplicate existing ones)
-      const newTagRows: { item_id: string; dimension: string; value: string; manual: boolean }[] = [];
+      const newTagRows: { content_id: string; dimension: string; value: string; manual: boolean }[] = [];
       for (const theme of aiTags.theme) {
         if (!item.tags.theme.includes(theme)) {
-          newTagRows.push({ item_id: item.id, dimension: "theme", value: theme, manual: false });
+          newTagRows.push({ content_id: item.id, dimension: "theme", value: theme, manual: false });
         }
       }
       for (const company of aiTags.company) {
         if (!item.tags.company.includes(company)) {
-          newTagRows.push({ item_id: item.id, dimension: "company", value: company, manual: false });
+          newTagRows.push({ content_id: item.id, dimension: "company", value: company, manual: false });
         }
       }
 
       if (newTagRows.length > 0) {
-        await supabase
+        const { error } = await supabase
           .from("content_tags")
-          .upsert(newTagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
+          .upsert(newTagRows, { onConflict: "content_id,dimension,value", ignoreDuplicates: true });
+        if (error) {
+          console.error(`[AI tag async] Failed to upsert content_tags for item ${item.id}:`, { error });
+        }
       }
 
       return { id: item.id, success: true };
@@ -197,18 +203,21 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
         );
 
         // Step 3: Collect all content_tags rows for single batch upsert
-        const allTagRows: { item_id: string; dimension: string; value: string; manual: boolean }[] = [];
+        const allTagRows: { content_id: string; dimension: string; value: string; manual: boolean }[] = [];
         for (const item of itemsWithRuleTags) {
           for (const [dimension, values] of Object.entries(item.tags) as [string, string[]][]) {
             for (const value of values) {
-              allTagRows.push({ item_id: item.id, dimension, value, manual: false });
+              allTagRows.push({ content_id: item.id, dimension, value, manual: false });
             }
           }
         }
         if (allTagRows.length > 0) {
-          await supabase
+          const { error: tagError } = await supabase
             .from("content_tags")
-            .upsert(allTagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
+            .upsert(allTagRows, { onConflict: "content_id,dimension,value", ignoreDuplicates: true });
+          if (tagError) {
+            console.error("[ingest] Failed to upsert rule-based content_tags batch:", { error: tagError });
+          }
         }
 
         // Step 4: Entity resolution + signal extraction (uses rule-based tags)
@@ -226,15 +235,18 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
 
             // Update content_tags rows with resolved entity_ids
             for (const entity of resolvedEntities) {
-              await supabase
+              const { error: entityError } = await supabase
                 .from("content_tags")
                 .upsert({
-                  item_id: id,
+                  content_id: id,
                   dimension: "company",
                   value: entity.canonical_name,
                   entity_id: entity.entity_id,
                   manual: false,
-                }, { onConflict: "item_id,dimension,value", ignoreDuplicates: false });
+                }, { onConflict: "content_id,dimension,value", ignoreDuplicates: false });
+              if (entityError) {
+                console.error(`[ingest] Failed to upsert entity-resolved tag for ${id}:`, { error: entityError });
+              }
             }
 
             // Also update content.tags JSONB so chips appear in UI
