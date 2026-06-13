@@ -16,12 +16,14 @@ export async function GET(req: NextRequest) {
 
   // Fetch user profile and preferences
   const [profileResult, prefsResult] = await Promise.all([
-    supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
       .from("profiles")
       .select("*")
       .eq("id", session.user.id)
       .single(),
-    supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
       .from("user_preferences")
       .select("*")
       .eq("user_id", session.user.id)
@@ -39,7 +41,7 @@ export async function GET(req: NextRequest) {
   let preferences = prefsResult.data;
   if (prefsResult.error && prefsResult.error.code === "PGRST116") {
     // Not found - create default preferences
-    const { data: newPrefs, error: createError } = await supabase
+    const { data: newPrefs, error: createError } = await (supabase as any)
       .from("user_preferences")
       .insert({ user_id: session.user.id })
       .select()
@@ -91,7 +93,7 @@ export async function PATCH(req: NextRequest) {
 
   // Update profile if display_name is provided
   if (display_name !== undefined) {
-    const { error: profileError } = await supabase
+    const { error: profileError } = await (supabase as any)
       .from("profiles")
       .update({ display_name, updated_at: new Date().toISOString() })
       .eq("id", session.user.id);
@@ -119,7 +121,7 @@ export async function PATCH(req: NextRequest) {
 
   // Only update preferences if there are changes beyond updated_at
   if (Object.keys(prefsUpdate).length > 1) {
-    const { error: prefsError } = await supabase
+    const { error: prefsError } = await (supabase as any)
       .from("user_preferences")
       .update(prefsUpdate)
       .eq("user_id", session.user.id);
