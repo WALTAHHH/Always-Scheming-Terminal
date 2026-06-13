@@ -54,7 +54,7 @@ async function getAliases(): Promise<AliasRow[]> {
       return aliasCache; // Return stale cache on error
     }
 
-    aliasCache = (data || []) as AliasRow[];
+    aliasCache = (data || []) as unknown as AliasRow[];
     cacheLoadedAt = Date.now();
   }
 
