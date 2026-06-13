@@ -85,16 +85,16 @@ Article content: {CONTENT}
 Respond with valid JSON only, no markdown fences.`;
 
 /**
- * Call OpenAI to extract signal from item.
+ * Call Gemini to extract signal from item.
  * Hard timeout: 6s.
  */
 async function extractSignalWithLLM(
   title: string,
   content: string | null
 ): Promise<SignalExtractionResult | null> {
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (!openaiKey) {
-    console.warn("[signal-extractor] OPENAI_API_KEY not set, skipping LLM extraction");
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) {
+    console.warn("[signal-extractor] GOOGLE_AI_API_KEY not set, skipping signal extraction");
     return null;
   }
 
@@ -107,30 +107,28 @@ async function extractSignalWithLLM(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
-        max_tokens: 300,
-      }),
-      signal: controller.signal,
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 500 },
+        }),
+        signal: controller.signal,
+      }
+    );
 
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.warn(`[signal-extractor] OpenAI API error: ${response.status} ${response.statusText}`);
+      console.warn(`[signal-extractor] Gemini API error: ${response.status} ${response.statusText}`);
       return null;
     }
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content?.trim();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (!text) return null;
 
     // Parse JSON response
@@ -142,7 +140,7 @@ async function extractSignalWithLLM(
       !parsed.summary ||
       typeof parsed.investment_relevance_score !== "number"
     ) {
-      console.warn("[signal-extractor] Invalid response shape from OpenAI");
+      console.warn("[signal-extractor] Invalid response shape from Gemini");
       return null;
     }
 
@@ -202,7 +200,7 @@ export async function extractSignal(options: ExtractSignalOptions): Promise<void
       summary: signal.summary,
       investment_relevance_score: signal.investment_relevance_score,
       raw_llm_output: signal as unknown as SignalInsert["raw_llm_output"],
-      model_used: "gpt-4o-mini",
+      model_used: "gemini-2.0-flash",
     };
 
     const { error } = await supabase.from("signals").insert(payload);
