@@ -62,11 +62,23 @@ export function Header() {
   const router = useRouter();
   const supabase = createAuthBrowserClient();
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   useEffect(() => {
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUserEmail(session?.user?.email || null);
+      
+      // Fetch display name from preferences
+      if (session?.user) {
+        try {
+          const res = await fetch('/api/user/preferences');
+          if (res.ok) {
+            const data = await res.json();
+            setDisplayName(data?.profile?.display_name || null);
+          }
+        } catch {}
+      }
     };
     getUser();
   }, [supabase]);
@@ -80,6 +92,16 @@ export function Header() {
   const getInitials = (email: string) => {
     const name = email.split("@")[0];
     return name.substring(0, 2).toUpperCase();
+  };
+
+  const getAvatarInitials = () => {
+    if (displayName) {
+      return displayName.substring(0, 2).toUpperCase();
+    }
+    if (userEmail) {
+      return getInitials(userEmail);
+    }
+    return "??";
   };
 
   return (
@@ -121,9 +143,9 @@ export function Header() {
             <Link
               href="/profile"
               className="w-7 h-7 rounded-full bg-ast-accent/20 border border-ast-accent/40 flex items-center justify-center text-ast-accent text-xs font-semibold hover:bg-ast-accent/30 transition-colors"
-              title="Profile"
+              title={displayName || userEmail || 'Profile'}
             >
-              {getInitials(userEmail)}
+              {getAvatarInitials()}
             </Link>
           )}
           <Link
