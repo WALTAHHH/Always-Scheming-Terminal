@@ -267,6 +267,18 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     setGlobalItems(items);
   }, [items]);
 
+  // Seed interests filter from user preferences on mount
+  useEffect(() => {
+    fetch('/api/user/preferences')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.preferences?.interests?.length) {
+          setFilters(prev => ({ ...prev, themes: data.preferences.interests }));
+        }
+      })
+      .catch(() => {}); // silent fail — unauthenticated users, network errors
+  }, []);
+
   const checkForNew = useCallback(async () => {
     try {
       // Use the newest known item's published_at as a "since" cursor.
