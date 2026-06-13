@@ -61,11 +61,25 @@ function ThemeToggle() {
 export function Header() {
   const router = useRouter();
   const supabase = createAuthBrowserClient();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUserEmail(session?.user?.email || null);
+    };
+    getUser();
+  }, [supabase]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     router.push("/auth/login");
     router.refresh();
+  };
+
+  const getInitials = (email: string) => {
+    const name = email.split("@")[0];
+    return name.substring(0, 2).toUpperCase();
   };
 
   return (
@@ -103,6 +117,15 @@ export function Header() {
             <span className="hidden sm:inline">RSS</span>
           </a>
           <ThemeToggle />
+          {userEmail && (
+            <Link
+              href="/profile"
+              className="w-7 h-7 rounded-full bg-ast-accent/20 border border-ast-accent/40 flex items-center justify-center text-ast-accent text-xs font-semibold hover:bg-ast-accent/30 transition-colors"
+              title="Profile"
+            >
+              {getInitials(userEmail)}
+            </Link>
+          )}
           <Link
             href="/admin"
             className="hidden sm:inline text-ast-muted hover:text-ast-accent text-xs transition-colors"

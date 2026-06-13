@@ -318,6 +318,70 @@ export interface Database {
           revoked_at?: string | null;
         };
       };
+      profiles: {
+        Row: {
+          id: string;
+          display_name: string | null;
+          avatar_url: string | null;
+          role: string;
+          subscription_tier: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          role?: string;
+          subscription_tier?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          role?: string;
+          subscription_tier?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      user_preferences: {
+        Row: {
+          id: string;
+          user_id: string;
+          interests: string[];
+          segments: string[];
+          notification_prefs: Json;
+          digest_frequency: string;
+          theme: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          interests?: string[];
+          segments?: string[];
+          notification_prefs?: Json;
+          digest_frequency?: string;
+          theme?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          interests?: string[];
+          segments?: string[];
+          notification_prefs?: Json;
+          digest_frequency?: string;
+          theme?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
   };
 }
@@ -332,6 +396,8 @@ export type Signal = Database["public"]["Tables"]["signals"]["Row"];
 export type Entity = Database["public"]["Tables"]["entities"]["Row"];
 export type EntityAlias = Database["public"]["Tables"]["entity_aliases"]["Row"];
 export type ApiKey = Database["public"]["Tables"]["api_keys"]["Row"];
+export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+export type UserPreferences = Database["public"]["Tables"]["user_preferences"]["Row"];
 
 // Extended item with source info for the feed
 export type FeedItem = Item & {
