@@ -53,7 +53,7 @@ VALUES
   (gen_random_uuid(), 'Supercell', 'company', NULL, NULL, false, (SELECT id FROM entities WHERE canonical_name = 'Tencent'), 'Mobile-First / F2P', NULL, 'Clash of Clans, Brawl Stars, gold standard F2P'),
   (gen_random_uuid(), 'Playtika', 'company', 'PLTK', 'NASDAQ', true, NULL, 'Mobile-First / F2P', 2.5, 'Social casino, live ops expertise'),
   (gen_random_uuid(), 'AppLovin', 'company', 'APP', 'NASDAQ', true, NULL, 'Mobile-First / F2P', 30, 'Ad tech + games portfolio, MAX mediation'),
-  (gen_random_uuid(), 'Scopely', 'company', NULL, NULL, false, (SELECT id FROM entities WHERE canonical_name = 'Savvy Games Group'), 'Mobile-First / F2P', NULL, 'Marvel Strike Force, Monopoly GO, acquired by Savvy Games'),
+  (gen_random_uuid(), 'Scopely', 'company', NULL, NULL, false, NULL, 'Mobile-First / F2P', NULL, 'Marvel Strike Force, Monopoly GO, acquired by Savvy Games'),
   (gen_random_uuid(), 'Moon Active', 'company', NULL, NULL, false, NULL, 'Mobile-First / F2P', NULL, 'Coin Master, Israel-based'),
   (gen_random_uuid(), 'Dream Games', 'company', NULL, NULL, false, NULL, 'Mobile-First / F2P', NULL, 'Royal Match, Turkey-based, unicorn'),
   (gen_random_uuid(), 'Habby', 'company', NULL, NULL, false, NULL, 'Mobile-First / F2P', NULL, 'Archero, Survivor.io, China hyper-casual'),
@@ -114,9 +114,14 @@ VALUES
 ON CONFLICT (canonical_name) DO NOTHING;
 
 -- Update Twitch parent_id after Amazon insert
-UPDATE entities 
+UPDATE entities
 SET parent_id = (SELECT id FROM entities WHERE canonical_name = 'Amazon')
 WHERE canonical_name = 'Twitch' AND parent_id IS NULL;
+
+-- Update Scopely parent_id after Savvy Games Group insert
+UPDATE entities
+SET parent_id = (SELECT id FROM entities WHERE canonical_name = 'Savvy Games Group')
+WHERE canonical_name = 'Scopely' AND parent_id IS NULL;
 
 -- Insert entity_aliases
 -- Canonical aliases for all entities
