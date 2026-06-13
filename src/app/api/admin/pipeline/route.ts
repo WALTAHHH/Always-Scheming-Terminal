@@ -89,38 +89,9 @@ export async function GET(req: NextRequest) {
     if (lastSignalError && lastSignalError.code !== "PGRST116")
       throw lastSignalError;
 
-    // 5. Importance gate
-    const { count: clearedCount, error: clearedError } = await serviceClient
-      .from("content")
-      .select("*", { count: "exact", head: true })
-      .gte("importance_score", 0.4);
-
-    if (clearedError) throw clearedError;
-
-    // Articles cleared gate but no signal yet
-    const { data: clearedContentData, error: clearedContentError } =
-      await serviceClient
-        .from("content")
-        .select("id")
-        .gte("importance_score", 0.4);
-
-    if (clearedContentError) throw clearedContentError;
-
-    const clearedIds = (clearedContentData || []).map((row: { id: string }) => row.id);
-    let clearedNoSignal = 0;
-
-    if (clearedIds.length > 0) {
-      const { data: existingSignals, error: existingError } =
-        await serviceClient.from("signals").select("content_id");
-
-      if (existingError) throw existingError;
-
-      const signalContentIds = new Set(
-        (existingSignals || []).map((s: { content_id: string }) => s.content_id)
-      );
-      clearedNoSignal = clearedIds.filter((id: string) => !signalContentIds.has(id))
-        .length;
-    }
+    // 5. Importance gate (importance_score column not yet migrated — stub zeros)
+    const clearedCount = 0;
+    const clearedNoSignal = 0;
 
     // 6. Entity resolution coverage
     const { count: totalCompanyTags, error: totalCompanyError } =
