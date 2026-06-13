@@ -9,7 +9,7 @@ import { config } from "dotenv";
 config({ path: ".env.local" });
 
 import { createClient } from "@supabase/supabase-js";
-import { tagItem } from "../src/lib/tagger";
+import { tagItem, tagItemWithAI } from "../src/lib/tagger";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,6 +23,7 @@ async function backfill() {
   let offset = 0;
   let total = 0;
   let tagged = 0;
+  let aiCalls = 0;
 
   console.log("Starting company backfill...\n");
 
@@ -45,12 +46,25 @@ async function backfill() {
       const sourceType = (item.sources as any)?.source_type || "news";
       const result = tagItem(item.title, item.body, sourceType);
 
-      if (result.company.length === 0) continue;
+      // If rule-based matching found no companies, try AI
+      let finalCompanies = result.company;
+      if (result.company.length === 0) {
+        const aiResult = await tagItemWithAI(item.title, item.body);
+        finalCompanies = aiResult.company;
+        aiCalls++;
+        
+        // Rate limiting: 50ms delay between AI calls
+        if (finalCompanies.length > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      }
+
+      if (finalCompanies.length === 0) continue;
 
       // Merge with existing tags
       const existingTags = (item.tags as any) || {};
       const existingCompanies: string[] = existingTags.company || [];
-      const mergedCompanies = [...new Set([...existingCompanies, ...result.company])];
+      const mergedCompanies = [...new Set([...existingCompanies, ...finalCompanies])];
 
       // Update tags jsonb
       const updatedTags = {
@@ -68,9 +82,9 @@ async function backfill() {
         continue;
       }
 
-      // Upsert into content_tags for filtering
+      // Upsert into item_tags for filtering
       const tagRows = mergedCompanies.map((c) => ({
-        item_id: item.id,
+        content_id: item.id,
         dimension: "company",
         value: c,
         manual: false,
@@ -79,7 +93,7 @@ async function backfill() {
       if (tagRows.length > 0) {
         const { error: tagErr } = await supabase
           .from("content_tags")
-          .upsert(tagRows, { onConflict: "item_id,dimension,value", ignoreDuplicates: true });
+          .upsert(tagRows, { onConflict: "content_id,dimension,value", ignoreDuplicates: true });
 
         if (tagErr) {
           console.error(`  Failed to upsert tags for ${item.id}: ${tagErr.message}`);
@@ -96,7 +110,7 @@ async function backfill() {
     if (items.length < PAGE_SIZE) break;
   }
 
-  console.log(`\nDone! Scanned ${total} articles, tagged ${tagged} with companies.`);
+  console.log(`\nDone! Scanned ${total} articles, tagged ${tagged} with companies (${aiCalls} AI calls).`);
 
   // Show top companies
   const { data: topCompanies } = await supabase
