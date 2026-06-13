@@ -30,7 +30,7 @@ interface IngestionLogRow {
   duration_ms: number;
 }
 
-type Tab = "sources" | "health";
+type Tab = "sources" | "health" | "pipeline";
 type SortField = "name" | "type" | "articles" | "last_fetch" | "latest_article" | "status" | "errors";
 type SortDir = "asc" | "desc";
 
@@ -587,6 +587,342 @@ function FetchAllButton({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ── Pipeline Dashboard ─────────────────────────────────────────────
+
+interface PipelineStats {
+  articles: { total: number; tagged: number; taggedPct: number };
+  tagsByDimension: { dimension: string; count: number }[];
+  signals: { 
+    total: number; 
+    byType: { signal_type: string; count: number }[]; 
+    lastCreatedAt: string | null 
+  };
+  importanceGate: { cleared: number; clearedNoSignal: number };
+  entityResolution: {
+    total: number;
+    resolved: number;
+    resolvedPct: number;
+    topUnresolved: { value: string; count: number }[];
+  };
+}
+
+interface HealthResponse {
+  status: string;
+  timestamp: string;
+  version: string;
+  uptime: number;
+}
+
+function PipelineDashboard() {
+  const [stats, setStats] = useState<PipelineStats | null>(null);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [healthResponseTime, setHealthResponseTime] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const TEST_API_KEY = "ast_6c3732f0c3405ff36eeddcbc68af3f3e4593c9dd011f6419";
+  const BASE_URL = "https://terminal.always-scheming.com";
+
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/pipeline");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setStats(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch stats");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchHealth = useCallback(async () => {
+    try {
+      const start = performance.now();
+      const res = await fetch("/api/v1/health");
+      const end = performance.now();
+      if (res.ok) {
+        const data = await res.json();
+        setHealth(data);
+        setHealthResponseTime(Math.round(end - start));
+      }
+    } catch (err) {
+      console.error("Health check failed:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+    fetchHealth();
+  }, [fetchStats, fetchHealth]);
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-ast-muted text-sm">Loading pipeline stats...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-ast-surface border border-ast-border rounded-lg p-6 text-center">
+        <div className="text-ast-pink text-sm mb-2">Failed to load pipeline stats</div>
+        <div className="text-ast-muted text-xs mb-4">{error}</div>
+        <button
+          onClick={fetchStats}
+          className="px-4 py-2 rounded bg-ast-accent/10 border border-ast-accent/30 text-ast-accent text-xs hover:bg-ast-accent/20 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!stats) return null;
+
+  return (
+    <div className="space-y-6">
+      {/* Header with refresh */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ast-text">Pipeline Health</h2>
+        <button
+          onClick={() => { fetchStats(); fetchHealth(); }}
+          className="px-3 py-1.5 rounded bg-ast-accent/10 border border-ast-accent/30 text-ast-accent text-xs hover:bg-ast-accent/20 transition-colors"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* Coverage Section */}
+      <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+        <h3 className="text-xs uppercase tracking-wider text-ast-muted font-semibold mb-3">
+          Coverage
+        </h3>
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">
+              Total Articles
+            </div>
+            <div className="text-2xl font-bold text-ast-text">
+              {stats.articles.total}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">
+              Tagged
+            </div>
+            <div className="text-2xl font-bold text-ast-accent">
+              {stats.articles.tagged}
+            </div>
+            <div className="text-[10px] text-ast-muted mt-0.5">
+              {stats.articles.taggedPct.toFixed(1)}% of total
+            </div>
+          </div>
+        </div>
+
+        {/* Dimension breakdown */}
+        {stats.tagsByDimension.length > 0 && (
+          <div className="border-t border-ast-border pt-3">
+            <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-2">
+              Tags by Dimension
+            </div>
+            <div className="space-y-1">
+              {stats.tagsByDimension.map((dim) => {
+                const pct = stats.articles.total > 0 
+                  ? ((dim.count / stats.articles.total) * 100).toFixed(1)
+                  : "0.0";
+                return (
+                  <div key={dim.dimension} className="flex items-center justify-between text-xs">
+                    <span className="text-ast-text capitalize">{dim.dimension}</span>
+                    <span className="text-ast-muted tabular-nums">
+                      {dim.count} <span className="text-ast-muted/60">({pct}%)</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Signals Section */}
+      <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+        <h3 className="text-xs uppercase tracking-wider text-ast-muted font-semibold mb-3">
+          Signals
+        </h3>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div>
+            <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">
+              Total Signals
+            </div>
+            <div className={`text-2xl font-bold ${stats.signals.total === 0 ? "text-ast-pink" : "text-ast-mint"}`}>
+              {stats.signals.total}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">
+              Cleared Gate
+            </div>
+            <div className="text-2xl font-bold text-ast-text">
+              {stats.importanceGate.cleared}
+            </div>
+            <div className="text-[10px] text-ast-muted mt-0.5">
+              {stats.importanceGate.clearedNoSignal} no signal yet
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">
+              Last Signal
+            </div>
+            <div className={`text-sm font-semibold ${stats.signals.lastCreatedAt ? "text-ast-text" : "text-ast-pink"}`}>
+              {stats.signals.lastCreatedAt ? timeAgo(stats.signals.lastCreatedAt) : "Never"}
+            </div>
+          </div>
+        </div>
+
+        {/* Signals by type */}
+        {stats.signals.byType.length > 0 && (
+          <div className="border-t border-ast-border pt-3">
+            <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-2">
+              By Type
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {stats.signals.byType.map((st) => (
+                <span
+                  key={st.signal_type}
+                  className="px-2 py-1 rounded bg-ast-accent/10 border border-ast-accent/30 text-ast-accent text-xs"
+                >
+                  {st.signal_type}: {st.count}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Entity Resolution Section */}
+      <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+        <h3 className="text-xs uppercase tracking-wider text-ast-muted font-semibold mb-3">
+          Entity Resolution
+        </h3>
+        <div className="mb-4">
+          <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">
+            Company Tags Resolved
+          </div>
+          <div className="text-2xl font-bold text-ast-text">
+            {stats.entityResolution.resolved} / {stats.entityResolution.total}
+          </div>
+          <div className="text-[10px] text-ast-muted mt-0.5">
+            {stats.entityResolution.resolvedPct.toFixed(1)}% coverage
+          </div>
+        </div>
+
+        {/* Top unresolved */}
+        {stats.entityResolution.topUnresolved.length > 0 && (
+          <div className="border-t border-ast-border pt-3">
+            <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-2">
+              Top Unresolved Tags
+            </div>
+            <div className="space-y-1">
+              {stats.entityResolution.topUnresolved.map((tag) => (
+                <div key={tag.value} className="flex items-center justify-between text-xs">
+                  <span className="text-ast-text">{tag.value}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-ast-muted tabular-nums">{tag.count}</span>
+                    <span className="text-[10px] text-ast-accent">add alias</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* API Readiness Section */}
+      <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+        <h3 className="text-xs uppercase tracking-wider text-ast-muted font-semibold mb-3">
+          API Readiness
+        </h3>
+        
+        {/* Health check */}
+        {health && (
+          <div className="mb-4 pb-3 border-b border-ast-border">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs text-ast-muted">Health Check</div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-ast-text">
+                  {healthResponseTime !== null ? `${healthResponseTime}ms` : "—"}
+                </span>
+                <span className="text-xs text-ast-mint">v{health.version}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Test API Key */}
+        <div className="mb-3">
+          <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1.5">
+            Test API Key
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 px-2 py-1.5 bg-ast-bg border border-ast-border rounded text-xs font-mono text-ast-text truncate">
+              {TEST_API_KEY}
+            </code>
+            <button
+              onClick={() => copyToClipboard(TEST_API_KEY, "key")}
+              className="px-2 py-1.5 rounded bg-ast-accent/10 border border-ast-accent/30 text-ast-accent text-xs hover:bg-ast-accent/20 transition-colors"
+            >
+              {copied === "key" ? "✓" : "Copy"}
+            </button>
+          </div>
+        </div>
+
+        {/* Example curl commands */}
+        <div className="space-y-2">
+          <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1.5">
+            Example Requests
+          </div>
+          
+          {[
+            { label: "Items", cmd: `curl "${BASE_URL}/api/v1/items?limit=5" -H "Authorization: Bearer ${TEST_API_KEY}"` },
+            { label: "Signals", cmd: `curl "${BASE_URL}/api/v1/signals?limit=5" -H "Authorization: Bearer ${TEST_API_KEY}"` },
+            { label: "Entities", cmd: `curl "${BASE_URL}/api/v1/entities?alias=Roblox" -H "Authorization: Bearer ${TEST_API_KEY}"` },
+          ].map((item) => (
+            <div key={item.label} className="border border-ast-border rounded p-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] text-ast-accent uppercase tracking-wider font-semibold">
+                  {item.label}
+                </span>
+                <button
+                  onClick={() => copyToClipboard(item.cmd, item.label)}
+                  className="px-2 py-0.5 rounded bg-ast-accent/10 border border-ast-accent/30 text-ast-accent text-[10px] hover:bg-ast-accent/20 transition-colors"
+                >
+                  {copied === item.label ? "✓ Copied" : "Copy"}
+                </button>
+              </div>
+              <code className="block text-[10px] font-mono text-ast-muted break-all">
+                {item.cmd}
+              </code>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Admin Page ────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -728,6 +1064,16 @@ export default function AdminPage() {
           >
             Ingestion Health
           </button>
+          <button
+            onClick={() => setTab("pipeline")}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              tab === "pipeline"
+                ? "border-ast-accent text-ast-accent"
+                : "border-transparent text-ast-muted hover:text-ast-text"
+            }`}
+          >
+            Pipeline
+          </button>
           <div className="ml-auto">
             <FetchAllButton onDone={() => { fetchSources(); fetchLogs(); }} />
           </div>
@@ -773,8 +1119,10 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
-        ) : (
+        ) : tab === "health" ? (
           <HealthDashboard sources={sources} logs={logs} onRefresh={() => { fetchSources(); fetchLogs(); }} />
+        ) : (
+          <PipelineDashboard />
         )}
       </main>
     </div>
