@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface SourceRow {
@@ -533,11 +534,8 @@ function FetchAllButton({ onDone }: { onDone: () => void }) {
     setFetching(true);
     setToast(null);
     try {
-      const res = await fetch("/api/ingest", {
+      const res = await fetch("/api/admin/trigger-ingest", {
         method: "POST",
-        headers: process.env.NEXT_PUBLIC_CRON_SECRET
-          ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET}` }
-          : {},
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Ingestion failed");
@@ -926,6 +924,7 @@ function PipelineDashboard() {
 // ── Main Admin Page ────────────────────────────────────────────────
 
 export default function AdminPage() {
+  const router = useRouter();
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [logs, setLogs] = useState<IngestionLogRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -956,9 +955,25 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
+    // Check admin access
+    fetch("/api/user/preferences")
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) {
+          router.push("/");
+          return;
+        }
+        return r.json();
+      })
+      .then((data) => {
+        if (data && data.profile?.role !== "admin") {
+          router.push("/");
+        }
+      })
+      .catch(() => {});
+
     fetchSources();
     fetchLogs();
-  }, [fetchSources, fetchLogs]);
+  }, [fetchSources, fetchLogs, router]);
 
   function handleSort(field: SortField) {
     if (field === sortField) {
@@ -1142,13 +1157,10 @@ function FetchButton({ sourceId, onDone }: { sourceId: string; onDone: () => voi
     setFetching(true);
     setResult(null);
     try {
-      const res = await fetch("/api/ingest/source", {
+      const res = await fetch("/api/admin/trigger-ingest-source", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(process.env.NEXT_PUBLIC_CRON_SECRET
-            ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET}` }
-            : {}),
         },
         body: JSON.stringify({ source_id: sourceId }),
       });

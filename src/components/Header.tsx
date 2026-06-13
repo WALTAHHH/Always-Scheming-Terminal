@@ -63,19 +63,20 @@ export function Header() {
   const supabase = createAuthBrowserClient();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setUserEmail(session?.user?.email || null);
-      
-      // Fetch display name from preferences
-      if (session?.user) {
+
+      if (session) {
         try {
-          const res = await fetch('/api/user/preferences');
-          if (res.ok) {
-            const data = await res.json();
-            setDisplayName(data?.profile?.display_name || null);
+          const prefsRes = await fetch('/api/user/preferences');
+          if (prefsRes.ok) {
+            const data = await prefsRes.json();
+            setIsAdmin(data.profile?.role === 'admin');
+            setDisplayName(data.profile?.display_name || null);
           }
         } catch {}
       }
@@ -89,9 +90,8 @@ export function Header() {
     router.refresh();
   };
 
-  const getInitials = (email: string) => {
-    const name = email.split("@")[0];
-    return name.substring(0, 2).toUpperCase();
+  const getInitials = (text: string) => {
+    return text.substring(0, 2).toUpperCase();
   };
 
   const getAvatarInitials = () => {
@@ -148,12 +148,14 @@ export function Header() {
               {getAvatarInitials()}
             </Link>
           )}
-          <Link
-            href="/admin"
-            className="hidden sm:inline text-ast-muted hover:text-ast-accent text-xs transition-colors"
-          >
-            ⚙ Admin
-          </Link>
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="hidden sm:inline text-ast-muted hover:text-ast-accent text-xs transition-colors"
+            >
+              ⚙ Admin
+            </Link>
+          )}
           <button
             onClick={handleSignOut}
             className="text-ast-muted hover:text-red-400 text-xs transition-colors"
