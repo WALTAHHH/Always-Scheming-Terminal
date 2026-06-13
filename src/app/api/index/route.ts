@@ -96,11 +96,11 @@ async function fetchCompanyData(
 ): Promise<IndexCompanyData> {
   const categories = category.split(",");
   
-  try {
-    // Fetch quote and fundamentals in parallel
+  // Helper to attempt fetch with a specific ticker
+  const attemptFetch = async (tickerToTry: string) => {
     const [quoteData, summaryData] = await Promise.all([
-      yahooFinance.quote(ticker),
-      yahooFinance.quoteSummary(ticker, {
+      yahooFinance.quote(tickerToTry),
+      yahooFinance.quoteSummary(tickerToTry, {
         modules: ["financialData", "defaultKeyStatistics"],
       }),
     ]);
@@ -116,7 +116,7 @@ async function fetchCompanyData(
 
     return {
       name,
-      ticker,
+      ticker: tickerToTry,
       categories,
       
       // Quote
@@ -144,35 +144,61 @@ async function fetchCompanyData(
       freeCashFlow: fd?.freeCashflow ?? null,
       beta: ks?.beta ?? null,
     };
+  };
+  
+  try {
+    // First attempt
+    return await attemptFetch(ticker);
   } catch (error) {
-    console.error(`Error fetching ${ticker}:`, error);
-    return {
-      name,
-      ticker,
-      categories,
-      price: null,
-      change: null,
-      changePercent: null,
-      marketCap: null,
-      marketCapUSD: null,
-      fiftyTwoWeekHigh: null,
-      fiftyTwoWeekLow: null,
-      currency: "USD",
-      revenue: null,
-      revenueGrowth: null,
-      grossMargin: null,
-      operatingMargin: null,
-      profitMargin: null,
-      forwardPE: null,
-      priceToBook: null,
-      evToRevenue: null,
-      evToEbitda: null,
-      totalCash: null,
-      totalDebt: null,
-      freeCashFlow: null,
-      beta: null,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
+    console.error(`Error fetching ${ticker} (first attempt):`, error);
+    
+    // Retry once after 500ms
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    
+    try {
+      return await attemptFetch(ticker);
+    } catch (retryError) {
+      console.error(`Error fetching ${ticker} (retry):`, retryError);
+      
+      // Samsung fallback: try SSNLF (OTC) if KRX ticker fails
+      if (ticker === "005930.KS") {
+        try {
+          console.log("Trying Samsung SSNLF fallback...");
+          return await attemptFetch("SSNLF");
+        } catch (fallbackError) {
+          console.error("Samsung SSNLF fallback also failed:", fallbackError);
+        }
+      }
+      
+      // All attempts failed, return null data with error
+      return {
+        name,
+        ticker,
+        categories,
+        price: null,
+        change: null,
+        changePercent: null,
+        marketCap: null,
+        marketCapUSD: null,
+        fiftyTwoWeekHigh: null,
+        fiftyTwoWeekLow: null,
+        currency: "USD",
+        revenue: null,
+        revenueGrowth: null,
+        grossMargin: null,
+        operatingMargin: null,
+        profitMargin: null,
+        forwardPE: null,
+        priceToBook: null,
+        evToRevenue: null,
+        evToEbitda: null,
+        totalCash: null,
+        totalDebt: null,
+        freeCashFlow: null,
+        beta: null,
+        error: retryError instanceof Error ? retryError.message : "Unknown error",
+      };
+    }
   }
 }
 

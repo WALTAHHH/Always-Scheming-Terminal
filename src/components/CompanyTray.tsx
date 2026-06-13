@@ -142,19 +142,23 @@ function CompanyCard({
   const { quote, history, loading } = stockData;
   const isPositive = (quote?.change ?? 0) >= 0;
   
+  const hasError = !loading && !quote;
+  
   return (
     <button
       onClick={onClick}
       className={`w-full p-3 rounded-lg border text-left transition-all ${
         isExpanded 
           ? "border-ast-accent bg-ast-accent/5 shadow-md" 
-          : "border-ast-border hover:border-ast-muted bg-ast-surface/50 hover:bg-ast-surface"
+          : hasError
+            ? "border-dashed border-ast-muted/30 hover:border-ast-muted/50 bg-ast-surface/30"
+            : "border-ast-border hover:border-ast-muted bg-ast-surface/50 hover:bg-ast-surface"
       }`}
     >
       {/* Header row */}
       <div className="flex items-center justify-between gap-2 mb-1.5">
         <span className="text-sm font-bold text-ast-accent tracking-tight">
-          {companyData?.ticker || name.slice(0, 6).toUpperCase()}
+          {companyData?.ticker || name}
         </span>
         {loading ? (
           <span className="text-xs text-ast-muted animate-pulse">...</span>
@@ -162,7 +166,9 @@ function CompanyCard({
           <span className={`text-sm font-bold ${isPositive ? "text-ast-mint" : "text-ast-pink"}`}>
             {isPositive ? "▲" : "▼"}{Math.abs(quote.changePercent).toFixed(1)}%
           </span>
-        ) : null}
+        ) : (
+          <span className="text-xs text-ast-muted/60">unavailable</span>
+        )}
       </div>
       
       {/* Price */}
