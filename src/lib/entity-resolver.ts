@@ -4,6 +4,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
+import { createWordBoundaryRegex } from "./utils";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -75,8 +76,7 @@ export async function resolveEntitiesFromText(text: string): Promise<EntityMatch
 
   for (const row of aliases) {
     const alias = row.alias.toLowerCase();
-    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`\\b${escaped}\\b`, "i");
+    const re = createWordBoundaryRegex(alias);
     
     if (re.test(text) && !matched.has(row.entity_id)) {
       matched.add(row.entity_id);

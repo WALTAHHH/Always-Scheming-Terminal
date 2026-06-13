@@ -1,3 +1,5 @@
+import { createWordBoundaryRegex } from './utils';
+
 /**
  * Hybrid tagging system
  * - Category: rule-based (derived from source type + keyword detection)
@@ -14,8 +16,7 @@
  */
 function matchesAny(text: string, keywords: string[]): boolean {
   return keywords.some((kw) => {
-    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`\\b${escaped}\\b`, "i");
+    const re = createWordBoundaryRegex(kw);
     return re.test(text);
   });
 }
@@ -26,8 +27,7 @@ function matchesAny(text: string, keywords: string[]): boolean {
  */
 function countMatches(text: string, keywords: string[]): number {
   return keywords.filter((kw) => {
-    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`\\b${escaped}\\b`, "i");
+    const re = createWordBoundaryRegex(kw);
     return re.test(text);
   }).length;
 }
