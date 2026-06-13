@@ -142,17 +142,13 @@ function CompanyCard({
   const { quote, history, loading } = stockData;
   const isPositive = (quote?.change ?? 0) >= 0;
   
-  const hasError = !loading && !quote;
-  
   return (
     <button
       onClick={onClick}
       className={`w-full p-3 rounded-lg border text-left transition-all ${
         isExpanded 
           ? "border-ast-accent bg-ast-accent/5 shadow-md" 
-          : hasError
-            ? "border-dashed border-ast-muted/30 hover:border-ast-muted/50 bg-ast-surface/30"
-            : "border-ast-border hover:border-ast-muted bg-ast-surface/50 hover:bg-ast-surface"
+          : "border-ast-border hover:border-ast-muted bg-ast-surface/50 hover:bg-ast-surface"
       }`}
     >
       {/* Header row */}
@@ -1226,17 +1222,25 @@ export function CompanyTray({ items, selectedCompany, onSelectCompany }: Company
       {/* Company grid */}
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid grid-cols-2 gap-2">
-          {basketCompanies.map(({ name, data, mentions }) => (
-            <CompanyCard
-              key={name}
-              name={name}
-              companyData={data}
-              stockData={getStockData(data?.ticker ?? undefined)}
-              mentionCount={mentions}
-              isExpanded={selectedCompany === name}
-              onClick={() => onSelectCompany(name)}
-            />
-          ))}
+          {basketCompanies
+            .filter(({ data, name }) => {
+              const sd = getStockData(data?.ticker ?? undefined);
+              // Hide only if: not loading AND no quote AND has a ticker (i.e. we tried and failed)
+              if (data?.ticker && !sd.loading && !sd.quote) return false;
+              return true;
+            })
+            .map(({ name, data, mentions }) => (
+              <CompanyCard
+                key={name}
+                name={name}
+                companyData={data}
+                stockData={getStockData(data?.ticker ?? undefined)}
+                mentionCount={mentions}
+                isExpanded={selectedCompany === name}
+                onClick={() => onSelectCompany(name)}
+              />
+            ))
+          }
         </div>
       </div>
 

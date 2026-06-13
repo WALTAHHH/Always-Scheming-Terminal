@@ -17,6 +17,18 @@ const SEGMENTS = [
   "Investment / Holding / Corporate",
 ];
 
+// Available themes from tagger.ts
+const AVAILABLE_THEMES = [
+  "ai",
+  "ugc",
+  "live-services",
+  "cloud-gaming",
+  "vr-ar",
+  "blockchain",
+  "esports",
+  "indie",
+];
+
 export default function ProfilePage() {
   const router = useRouter();
   const supabase = createAuthBrowserClient();
@@ -89,13 +101,14 @@ export default function ProfilePage() {
     }
   };
 
-  const handleAddInterest = async () => {
-    if (!interestInput.trim() || interests.includes(interestInput.trim())) {
+  const handleAddInterest = async (value?: string) => {
+    const interestValue = value || interestInput.trim();
+    if (!interestValue || interests.includes(interestValue)) {
       setInterestInput("");
       return;
     }
 
-    const newInterests = [...interests, interestInput.trim()];
+    const newInterests = [...interests, interestValue];
     setInterests(newInterests);
     setInterestInput("");
 
@@ -160,6 +173,15 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-ast-bg">
       <div className="max-w-3xl mx-auto px-4 py-8">
+        <button
+          onClick={() => router.push('/')}
+          className="inline-flex items-center gap-2 px-3 py-1.5 mb-6 rounded border border-ast-border text-sm text-ast-text hover:border-ast-accent hover:text-ast-accent transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back to Terminal
+        </button>
         <h1 className="text-2xl font-bold text-ast-text mb-6">Profile Settings</h1>
 
         <div className="space-y-6">
@@ -221,21 +243,46 @@ export default function ProfilePage() {
               Topics you care about (e.g., mobile, M&A, PC gaming)
             </p>
 
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={interestInput}
-                onChange={(e) => setInterestInput(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleAddInterest()}
-                placeholder="Add an interest"
-                className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-ast-text focus:outline-none focus:ring-2 focus:ring-ast-accent"
-              />
-              <button
-                onClick={handleAddInterest}
-                className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/90"
+            <div className="space-y-3 mb-3">
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleAddInterest(e.target.value);
+                    e.target.value = ""; // Reset select
+                  }
+                }}
+                className="w-full bg-ast-bg border border-ast-border rounded px-3 py-1.5 text-sm text-ast-text focus:border-ast-accent focus:outline-none"
               >
-                Add
-              </button>
+                <option value="">Select a topic...</option>
+                {AVAILABLE_THEMES.map((theme) => (
+                  <option key={theme} value={theme}>
+                    {theme}
+                  </option>
+                ))}
+              </select>
+
+              <div>
+                <label className="block text-xs text-ast-muted mb-1.5">Or add custom:</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={interestInput}
+                    onChange={(e) => setInterestInput(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && handleAddInterest()}
+                    placeholder="Add an interest"
+                    className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-ast-text focus:outline-none focus:ring-2 focus:ring-ast-accent"
+                  />
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleAddInterest();
+                    }}
+                    className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/90"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
