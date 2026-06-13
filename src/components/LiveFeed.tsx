@@ -305,7 +305,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
         const merged = [...deduped, ...prev].sort((a, b) => {
           const aDate = a.published_at || a.ingested_at;
           const bDate = b.published_at || b.ingested_at;
-          return new Date(bDate).getTime() - new Date(aDate).getTime();
+          return new Date(bDate ?? 0).getTime() - new Date(aDate ?? 0).getTime();
         });
         return merged;
       });

@@ -25,7 +25,7 @@ async function getItems(): Promise<{ items: FeedItem[]; hasMore: boolean }> {
     return { items: [], hasMore: false };
   }
 
-  const items = (data as FeedItem[]) ?? [];
+  const items = (data as unknown as FeedItem[]) ?? [];
   const hasMore = items.length > PAGE_SIZE;
   return { items: hasMore ? items.slice(0, PAGE_SIZE) : items, hasMore };
 }
