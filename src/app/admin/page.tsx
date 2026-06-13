@@ -611,6 +611,46 @@ interface HealthResponse {
   uptime: number;
 }
 
+function ExtractSignalsButton({ onDone }: { onDone: () => void }) {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function handleExtract() {
+    setRunning(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/extract-signals", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      const s = data.summary;
+      setResult({ ok: true, msg: `${s.extracted} extracted · ${s.alreadySignaled} already done · ${s.totalSignalsInDb} total` });
+      onDone();
+    } catch (err: unknown) {
+      setResult({ ok: false, msg: err instanceof Error ? err.message : "Failed" });
+    } finally {
+      setRunning(false);
+      setTimeout(() => setResult(null), 8000);
+    }
+  }
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={handleExtract}
+        disabled={running}
+        className="px-2 py-1 text-[10px] rounded border border-ast-accent/30 text-ast-accent hover:bg-ast-accent/10 disabled:opacity-50 transition-colors"
+      >
+        {running ? "Extracting..." : "Run Extraction"}
+      </button>
+      {result && (
+        <div className={`text-[10px] mt-1 ${result.ok ? "text-ast-mint" : "text-ast-pink"}`}>
+          {result.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PipelineDashboard() {
   const [stats, setStats] = useState<PipelineStats | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -768,6 +808,7 @@ function PipelineDashboard() {
             <div className={`text-2xl font-bold ${stats.signals.total === 0 ? "text-ast-pink" : "text-ast-mint"}`}>
               {stats.signals.total}
             </div>
+            <ExtractSignalsButton onDone={fetchStats} />
           </div>
           <div>
             <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">
