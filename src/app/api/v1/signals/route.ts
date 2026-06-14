@@ -1,63 +1,60 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
-import { requireApiKey } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-export async function GET(request: Request) {
-  const auth = await requireApiKey(request);
-  if (auth instanceof NextResponse) return auth;
-
-  const { searchParams } = new URL(request.url);
-  
-  const signalType = searchParams.get("signal_type");
-  const itemId = searchParams.get("item_id");
-  const limit = parseInt(searchParams.get("limit") || "50", 10);
-  const cursor = searchParams.get("cursor");
-
+export async function GET() {
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
-  let query = supabase
+  // Query signals first
+  const { data: signalsData, error: signalsError } = await supabase
     .from("signals")
-    .select(`
-      id,
-      item_id,
-      signal_type,
-      summary,
-      investment_relevance_score,
-      created_at,
-      content (id, title, url, published_at)
-    `)
+    .select("*")
+    .gte("investment_relevance_score", 0.5)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(10);
 
-  if (cursor) {
-    query = query.lt("created_at", cursor);
+  if (signalsError) {
+    return NextResponse.json({ error: signalsError.message }, { status: 500 });
   }
 
-  if (signalType) {
-    query = query.eq("signal_type", signalType);
-  }
+  // Get content and company tags for each signal
+  const signalsWithDetails = await Promise.all(
+    (signalsData || []).map(async (signal) => {
+      // Get content details
+      const { data: content } = await supabase
+        .from("content")
+        .select("id, title, url, published_at")
+        .eq("id", signal.item_id)
+        .single();
 
-  if (itemId) {
-    query = query.eq("item_id", itemId);
-  }
+      // Get company tags for this content
+      const { data: tags } = await supabase
+        .from("content_tags")
+        .select("value")
+        .eq("content_id", signal.item_id)
+        .eq("dimension", "company");
 
-  const { data, error } = await query;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const nextCursor = data && data.length === limit ? (data[data.length - 1] as any).created_at : null;
+      return {
+        id: signal.id,
+        signal_type: signal.signal_type,
+        summary: signal.summary,
+        investment_relevance_score: signal.investment_relevance_score,
+        companies: tags?.map((t) => t.value) || [],
+        title: content?.title || "",
+        url: content?.url || "",
+        published_at: content?.published_at || null,
+        created_at: signal.created_at,
+      };
+    })
+  );
 
   return NextResponse.json({
-    data: data || [],
-    count: data?.length || 0,
-    next_cursor: nextCursor,
+    signals: signalsWithDetails,
+    count: signalsWithDetails.length,
   });
 }
