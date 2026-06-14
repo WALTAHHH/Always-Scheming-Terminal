@@ -85,8 +85,13 @@ Return ONLY valid JSON, no markdown:
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin();
-  if (auth instanceof NextResponse) return auth;
+  // Allow Vercel cron to bypass admin auth
+  const isCron = req.headers.get("x-vercel-cron") === "1";
+  
+  if (!isCron) {
+    const auth = await requireAdmin();
+    if (auth instanceof NextResponse) return auth;
+  }
 
   const supabase = getServiceClient();
 
