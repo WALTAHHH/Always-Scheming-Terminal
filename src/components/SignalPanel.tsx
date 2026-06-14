@@ -48,10 +48,37 @@ interface Deal {
   url: string;
 }
 
+interface DbSignal {
+  id: string;
+  signal_type: string;
+  summary: string;
+  investment_relevance_score: number;
+  companies: string[];
+  title: string;
+  url: string;
+  published_at: string | null;
+  created_at: string | null;
+}
+
 function getHoursAgo(dateStr: string | null): number {
   if (!dateStr) return 999;
   const diff = Date.now() - new Date(dateStr).getTime();
   return Math.floor(diff / (1000 * 60 * 60));
+}
+
+function getSignalBadge(signalType: string): { label: string; color: string } {
+  const map: Record<string, { label: string; color: string }> = {
+    acquisition: { label: "ACQ", color: "ast-mint" },
+    fundraising: { label: "RAISE", color: "ast-gold" },
+    earnings: { label: "EARN", color: "ast-gold" },
+    layoffs: { label: "LAYOFF", color: "ast-pink" },
+    leadership: { label: "LEAD", color: "ast-muted" },
+    product_launch: { label: "LAUNCH", color: "ast-mint" },
+    regulatory: { label: "REG", color: "ast-pink" },
+    platform_change: { label: "PLATFORM", color: "ast-muted" },
+    macro: { label: "MACRO", color: "ast-muted" },
+  };
+  return map[signalType] || { label: signalType.toUpperCase().slice(0, 6), color: "ast-muted" };
 }
 
 function ScoreBreakdownPanel({ 
@@ -119,6 +146,15 @@ export function SignalPanel({ items }: SignalPanelProps) {
   const [expandedStory, setExpandedStory] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [middleTab, setMiddleTab] = useState<MiddleTab>("deals");
+  const [signals, setSignals] = useState<DbSignal[]>([]);
+  
+  // Fetch DB signals
+  useEffect(() => {
+    fetch("/api/v1/signals")
+      .then((r) => r.json())
+      .then((data) => setSignals(data.signals || []))
+      .catch(() => setSignals([]));
+  }, []);
   
   // Filter items by source type
   const filteredItems = useMemo(() => {
@@ -306,6 +342,60 @@ export function SignalPanel({ items }: SignalPanelProps) {
       </div>
       
       <div className="flex-1 overflow-y-auto flex flex-col">
+        {/* DB Signals Section */}
+        <div className="border-b border-ast-border">
+          <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
+            <span className="text-ast-accent text-xs font-semibold tracking-wide">
+              SIGNALS
+            </span>
+          </div>
+          <div className="px-4 py-3 space-y-3">
+            {signals.length === 0 ? (
+              <p className="text-ast-muted text-xs">No signals extracted yet</p>
+            ) : (
+              signals.slice(0, 5).map((signal) => {
+                const badge = getSignalBadge(signal.signal_type);
+                const scoreColor = signal.investment_relevance_score >= 0.8 
+                  ? "text-ast-mint" 
+                  : "text-ast-gold";
+                
+                return (
+                  <a
+                    key={signal.id}
+                    href={signal.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block group"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-${badge.color}/20 text-${badge.color}`}>
+                        {badge.label}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
+                          {signal.summary}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className={`${scoreColor} text-[10px]`}>
+                            ● {signal.investment_relevance_score.toFixed(2)}
+                          </span>
+                          {signal.companies.length > 0 && (
+                            <div className="flex gap-1">
+                              {signal.companies.slice(0, 3).map((c) => (
+                                <CompanyTag key={c} name={c} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </a>
+                );
+              })
+            )}
+          </div>
+        </div>
+
         {/* Top Stories */}
         <div className="border-b border-ast-border">
           <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
