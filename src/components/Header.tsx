@@ -122,6 +122,7 @@ export function Header() {
             </span>
             <span className="text-ast-text">Terminal</span>
           </h1>
+          <span className="text-ast-muted text-[10px] sm:text-xs">v0.1</span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <span className="hidden sm:inline"><ShortcutsHelp /></span>
@@ -163,7 +164,6 @@ export function Header() {
           >
             Sign out
           </button>
-          <span className="text-ast-muted text-[10px] sm:text-xs">v0.1</span>
         </div>
       </div>
     </header>
