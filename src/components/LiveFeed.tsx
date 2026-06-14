@@ -81,7 +81,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   const [panels, setPanels] = useState<PanelVisibility>({ feed: true, signal: true, companies: true });
   
   // Company tray state
-  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+
   
   const containerRef = useRef<HTMLDivElement>(null);
   const rightPaneRef = useRef<HTMLDivElement>(null);
@@ -421,12 +421,10 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       content: (
         <CompanyTray
           items={items}
-          selectedCompany={selectedCompany}
-          onSelectCompany={setSelectedCompany}
         />
       ),
     },
-  ], [items, sources, hasMore, loadingMore, loadMore, selectedCompany]);
+  ], [items, sources, hasMore, loadingMore, loadMore]);
 
   // Mobile view
   if (isMobile) {
@@ -553,8 +551,6 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
                 <CompanyTrayBoundary>
                   <CompanyTray 
                     items={items} 
-                    selectedCompany={selectedCompany}
-                    onSelectCompany={setSelectedCompany}
                   />
                 </CompanyTrayBoundary>
               </div>
