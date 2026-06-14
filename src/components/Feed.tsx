@@ -183,17 +183,24 @@ function DateGroupHeader({
   label,
   storyCount,
   articleCount,
+  isCollapsed,
+  onToggle,
 }: {
   label: string;
   storyCount: number;
   articleCount: number;
+  isCollapsed: boolean;
+  onToggle: () => void;
 }) {
   return (
-    <div className="sticky top-11 z-30 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border px-3 py-2 flex items-center justify-between">
+    <button
+      onClick={onToggle}
+      className="sticky top-11 z-30 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border px-3 py-2 flex items-center gap-2 w-full text-left hover:bg-ast-mint/5 transition-colors group"
+    >
       <span className="text-ast-accent text-xs font-semibold tracking-wide uppercase">
         {label}
       </span>
-      <span className="text-ast-muted text-[10px]">
+      <span className="text-ast-muted/50 text-[10px]">
         {storyCount} {storyCount === 1 ? "story" : "stories"}
         <span className="hidden sm:inline">
           {articleCount > storyCount && (
@@ -201,7 +208,10 @@ function DateGroupHeader({
           )}
         </span>
       </span>
-    </div>
+      <span className="ml-auto text-ast-muted text-[10px] group-hover:text-ast-text transition-colors">
+        {isCollapsed ? '▶' : '▼'}
+      </span>
+    </button>
   );
 }
 
@@ -224,6 +234,17 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters
 
   const [sortMode, setSortMode] = useState<SortMode>("importance");
   const sentinelRef = useRef<HTMLDivElement>(null);
+  
+  // Collapsible date sections
+  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
+  
+  const toggleDate = (label: string) => {
+    setCollapsedDates(prev => {
+      const next = new Set(prev);
+      next.has(label) ? next.delete(label) : next.add(label);
+      return next;
+    });
+  };
   
   // Update URL when filters change (debounced)
   const updateUrlRef = useRef<NodeJS.Timeout | null>(null);
@@ -370,18 +391,23 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters
             (sum, c) => sum + 1 + c.related.length,
             0
           );
+          const isCollapsed = collapsedDates.has(group.label);
           return (
             <div key={group.label} className="mb-2">
               <DateGroupHeader
                 label={group.label}
                 storyCount={group.clusters.length}
                 articleCount={articleCount}
+                isCollapsed={isCollapsed}
+                onToggle={() => toggleDate(group.label)}
               />
-              <div className="divide-y divide-ast-border">
-                {group.clusters.map((cluster) => (
-                  <ClusterRow key={cluster.id} cluster={cluster} />
-                ))}
-              </div>
+              {!isCollapsed && (
+                <div className="divide-y divide-ast-border">
+                  {group.clusters.map((cluster) => (
+                    <ClusterRow key={cluster.id} cluster={cluster} />
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
