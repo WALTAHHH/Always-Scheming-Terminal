@@ -131,6 +131,51 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
+    // 8. Articles ingested per day — last 14 days
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: articleTimeSeriesData, error: articleTSError } = await serviceClient
+      .from("content")
+      .select("created_at")
+      .gte("created_at", fourteenDaysAgo);
+
+    if (articleTSError) throw articleTSError;
+
+    // Group by date in JS
+    const articleDateCounts: Record<string, number> = {};
+    (articleTimeSeriesData || []).forEach((row: { created_at: string }) => {
+      const date = row.created_at.split("T")[0];
+      articleDateCounts[date] = (articleDateCounts[date] || 0) + 1;
+    });
+
+    // Fill in missing dates with zero
+    const articleTimeSeries = [];
+    for (let i = 13; i >= 0; i--) {
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      articleTimeSeries.push({ date, count: articleDateCounts[date] || 0 });
+    }
+
+    // 9. Signals extracted per day — last 14 days
+    const { data: signalTimeSeriesData, error: signalTSError } = await serviceClient
+      .from("signals")
+      .select("created_at")
+      .gte("created_at", fourteenDaysAgo);
+
+    if (signalTSError) throw signalTSError;
+
+    // Group by date
+    const signalDateCounts: Record<string, number> = {};
+    (signalTimeSeriesData || []).forEach((row: { created_at: string }) => {
+      const date = row.created_at.split("T")[0];
+      signalDateCounts[date] = (signalDateCounts[date] || 0) + 1;
+    });
+
+    // Fill in missing dates
+    const signalTimeSeries = [];
+    for (let i = 13; i >= 0; i--) {
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      signalTimeSeries.push({ date, count: signalDateCounts[date] || 0 });
+    }
+
     // Build response
     const totalArticles = totalCount || 0;
     const tagged = taggedCount || 0;
@@ -165,6 +210,8 @@ export async function GET(req: NextRequest) {
         resolvedPct: Math.round(resolvedPct * 10) / 10,
         topUnresolved,
       },
+      articleTimeSeries,
+      signalTimeSeries,
     });
   } catch (error) {
     console.error("Pipeline stats error:", error);

@@ -602,6 +602,8 @@ interface PipelineStats {
     resolvedPct: number;
     topUnresolved: { value: string; count: number }[];
   };
+  articleTimeSeries: { date: string; count: number }[];
+  signalTimeSeries: { date: string; count: number }[];
 }
 
 interface HealthResponse {
@@ -647,6 +649,93 @@ function ExtractSignalsButton({ onDone }: { onDone: () => void }) {
           {result.msg}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Bar Chart Component ────────────────────────────────────────────
+
+interface BarChartProps {
+  data: { date: string; count: number }[];
+  color: string;
+  label: string;
+}
+
+function BarChart({ data, color, label }: BarChartProps) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-20 flex items-center justify-center">
+        <span className="text-ast-muted text-xs">No data available</span>
+      </div>
+    );
+  }
+
+  const maxCount = Math.max(...data.map((d) => d.count), 1);
+  const barWidth = 100 / data.length;
+
+  return (
+    <div className="relative">
+      <div className="text-[10px] font-semibold text-ast-muted uppercase tracking-wider mb-2">
+        {label}
+      </div>
+      <div className="relative h-20">
+        <svg
+          viewBox="0 0 100 100"
+          className="w-full h-full"
+          preserveAspectRatio="none"
+          onMouseLeave={() => setHoveredIndex(null)}
+        >
+          {data.map((item, i) => {
+            const height = (item.count / maxCount) * 100;
+            const x = i * barWidth;
+            return (
+              <g key={i}>
+                <rect
+                  x={x + 0.5}
+                  y={100 - height}
+                  width={barWidth - 1}
+                  height={height}
+                  fill={color}
+                  opacity={hoveredIndex === i ? 0.8 : 0.6}
+                  className="transition-opacity cursor-pointer"
+                  onMouseEnter={() => setHoveredIndex(i)}
+                />
+              </g>
+            );
+          })}
+        </svg>
+        {/* Hover tooltip */}
+        {hoveredIndex !== null && data[hoveredIndex] && (
+          <div
+            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-ast-surface border border-ast-border rounded shadow-lg text-xs whitespace-nowrap z-10"
+            style={{
+              left: `${(hoveredIndex / data.length) * 100 + barWidth / 2}%`,
+            }}
+          >
+            <div className="text-ast-text font-semibold">
+              {new Date(data[hoveredIndex].date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })}
+            </div>
+            <div className="text-ast-muted">{data[hoveredIndex].count} items</div>
+          </div>
+        )}
+      </div>
+      {/* X-axis labels (abbreviated dates) */}
+      <div className="flex justify-between mt-1 text-[9px] text-ast-muted">
+        <span>
+          {new Date(data[0].date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+        </span>
+        <span>
+          {new Date(data[data.length - 1].date).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })}
+        </span>
+      </div>
     </div>
   );
 }
@@ -793,6 +882,27 @@ function PipelineDashboard() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Time-Series Charts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Articles per day */}
+        <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+          <BarChart 
+            data={stats.articleTimeSeries} 
+            color="#00d4aa" 
+            label="Articles / Day (Last 14 Days)" 
+          />
+        </div>
+
+        {/* Signals per day */}
+        <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+          <BarChart 
+            data={stats.signalTimeSeries} 
+            color="#00d4aa" 
+            label="Signals / Day (Last 14 Days)" 
+          />
+        </div>
       </div>
 
       {/* Signals Section */}
