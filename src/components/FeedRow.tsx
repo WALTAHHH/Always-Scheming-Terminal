@@ -125,7 +125,7 @@ export function FeedRow({ item }: FeedRowProps) {
         target="_blank"
         rel="noopener noreferrer"
         data-feed-item
-        className="block py-3 px-3 hover:bg-ast-surface/50 transition-colors group"
+        className="block py-3 px-3 hover:bg-ast-mint/5 transition-colors group"
       >
         <div className="flex items-start gap-2 sm:gap-3">
           {/* Timestamp — desktop only (separate column) */}

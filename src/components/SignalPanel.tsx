@@ -365,7 +365,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                     href={signal.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block group"
+                    className="block group rounded hover:bg-ast-mint/5 transition-colors -mx-2 px-2"
                   >
                     <div className="flex items-start gap-2">
                       <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-${badge.color}/20 text-${badge.color}`}>
