@@ -108,7 +108,7 @@ async function extractSignalWithLLM(
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -200,7 +200,7 @@ export async function extractSignal(options: ExtractSignalOptions): Promise<void
       summary: signal.summary,
       investment_relevance_score: signal.investment_relevance_score,
       raw_llm_output: signal as unknown as SignalInsert["raw_llm_output"],
-      model_used: "gemini-2.0-flash",
+      model_used: "gemini-2.5-flash-lite",
     };
 
     const { error } = await supabase.from("signals").insert(payload);
