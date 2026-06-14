@@ -191,18 +191,12 @@ function InteractiveChart({
   }, [chartData, padding.left, chartWidth]);
 
   // Early returns AFTER all hooks
-  if (isLoading && !chartData) {
+  // Only show skeleton on initial load with no prior data
+  if (!chartData) {
     return <ChartSkeleton />;
   }
 
-  if (!chartData) {
-    return (
-      <div className="h-80 rounded flex items-center justify-center">
-        <span className="text-ast-muted text-xs">No chart data</span>
-      </div>
-    );
-  }
-
+  // If loading but we have chartData (range change), fall through to render with overlay
   const { points, pathD, color, gradientId, prevCloseY } = chartData;
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
