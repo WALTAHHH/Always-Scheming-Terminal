@@ -106,7 +106,7 @@ export function Header() {
 
   return (
     <header className="h-12 sm:h-14 border-b border-ast-border sticky top-0 z-50 bg-ast-bg/95 backdrop-blur-sm">
-      <div className="h-full max-w-5xl mx-auto px-3 sm:px-4 flex items-center justify-between">
+      <div className="h-full px-3 sm:px-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Image
             src="/logo.png"
