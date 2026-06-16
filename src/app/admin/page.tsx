@@ -1082,6 +1082,8 @@ export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("sources");
   const [sortField, setSortField] = useState<SortField>("articles");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [minArticles, setMinArticles] = useState("");
+  const [maxArticles, setMaxArticles] = useState("");
 
   const fetchSources = useCallback(async () => {
     try {
@@ -1137,7 +1139,15 @@ export default function AdminPage() {
 
   const sortedSources = useMemo(() => {
     const mul = sortDir === "asc" ? 1 : -1;
-    return [...sources].sort((a, b) => {
+    const min = minArticles !== "" ? parseInt(minArticles, 10) : null;
+    const max = maxArticles !== "" ? parseInt(maxArticles, 10) : null;
+    return [...sources]
+      .filter((s) => {
+        if (min !== null && !isNaN(min) && s.article_count < min) return false;
+        if (max !== null && !isNaN(max) && s.article_count > max) return false;
+        return true;
+      })
+      .sort((a, b) => {
       switch (sortField) {
         case "name":
           return mul * a.name.localeCompare(b.name);
@@ -1265,7 +1275,26 @@ export default function AdminPage() {
                 <div className="w-5" /> {/* health dot */}
                 <SortHeader label="Name" field="name" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="flex-1 min-w-0" />
                 <SortHeader label="Type" field="type" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-20" />
-                <SortHeader label="Articles" field="articles" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-20 justify-end" />
+                <div className="w-20 flex flex-col items-end gap-0.5">
+                  <SortHeader label="Articles" field="articles" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="justify-end" />
+                  <div className="flex items-center gap-1 text-[10px]">
+                    <input
+                      type="number"
+                      placeholder="min"
+                      value={minArticles}
+                      onChange={(e) => setMinArticles(e.target.value)}
+                      className="w-9 bg-ast-bg border border-ast-border rounded px-1 py-0.5 text-ast-muted text-[10px] tabular-nums text-right"
+                    />
+                    <span className="text-ast-muted">–</span>
+                    <input
+                      type="number"
+                      placeholder="max"
+                      value={maxArticles}
+                      onChange={(e) => setMaxArticles(e.target.value)}
+                      className="w-9 bg-ast-bg border border-ast-border rounded px-1 py-0.5 text-ast-muted text-[10px] tabular-nums text-right"
+                    />
+                  </div>
+                </div>
                 <SortHeader label="Last Fetch" field="last_fetch" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-24 justify-end" />
                 <SortHeader label="Latest Article" field="latest_article" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-28 justify-end" />
                 <SortHeader label="Status" field="status" currentField={sortField} currentDir={sortDir} onSort={handleSort} className="w-16 justify-center" />
