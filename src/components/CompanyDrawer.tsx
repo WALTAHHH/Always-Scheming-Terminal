@@ -101,6 +101,7 @@ function InteractiveChart({
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [activeMarker, setActiveMarker] = useState<NewsMarker | null>(null);
+  const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
 
   // Compute chart data (always, for hooks stability)
   const padding = { top: 12, bottom: 20, left: 8, right: 8 };
@@ -279,29 +280,17 @@ function InteractiveChart({
 
         {/* Previous close reference line */}
         {prevCloseY !== null && (
-          <>
-            <line
-              x1={padding.left}
-              y1={prevCloseY}
-              x2={width - padding.right}
-              y2={prevCloseY}
-              stroke="#666"
-              strokeWidth="1"
-              strokeDasharray="3,3"
-              vectorEffect="non-scaling-stroke"
-              opacity="0.5"
-            />
-            <text
-              x={width - padding.right - 1}
-              y={prevCloseY - 2}
-              fill="#666"
-              fontSize="6"
-              textAnchor="end"
-              style={{ fontFamily: "system-ui" }}
-            >
-              Prev
-            </text>
-          </>
+          <line
+            x1={padding.left}
+            y1={prevCloseY}
+            x2={width - padding.right}
+            y2={prevCloseY}
+            stroke="#555"
+            strokeWidth="1"
+            strokeDasharray="3,3"
+            vectorEffect="non-scaling-stroke"
+            opacity="0.4"
+          />
         )}
 
         {/* Filled area under line */}
@@ -336,18 +325,20 @@ function InteractiveChart({
               strokeWidth="1"
               strokeDasharray="2,2"
               vectorEffect="non-scaling-stroke"
-              opacity="0.6"
+              opacity="0.5"
             />
             {/* Marker dot */}
             <circle
               cx={marker.x}
               cy={marker.y}
-              r="4"
+              r={hoveredMarkerId === marker.item.id ? 5.5 : 3.5}
               fill="#fbbf24"
               stroke="#0d1117"
               strokeWidth="1.5"
               vectorEffect="non-scaling-stroke"
-              className="transition-transform hover:scale-150"
+              style={{ transition: "r 0.15s ease" }}
+              onMouseEnter={() => setHoveredMarkerId(marker.item.id)}
+              onMouseLeave={() => setHoveredMarkerId(null)}
             />
           </g>
         ))}

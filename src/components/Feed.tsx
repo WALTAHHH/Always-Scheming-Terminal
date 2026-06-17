@@ -49,8 +49,9 @@ interface FeedProps {
 
 /**
  * Compute tag counts from the actual loaded items.
+ * aliasMap: alias (lowercase) → canonical_name — normalizes company tag variants
  */
-function computeTagCounts(items: FeedItem[]): Record<string, Record<string, number>> {
+function computeTagCounts(items: FeedItem[], aliasMap?: Map<string, string>): Record<string, Record<string, number>> {
   const counts: Record<string, Record<string, number>> = {
     _sources: {},
   };
@@ -66,7 +67,11 @@ function computeTagCounts(items: FeedItem[]): Record<string, Record<string, numb
       if (!Array.isArray(values)) continue;
       if (!counts[dim]) counts[dim] = {};
       for (const v of values) {
-        counts[dim][v] = (counts[dim][v] || 0) + 1;
+        // Normalize company tags through alias map to deduplicate variants
+        const normalized = (dim === "company" && aliasMap)
+          ? (aliasMap.get(v.toLowerCase()) ?? v)
+          : v;
+        counts[dim][normalized] = (counts[dim][normalized] || 0) + 1;
       }
     }
   }
@@ -234,6 +239,21 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters
 
   const [sortMode, setSortMode] = useState<SortMode>("importance");
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Entity alias map for company tag normalization (alias lowercase → canonical_name)
+  const [entityAliasMap, setEntityAliasMap] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    fetch("/api/v1/entity-aliases")
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        if (!json?.aliases) return;
+        const map = new Map<string, string>(
+          Object.entries(json.aliases as Record<string, string>)
+        );
+        setEntityAliasMap(map);
+      })
+      .catch(() => {});
+  }, []);
   
   // Collapsible date sections
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
@@ -285,7 +305,7 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters
     return () => observer.disconnect();
   }, [onLoadMore, hasMore, loadingMore]);
 
-  const tagCounts = useMemo(() => computeTagCounts(items), [items]);
+  const tagCounts = useMemo(() => computeTagCounts(items, entityAliasMap), [items, entityAliasMap]);
 
   const filtered = useMemo(
     () => items.filter((item) => matchesFilter(item, filters)),
