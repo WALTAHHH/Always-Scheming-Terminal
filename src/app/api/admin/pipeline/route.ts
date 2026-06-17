@@ -30,27 +30,39 @@ export async function GET(req: NextRequest) {
 
   try {
     // 1. Total articles
+    console.log("Pipeline query block 1: total articles");
     const { count: totalCount, error: totalError } = await serviceClient
       .from("content")
       .select("*", { count: "exact", head: true });
 
-    if (totalError) throw totalError;
+    if (totalError) {
+      console.error("Pipeline query failed: total articles", totalError);
+      throw totalError;
+    }
 
     // 2. Articles with any tags
+    console.log("Pipeline query block 2: articles with any tags");
     const { count: taggedCount, error: taggedError } = await serviceClient
       .from("content")
       .select("*", { count: "exact", head: true })
       .neq("tags", "{}")
       .not("tags", "is", null);
 
-    if (taggedError) throw taggedError;
+    if (taggedError) {
+      console.error("Pipeline query failed: articles with any tags", taggedError);
+      throw taggedError;
+    }
 
     // 3. Tag counts by dimension - fetch all and group manually
+    console.log("Pipeline query block 3: tag counts by dimension");
     const { data: allTags, error: tagsError } = await serviceClient
       .from("content_tags")
       .select("dimension");
 
-    if (tagsError) throw tagsError;
+    if (tagsError) {
+      console.error("Pipeline query failed: tag counts by dimension", tagsError);
+      throw tagsError;
+    }
 
     const dimensionCounts: Record<string, number> = {};
     (allTags || []).forEach((row: { dimension: string }) => {
@@ -62,11 +74,15 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.count - a.count);
 
     // 4. Signals total + by type
+    console.log("Pipeline query block 4: signals total + by type");
     const { data: allSignals, error: signalsError } = await serviceClient
       .from("signals")
       .select("signal_type");
 
-    if (signalsError) throw signalsError;
+    if (signalsError) {
+      console.error("Pipeline query failed: signals total + by type", signalsError);
+      throw signalsError;
+    }
 
     const signalTypeCounts: Record<string, number> = {};
     (allSignals || []).forEach((row: { signal_type: string }) => {
@@ -78,6 +94,7 @@ export async function GET(req: NextRequest) {
     );
 
     // Last signal created
+    console.log("Pipeline query block 5: last signal created");
     const { data: lastSignalData, error: lastSignalError } =
       await serviceClient
         .from("signals")
@@ -86,21 +103,27 @@ export async function GET(req: NextRequest) {
         .limit(1)
         .maybeSingle();
 
-    if (lastSignalError && lastSignalError.code !== "PGRST116")
+    if (lastSignalError && lastSignalError.code !== "PGRST116") {
+      console.error("Pipeline query failed: last signal created", lastSignalError);
       throw lastSignalError;
+    }
 
     // 5. Importance gate (importance_score column not yet migrated — stub zeros)
     const clearedCount = 0;
     const clearedNoSignal = 0;
 
     // 6. Entity resolution coverage
+    console.log("Pipeline query block 6: entity resolution coverage");
     const { count: totalCompanyTags, error: totalCompanyError } =
       await serviceClient
         .from("content_tags")
         .select("*", { count: "exact", head: true })
         .eq("dimension", "company");
 
-    if (totalCompanyError) throw totalCompanyError;
+    if (totalCompanyError) {
+      console.error("Pipeline query failed: total company tags", totalCompanyError);
+      throw totalCompanyError;
+    }
 
     const { count: resolvedCompanyTags, error: resolvedCompanyError } =
       await serviceClient
@@ -109,7 +132,10 @@ export async function GET(req: NextRequest) {
         .eq("dimension", "company")
         .not("entity_id", "is", null);
 
-    if (resolvedCompanyError) throw resolvedCompanyError;
+    if (resolvedCompanyError) {
+      console.error("Pipeline query failed: resolved company tags", resolvedCompanyError);
+      throw resolvedCompanyError;
+    }
 
     // 7. Top unresolved company tags
     const { data: unresolvedTagsData, error: unresolvedError } =
@@ -119,7 +145,10 @@ export async function GET(req: NextRequest) {
         .eq("dimension", "company")
         .is("entity_id", null);
 
-    if (unresolvedError) throw unresolvedError;
+    if (unresolvedError) {
+      console.error("Pipeline query failed: unresolved tags data", unresolvedError);
+      throw unresolvedError;
+    }
 
     const unresolvedCounts: Record<string, number> = {};
     (unresolvedTagsData || []).forEach((row: { value: string }) => {
@@ -138,7 +167,10 @@ export async function GET(req: NextRequest) {
       .select("created_at")
       .gte("created_at", fourteenDaysAgo);
 
-    if (articleTSError) throw articleTSError;
+    if (articleTSError) {
+      console.error("Pipeline query failed: article time series", articleTSError);
+      throw articleTSError;
+    }
 
     // Group by date in JS
     const articleDateCounts: Record<string, number> = {};
@@ -160,7 +192,10 @@ export async function GET(req: NextRequest) {
       .select("created_at")
       .gte("created_at", fourteenDaysAgo);
 
-    if (signalTSError) throw signalTSError;
+    if (signalTSError) {
+      console.error("Pipeline query failed: signal time series", signalTSError);
+      throw signalTSError;
+    }
 
     // Group by date
     const signalDateCounts: Record<string, number> = {};

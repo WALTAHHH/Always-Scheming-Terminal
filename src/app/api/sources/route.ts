@@ -39,7 +39,8 @@ export async function GET() {
   // Get article counts per source
   const { data: countData } = await supabase
     .from("content")
-    .select("source_id") as { data: { source_id: string | null }[] | null; error: any };
+    .select("source_id")
+    .limit(10000) as { data: { source_id: string | null }[] | null; error: any };
 
   const articleCounts: Record<string, number> = {};
   for (const row of countData || []) {
@@ -52,7 +53,8 @@ export async function GET() {
   const { data: latestData } = await supabase
     .from("content")
     .select("source_id, published_at")
-    .order("published_at", { ascending: false, nullsFirst: false }) as {
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .limit(10000) as {
     data: { source_id: string | null; published_at: string | null }[] | null;
     error: any;
   };
