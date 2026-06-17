@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
 
   const { data: items, error: fetchError } = await supabase
     .from("content")
-    .select("id, title, body, tags, sources!inner(source_type)")
+    .select("id, title, body, tags")
     .order("published_at", { ascending: false, nullsFirst: false })
     .limit(200);
 
