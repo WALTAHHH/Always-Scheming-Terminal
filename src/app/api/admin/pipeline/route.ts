@@ -249,9 +249,10 @@ export async function GET(req: NextRequest) {
       signalTimeSeries,
     });
   } catch (error) {
-    console.error("Pipeline stats error:", error);
+    const msg = error instanceof Error ? error.message : JSON.stringify(error);
+    console.error("Pipeline stats error:", msg, error);
     return NextResponse.json(
-      { error: "Failed to fetch pipeline stats" },
+      { error: "Failed to fetch pipeline stats", detail: msg },
       { status: 500 }
     );
   }
