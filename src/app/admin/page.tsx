@@ -747,6 +747,7 @@ function PipelineDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [aliasForm, setAliasForm] = useState<{ tag: string; input: string; saving: boolean; err: string | null } | null>(null);
 
   const TEST_API_KEY = "ast_6c3732f0c3405ff36eeddcbc68af3f3e4593c9dd011f6419";
   const BASE_URL = "https://terminal.always-scheming.com";
@@ -986,12 +987,65 @@ function PipelineDashboard() {
             </div>
             <div className="space-y-1">
               {stats.entityResolution.topUnresolved.map((tag) => (
-                <div key={tag.value} className="flex items-center justify-between text-xs">
-                  <span className="text-ast-text">{tag.value}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-ast-muted tabular-nums">{tag.count}</span>
-                    <span className="text-[10px] text-ast-accent">add alias</span>
+                <div key={tag.value} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-ast-text">{tag.value}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-ast-muted tabular-nums">{tag.count}</span>
+                      <button
+                        onClick={() =>
+                          setAliasForm(
+                            aliasForm?.tag === tag.value
+                              ? null
+                              : { tag: tag.value, input: "", saving: false, err: null }
+                          )
+                        }
+                        className="text-[10px] text-ast-accent hover:text-ast-text transition-colors"
+                      >
+                        {aliasForm?.tag === tag.value ? "cancel" : "add alias"}
+                      </button>
+                    </div>
                   </div>
+                  {aliasForm?.tag === tag.value && (
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!aliasForm.input.trim()) return;
+                        setAliasForm({ ...aliasForm, saving: true, err: null });
+                        const res = await fetch("/api/v1/entity-aliases", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ alias: aliasForm.tag, canonical_name: aliasForm.input.trim() }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          setAliasForm({ ...aliasForm, saving: false, err: data.error || "Failed" });
+                        } else {
+                          setAliasForm(null);
+                          fetchStats();
+                        }
+                      }}
+                      className="flex items-center gap-1 pl-2"
+                    >
+                      <input
+                        autoFocus
+                        value={aliasForm.input}
+                        onChange={(e) => setAliasForm({ ...aliasForm, input: e.target.value })}
+                        placeholder="entity canonical name…"
+                        className="flex-1 bg-ast-bg border border-ast-border rounded px-2 py-0.5 text-xs text-ast-text placeholder:text-ast-muted focus:border-ast-accent focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={aliasForm.saving || !aliasForm.input.trim()}
+                        className="px-2 py-0.5 rounded text-[10px] bg-ast-accent/10 text-ast-accent border border-ast-accent/30 hover:bg-ast-accent/20 disabled:opacity-40 transition-colors"
+                      >
+                        {aliasForm.saving ? "…" : "save"}
+                      </button>
+                    </form>
+                  )}
+                  {aliasForm?.tag === tag.value && aliasForm.err && (
+                    <div className="text-[10px] text-ast-pink pl-2">{aliasForm.err}</div>
+                  )}
                 </div>
               ))}
             </div>
