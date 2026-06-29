@@ -32,12 +32,14 @@ export async function GET() {
         .eq("id", signal.item_id)
         .single();
 
-      // Get company tags for this content
+      // Get company tags for this content — only resolved ones (have entity_id)
+      // so we don't show raw garbage tags like "direct-to-consumer" as companies
       const { data: tags } = await supabase
         .from("content_tags")
         .select("value")
         .eq("content_id", signal.item_id)
-        .eq("dimension", "company");
+        .eq("dimension", "company")
+        .not("entity_id", "is", null);
 
       return {
         id: signal.id,

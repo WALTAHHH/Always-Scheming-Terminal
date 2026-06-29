@@ -75,9 +75,10 @@ const SIGNAL_EXTRACTION_PROMPT = `You are an investment analyst specializing in 
 
 Return a JSON object with:
 - signal_type: one of [acquisition, fundraising, earnings, layoffs, leadership, product_launch, regulatory, platform_change, macro]
-- summary: one concise sentence describing what happened and why it matters for investors (max 200 chars)
+- summary: ONE sentence, max 120 characters. State the fact directly — no openers like "The article mentions..." or "This article discusses...". Example: "Roblox raises $700M Series H at $29.5B valuation." Not: "A mobile game developer secured funding."
+- companies: array of specific named companies involved (e.g. ["Roblox", "Andreessen Horowitz"]). ONLY real company names — NOT revenue models, strategies, or categories like "direct-to-consumer", "web shops", "mobile games". Empty array if no specific company is named.
 - investment_relevance_score: float 0-1 (0 = noise, 1 = market-moving event)
-- reasoning: brief explanation of the score (1-2 sentences)
+- reasoning: one sentence explaining the score
 
 Article title: {TITLE}
 Article content: {CONTENT}
