@@ -161,11 +161,12 @@ export async function GET(req: NextRequest) {
       .slice(0, 10);
 
     // 8. Articles ingested per day — last 14 days
+    // NOTE: content table uses ingested_at, not created_at
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
     const { data: articleTimeSeriesData, error: articleTSError } = await serviceClient
       .from("content")
-      .select("created_at")
-      .gte("created_at", fourteenDaysAgo);
+      .select("ingested_at")
+      .gte("ingested_at", fourteenDaysAgo);
 
     if (articleTSError) {
       console.error("Pipeline query failed: article time series", articleTSError);
@@ -174,8 +175,9 @@ export async function GET(req: NextRequest) {
 
     // Group by date in JS
     const articleDateCounts: Record<string, number> = {};
-    (articleTimeSeriesData || []).forEach((row: { created_at: string }) => {
-      const date = row.created_at.split("T")[0];
+    (articleTimeSeriesData || []).forEach((row: { ingested_at: string | null }) => {
+      if (!row.ingested_at) return;
+      const date = row.ingested_at.split("T")[0];
       articleDateCounts[date] = (articleDateCounts[date] || 0) + 1;
     });
 
