@@ -36,35 +36,36 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Get article counts per source
-  const { data: countData } = await supabase
-    .from("content")
-    .select("source_id")
-    .limit(10000) as { data: { source_id: string | null }[] | null; error: any };
-
+  // Get article counts per source — use per-source COUNT queries to avoid
+  // PostgREST's 1000-row default cap on the content table.
+  const sourceIds = (sources || []).map((s) => s.id);
   const articleCounts: Record<string, number> = {};
-  for (const row of countData || []) {
-    if (row.source_id) {
-      articleCounts[row.source_id] = (articleCounts[row.source_id] || 0) + 1;
-    }
-  }
-
-  // Get latest article date per source
-  const { data: latestData } = await supabase
-    .from("content")
-    .select("source_id, published_at")
-    .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(10000) as {
-    data: { source_id: string | null; published_at: string | null }[] | null;
-    error: any;
-  };
-
   const latestArticle: Record<string, string> = {};
-  for (const row of latestData || []) {
-    if (row.source_id && row.published_at && !latestArticle[row.source_id]) {
-      latestArticle[row.source_id] = row.published_at;
-    }
-  }
+
+  // Batch: one count query per source (small N — typically 20-30 sources)
+  await Promise.all(
+    sourceIds.map(async (sid) => {
+      const { count } = await supabase
+        .from("content")
+        .select("*", { count: "exact", head: true })
+        .eq("source_id", sid);
+      if (count) articleCounts[sid] = count;
+    })
+  );
+
+  // Latest published_at per source — use a single ordered query per source
+  await Promise.all(
+    sourceIds.map(async (sid) => {
+      const { data } = await supabase
+        .from("content")
+        .select("published_at")
+        .eq("source_id", sid)
+        .order("published_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      if (data?.published_at) latestArticle[sid] = data.published_at;
+    })
+  );
 
   const enriched = (sources || []).map((s) => ({
     ...s,
