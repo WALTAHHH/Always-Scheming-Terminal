@@ -748,6 +748,7 @@ function PipelineDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [aliasForm, setAliasForm] = useState<{ tag: string; input: string; saving: boolean; err: string | null } | null>(null);
+  const [aliasSuggestions, setAliasSuggestions] = useState<string[]>([]);
 
   const TEST_API_KEY = "ast_6c3732f0c3405ff36eeddcbc68af3f3e4593c9dd011f6419";
   const BASE_URL = "https://terminal.always-scheming.com";
@@ -1012,6 +1013,7 @@ function PipelineDashboard() {
                         e.preventDefault();
                         if (!aliasForm.input.trim()) return;
                         setAliasForm({ ...aliasForm, saving: true, err: null });
+                        setAliasSuggestions([]);
                         const res = await fetch("/api/v1/entity-aliases", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
@@ -1025,22 +1027,52 @@ function PipelineDashboard() {
                           fetchStats();
                         }
                       }}
-                      className="flex items-center gap-1 pl-2"
+                      className="flex flex-col gap-1 pl-2"
                     >
-                      <input
-                        autoFocus
-                        value={aliasForm.input}
-                        onChange={(e) => setAliasForm({ ...aliasForm, input: e.target.value })}
-                        placeholder="entity canonical name…"
-                        className="flex-1 bg-ast-bg border border-ast-border rounded px-2 py-0.5 text-xs text-ast-text placeholder:text-ast-muted focus:border-ast-accent focus:outline-none"
-                      />
-                      <button
-                        type="submit"
-                        disabled={aliasForm.saving || !aliasForm.input.trim()}
-                        className="px-2 py-0.5 rounded text-[10px] bg-ast-accent/10 text-ast-accent border border-ast-accent/30 hover:bg-ast-accent/20 disabled:opacity-40 transition-colors"
-                      >
-                        {aliasForm.saving ? "…" : "save"}
-                      </button>
+                      <div className="relative flex items-center gap-1">
+                        <input
+                          autoFocus
+                          autoComplete="off"
+                          value={aliasForm.input}
+                          onChange={async (e) => {
+                            const val = e.target.value;
+                            setAliasForm({ ...aliasForm, input: val });
+                            if (val.length >= 2) {
+                              const r = await fetch(`/api/v1/entity-aliases?search=${encodeURIComponent(val)}`);
+                              const d = await r.json();
+                              setAliasSuggestions(d.results || []);
+                            } else {
+                              setAliasSuggestions([]);
+                            }
+                          }}
+                          placeholder="entity name…"
+                          className="flex-1 bg-ast-bg border border-ast-border rounded px-2 py-0.5 text-xs text-ast-text placeholder:text-ast-muted focus:border-ast-accent focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          disabled={aliasForm.saving || !aliasForm.input.trim()}
+                          className="px-2 py-0.5 rounded text-[10px] bg-ast-accent/10 text-ast-accent border border-ast-accent/30 hover:bg-ast-accent/20 disabled:opacity-40 transition-colors"
+                        >
+                          {aliasForm.saving ? "…" : "save"}
+                        </button>
+                        {aliasSuggestions.length > 0 && (
+                          <div className="absolute top-full left-0 right-8 mt-0.5 bg-ast-surface border border-ast-border rounded shadow-lg z-10">
+                            {aliasSuggestions.map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => {
+                                  setAliasForm({ ...aliasForm, input: s });
+                                  setAliasSuggestions([]);
+                                }}
+                                className="w-full text-left px-2 py-1 text-xs text-ast-text hover:bg-ast-bg transition-colors"
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </form>
                   )}
                   {aliasForm?.tag === tag.value && aliasForm.err && (
