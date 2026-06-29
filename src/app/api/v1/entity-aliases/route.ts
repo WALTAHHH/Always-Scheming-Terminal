@@ -7,13 +7,34 @@ export const runtime = "nodejs";
  * Public endpoint — returns all alias→canonical_name mappings for client-side
  * company tag normalization. No auth required (data is non-sensitive).
  * Used by Feed.tsx to deduplicate company tag variants in the filter dropdown.
+ *
+ * Optional: ?search=<query> — returns matching entity canonical_names for
+ * autocomplete (used by the pipeline dashboard "add alias" inline form).
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
   );
+
+  const { searchParams } = new URL(req.url);
+  const search = searchParams.get("search")?.trim();
+
+  // Autocomplete mode — return matching canonical_names
+  if (search) {
+    const { data, error } = await supabase
+      .from("entities")
+      .select("canonical_name")
+      .ilike("canonical_name", `${search}%`)
+      .order("canonical_name")
+      .limit(8);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ results: (data ?? []).map((e) => e.canonical_name) });
+  }
+
+  // Default mode — full alias map
 
   const { data, error } = await supabase
     .from("entity_aliases")
