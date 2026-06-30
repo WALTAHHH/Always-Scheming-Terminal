@@ -425,7 +425,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       id: "signal",
       label: "Signal",
       color: "ast-gold",
-        content: <SignalPanel items={filteredItems} />,
+        content: <SignalPanel items={items} />,
     },
     {
       id: "companies",
@@ -507,7 +507,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
                   className="overflow-y-auto"
                   style={{ height: showBothRight ? `${topHeight}%` : "100%" }}
                 >
-                  <SignalPanel items={filteredItems} />
+                  <SignalPanel items={items} />
                 </div>
                 
                 {/* Vertical divider (desktop only) */}
