@@ -365,9 +365,44 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters
   const totalStories = clusters.length;
   const multiSourceCount = clusters.filter((c) => c.isMultiSource).length;
 
+  const [filterBarOpen, setFilterBarOpen] = useState(false);
+
+  // Auto-open filter bar when active filters exist
+  useEffect(() => {
+    if (hasActiveFilters) setFilterBarOpen(true);
+  }, [hasActiveFilters]);
+
+  const activeFilterCount =
+    filters.sources.length +
+    filters.categories.length +
+    filters.platforms.length +
+    filters.themes.length +
+    filters.companies.length +
+    (filters.search.length > 0 ? 1 : 0);
+
   return (
     <>
-      <FilterBar sources={sources} tagCounts={tagCounts} onFilterChange={setFilters} />
+      {/* Collapsed filter toggle */}
+      <div className="border-b border-ast-border bg-ast-surface/30">
+        <button
+          onClick={() => setFilterBarOpen((o) => !o)}
+          className="flex items-center gap-2 px-4 py-1.5 text-[11px] text-ast-muted hover:text-ast-text transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/>
+          </svg>
+          <span>Filter</span>
+          {activeFilterCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-ast-accent/20 text-ast-accent text-[10px] font-medium">
+              {activeFilterCount}
+            </span>
+          )}
+          <span className="ml-auto text-[10px]">{filterBarOpen ? "▲" : "▼"}</span>
+        </button>
+        {filterBarOpen && (
+          <FilterBar sources={sources} tagCounts={tagCounts} onFilterChange={setFilters} />
+        )}
+      </div>
       <div className="max-w-5xl mx-auto px-3 sm:px-4 py-2">
         {/* Stats bar */}
         <div className="text-ast-muted text-xs mb-2 px-1 sm:px-3 flex items-center gap-2 sm:gap-3">

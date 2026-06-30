@@ -39,10 +39,13 @@ function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
 
   if (allTags.length === 0) return null;
 
+  const MAX_TAGS = 3;
+  const visible = allTags.slice(0, MAX_TAGS);
+  const overflow = allTags.length - MAX_TAGS;
+
   return (
-    <div className="flex gap-1 mt-1.5 overflow-x-auto sm:flex-wrap sm:overflow-visible scrollbar-none">
-      {allTags.map((tag, i) => {
-        // Use CompanyTag for company dimension
+    <div className="flex gap-1 mt-1.5 flex-wrap">
+      {visible.map((tag, i) => {
         if (tag.dimension === "company") {
           return (
             <CompanyTag 
@@ -52,7 +55,6 @@ function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
             />
           );
         }
-        
         const colors = TAG_DIMENSION_COLORS[tag.dimension] || "border-l-ast-muted text-ast-muted";
         return (
           <span
@@ -63,6 +65,11 @@ function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
           </span>
         );
       })}
+      {overflow > 0 && (
+        <span className="px-1.5 py-0.5 text-[10px] text-ast-muted whitespace-nowrap flex-shrink-0">
+          +{overflow}
+        </span>
+      )}
     </div>
   );
 }
