@@ -42,7 +42,9 @@ interface FeedProps {
   sources: { name: string }[];
   hasMore?: boolean;
   loadingMore?: boolean;
+  loadMoreError?: boolean;
   onLoadMore?: () => void;
+  onRetry?: () => void;
   filters?: FilterState;
   onFiltersChange?: (f: FilterState) => void;
 }
@@ -220,7 +222,7 @@ function DateGroupHeader({
   );
 }
 
-export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters: externalFilters, onFiltersChange }: FeedProps) {
+export function Feed({ items, sources, hasMore, loadingMore, loadMoreError, onLoadMore, onRetry, filters: externalFilters, onFiltersChange }: FeedProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -287,7 +289,7 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters
 
   // Intersection observer for infinite scroll
   useEffect(() => {
-    if (!onLoadMore || !hasMore) return;
+    if (!onLoadMore || !hasMore || loadMoreError) return;
 
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -298,12 +300,12 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters
           onLoadMore();
         }
       },
-      { rootMargin: "400px" } // trigger 400px before reaching the bottom
+      { rootMargin: "100px" } // tighter margin — avoids rapid-fire on filtered short lists
     );
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [onLoadMore, hasMore, loadingMore]);
+  }, [onLoadMore, hasMore, loadingMore, loadMoreError]);
 
   const tagCounts = useMemo(() => computeTagCounts(items, entityAliasMap), [items, entityAliasMap]);
 
@@ -491,14 +493,26 @@ export function Feed({ items, sources, hasMore, loadingMore, onLoadMore, filters
 
         {/* Infinite scroll sentinel */}
         {hasMore && (
-          <div ref={sentinelRef} className="py-8 text-center">
-            {loadingMore ? (
+          <div ref={sentinelRef} className="py-6 text-center">
+            {loadMoreError ? (
+              <div className="flex flex-col items-center gap-2">
+                <span className="text-ast-muted text-xs">Failed to load more articles</span>
+                {onRetry && (
+                  <button
+                    onClick={onRetry}
+                    className="text-[11px] text-ast-accent hover:text-ast-text border border-ast-accent/40 hover:border-ast-text/40 rounded px-3 py-1 transition-colors"
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
+            ) : loadingMore ? (
               <div className="flex items-center justify-center gap-2">
-                <span className="inline-block w-4 h-4 border-2 border-ast-accent/30 border-t-ast-accent rounded-full animate-spin" />
-                <span className="text-ast-muted text-xs">Loading more articles...</span>
+                <span className="inline-block w-3 h-3 border-2 border-ast-accent/30 border-t-ast-accent rounded-full animate-spin" />
+                <span className="text-ast-muted text-xs">Loading more…</span>
               </div>
             ) : (
-              <span className="text-ast-muted/50 text-xs">·</span>
+              <span className="text-ast-border/40 text-xs">·</span>
             )}
           </div>
         )}

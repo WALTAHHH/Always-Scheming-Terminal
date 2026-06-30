@@ -58,6 +58,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   const [items, setItems] = useState<FeedItem[]>(initialItems);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
   const [newCount, setNewCount] = useState(0);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
 
@@ -336,9 +337,10 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   }, []);
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore || loadMoreError) return;
 
     setLoadingMore(true);
+    setLoadMoreError(false);
     try {
       const oldest = items.reduce((min, item) => {
         const t = item.published_at || item.ingested_at;
@@ -350,7 +352,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       if (oldest) params.set("before", oldest);
 
       const res = await fetch(`/api/items?${params}`);
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
       const fetched: FeedItem[] = data.items || [];
@@ -367,11 +369,17 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       });
 
       setHasMore(data.hasMore ?? fetched.length === PAGE_SIZE);
-    } catch {}
-    finally {
+    } catch {
+      setLoadMoreError(true);
+    } finally {
       setLoadingMore(false);
     }
-  }, [items, hasMore, loadingMore]);
+  }, [items, hasMore, loadingMore, loadMoreError]);
+
+  const retryLoad = useCallback(() => {
+    setLoadMoreError(false);
+    loadMore();
+  }, [loadMore]);
 
   // Calculate layout
   const showRightPane = panels.signal;
@@ -405,7 +413,9 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
           sources={sources}
           hasMore={hasMore}
           loadingMore={loadingMore}
+          loadMoreError={loadMoreError}
           onLoadMore={loadMore}
+          onRetry={retryLoad}
           filters={filters}
           onFiltersChange={setFilters}
         />
@@ -463,7 +473,9 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
                 sources={sources}
                 hasMore={hasMore}
                 loadingMore={loadingMore}
+                loadMoreError={loadMoreError}
                 onLoadMore={loadMore}
+                onRetry={retryLoad}
                 filters={filters}
                 onFiltersChange={setFilters}
               />
