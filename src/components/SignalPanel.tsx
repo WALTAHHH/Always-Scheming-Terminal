@@ -143,7 +143,7 @@ type SourceFilter = "all" | "analysis" | "news";
 type MiddleTab = "deals" | "reading";
 
 export function SignalPanel({ items }: SignalPanelProps) {
-  const [expandedStory, setExpandedStory] = useState<string | null>(null);
+  const [expandedStory] = useState<string | null>(null); // kept for future use
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [middleTab, setMiddleTab] = useState<MiddleTab>("deals");
   const [signals, setSignals] = useState<DbSignal[]>([]);
@@ -396,164 +396,51 @@ export function SignalPanel({ items }: SignalPanelProps) {
           </div>
         </div>
 
-        {/* Top Stories */}
+        {/* Deals */}
         <div className="border-b border-ast-border">
           <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
-            <span className="text-ast-accent text-xs font-semibold tracking-wide">
-              TOP STORIES
-            </span>
-          </div>
-          <div className="px-4 py-3 space-y-4">
-            {topStories.length === 0 ? (
-              <p className="text-ast-muted text-xs">No significant stories yet</p>
-            ) : (
-              topStories.map((story, idx) => (
-                <div key={story.id} className="group">
-                  <div 
-                    className="flex items-start gap-2 cursor-pointer"
-                    onClick={() => setExpandedStory(expandedStory === story.id ? null : story.id)}
-                  >
-                    <span className="text-ast-muted text-[10px] mt-0.5">{idx + 1}.</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-ast-text text-xs font-medium leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
-                        {story.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-ast-gold text-[10px]">
-                          [{story.sourceCount}] {story.articleCount}a
-                        </span>
-                        <TimeAgo date={story.publishedAt} className="text-ast-muted text-[10px]" />
-                        {story.trending === "new" && (
-                          <span className="text-ast-pink text-[10px]">▲ new</span>
-                        )}
-                        {story.trending === "up" && (
-                          <span className="text-ast-mint text-[10px]">▲ trending</span>
-                        )}
-                        <span className="text-ast-muted/50 text-[10px] ml-auto">
-                          {expandedStory === story.id ? "▼" : "▶"} why?
-                        </span>
-                      </div>
-                      {story.sourceNames.length > 0 && (
-                        <div className="text-[10px] text-ast-muted mt-1">
-                          via {story.sourceNames.slice(0, 3).join(", ")}
-                          {story.sourceNames.length > 3 && ` +${story.sourceNames.length - 3}`}
-                        </div>
-                      )}
-                      {story.companies.length > 0 && (
-                        <div className="flex gap-1 mt-1 flex-wrap">
-                          {story.companies.map((c) => (
-                            <CompanyTag key={c} name={c} />
-                          ))}
-                        </div>
-                      )}
-                      {expandedStory === story.id && (
-                        <ScoreBreakdownPanel 
-                          breakdown={story.breakdown} 
-                          leadUrl={story.leadUrl}
-                          relatedArticles={story.relatedArticles}
-                        />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Deals + Reading - Tabbed Section */}
-        <div className="border-b border-ast-border">
-          <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50 flex items-center gap-3">
-            <button
-              onClick={() => setMiddleTab("deals")}
-              className={`text-xs font-semibold tracking-wide transition-colors ${
-                middleTab === "deals" ? "text-ast-gold" : "text-ast-muted hover:text-ast-text"
-              }`}
-            >
+            <span className="text-ast-gold text-xs font-semibold tracking-wide">
               💰 DEALS
               {deals.length > 0 && (
-                <span className={`ml-1 text-[10px] ${middleTab === "deals" ? "text-ast-gold/70" : "text-ast-muted"}`}>
-                  ({deals.length})
-                </span>
+                <span className="ml-1 text-[10px] text-ast-gold/70">({deals.length})</span>
               )}
-            </button>
-            <span className="text-ast-border">|</span>
-            <button
-              onClick={() => setMiddleTab("reading")}
-              className={`text-xs font-semibold tracking-wide transition-colors ${
-                middleTab === "reading" ? "text-ast-pink" : "text-ast-muted hover:text-ast-text"
-              }`}
-            >
-              📖 READING
-              {worthReading.length > 0 && (
-                <span className={`ml-1 text-[10px] ${middleTab === "reading" ? "text-ast-pink/70" : "text-ast-muted"}`}>
-                  ({worthReading.length})
-                </span>
-              )}
-            </button>
+            </span>
           </div>
-          
           <div className="px-4 py-3 space-y-3">
-            {middleTab === "deals" ? (
-              deals.length === 0 ? (
-                <p className="text-ast-muted text-xs">No deals or earnings yet</p>
-              ) : (
-                deals.map((deal) => (
-                  <a
-                    key={deal.id}
-                    href={deal.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block group"
-                  >
-                    <div className="flex items-start gap-2">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${
-                        deal.category === "fundraising" 
-                          ? "bg-ast-mint/20 text-ast-mint" 
-                          : deal.category === "m-and-a"
-                          ? "bg-ast-pink/20 text-ast-pink"
-                          : "bg-ast-gold/20 text-ast-gold"
-                      }`}>
-                        {deal.category === "m-and-a" ? "M&A" : deal.category === "fundraising" ? "RAISE" : "EARN"}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
-                          {deal.title}
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <SourceFavicon url={deal.sourceUrl} size={12} />
-                          <span className="text-ast-muted text-[10px]">{deal.source}</span>
-                          <TimeAgo date={deal.publishedAt} className="text-ast-muted text-[10px]" />
-                        </div>
+            {deals.length === 0 ? (
+              <p className="text-ast-muted text-xs">No deals or earnings yet</p>
+            ) : (
+              deals.map((deal) => (
+                <a
+                  key={deal.id}
+                  href={deal.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block group"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${
+                      deal.category === "fundraising" 
+                        ? "bg-ast-mint/20 text-ast-mint" 
+                        : deal.category === "m-and-a"
+                        ? "bg-ast-pink/20 text-ast-pink"
+                        : "bg-ast-gold/20 text-ast-gold"
+                    }`}>
+                      {deal.category === "m-and-a" ? "M&A" : deal.category === "fundraising" ? "RAISE" : "EARN"}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
+                        {deal.title}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <SourceFavicon url={deal.sourceUrl} size={12} />
+                        <span className="text-ast-muted text-[10px]">{deal.source}</span>
+                        <TimeAgo date={deal.publishedAt} className="text-ast-muted text-[10px]" />
                       </div>
                     </div>
-                  </a>
-                ))
-              )
-            ) : (
-              worthReading.length === 0 ? (
-                <p className="text-ast-muted text-xs">No analysis pieces yet</p>
-              ) : (
-                worthReading.map((item) => (
-                  <a 
-                    key={item.id}
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block group"
-                  >
-                    <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
-                      ▹ {item.title}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <SourceFavicon url={item.sourceUrl} size={12} />
-                      <span className="text-ast-muted text-[10px]">{item.source}</span>
-                      <span className="text-ast-muted/50 text-[10px]">·</span>
-                      <span className="text-ast-gold text-[10px]">{item.importanceScore.toFixed(2)}</span>
-                    </div>
-                  </a>
-                ))
-              )
+                  </div>
+                </a>
+              ))
             )}
           </div>
         </div>

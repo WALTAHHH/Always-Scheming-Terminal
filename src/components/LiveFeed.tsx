@@ -32,7 +32,6 @@ const STORAGE_KEY_PANELS = "ast-panel-visibility";
 interface PanelVisibility {
   feed: boolean;
   signal: boolean;
-  companies: boolean;
 }
 
 // Detect mobile/PWA for single-panel mode
@@ -78,11 +77,16 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   const [isDraggingV, setIsDraggingV] = useState(false);
   const leftWidthRef = useRef(50);
   const topHeightRef = useRef(60);
-  const [panels, setPanels] = useState<PanelVisibility>({ feed: true, signal: true, companies: true });
+  const [panels, setPanels] = useState<PanelVisibility>({ feed: true, signal: true });
   
-  // Company tray state
+  // Company tray modal state
+  const [trayOpen, setTrayOpen] = useState(false);
 
-  
+  useEffect(() => {
+    const handler = () => setTrayOpen(true);
+    window.addEventListener("ast-open-company-tray", handler);
+    return () => window.removeEventListener("ast-open-company-tray", handler);
+  }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const rightPaneRef = useRef<HTMLDivElement>(null);
   const pendingItems = useRef<FeedItem[]>([]);
@@ -112,7 +116,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     if (savedPanels) {
       try {
         const parsed = JSON.parse(savedPanels);
-        setPanels({ feed: true, signal: true, companies: true, ...parsed });
+        setPanels({ feed: true, signal: true, ...parsed });
       } catch {}
     }
   }, []);
@@ -122,10 +126,9 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     if (isMobile) {
       // On mobile, ensure only one panel is active
       setPanels((prev) => {
-        const activeCount = [prev.feed, prev.signal, prev.companies].filter(Boolean).length;
+        const activeCount = [prev.feed, prev.signal].filter(Boolean).length;
         if (activeCount !== 1) {
-          // Default to feed panel
-          return { feed: true, signal: false, companies: false };
+          return { feed: true, signal: false };
         }
         return prev;
       });
@@ -202,7 +205,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       
       if (isMobile) {
         // Mobile/PWA: only one panel at a time (radio button behavior)
-        next = { feed: false, signal: false, companies: false, [panel]: true };
+        next = { feed: false, signal: false, [panel]: true } as PanelVisibility;
       } else {
         // Desktop: toggle individual panels
         next = { ...prev, [panel]: !prev[panel] };
@@ -242,7 +245,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
           togglePanel("signal");
           break;
         case "toggle-companies":
-          togglePanel("companies");
+          // Companies is now a modal via header icon — no panel toggle
           break;
         case "shrink-left":
           adjustLeftWidth(-5);
@@ -371,8 +374,8 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   }, [items, hasMore, loadingMore]);
 
   // Calculate layout
-  const showRightPane = panels.signal || panels.companies;
-  const showBothRight = panels.signal && panels.companies;
+  const showRightPane = panels.signal;
+  const showBothRight = false;
   
   // If only feed is visible, it takes full width
   // If feed is hidden, right pane takes full width
@@ -467,16 +470,6 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
         >
           Signal
         </button>
-        <button
-          onClick={() => togglePanel("companies")}
-          className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-            panels.companies 
-              ? "border-ast-mint text-ast-mint bg-ast-mint/10" 
-              : "border-ast-border text-ast-muted hover:text-ast-text"
-          }`}
-        >
-          Companies
-        </button>
       </div>
 
       <div 
@@ -542,19 +535,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
               </>
             )}
             
-            {/* Bottom: Companies */}
-            {panels.companies && (
-              <div 
-                className="overflow-hidden"
-                style={{ height: showBothRight ? `${100 - topHeight}%` : "100%" }}
-              >
-                <CompanyTrayBoundary>
-                  <CompanyTray 
-                    items={items} 
-                  />
-                </CompanyTrayBoundary>
-              </div>
-            )}
+            {/* Companies panel removed — now accessible via header Markets icon as modal */}
           </div>
         )}
       </div>
@@ -571,6 +552,33 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       </div>
       
       <CompanyDrawerPortal />
+
+      {/* CompanyTray modal — triggered by header Markets icon */}
+      {trayOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          onClick={() => setTrayOpen(false)}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative z-10 w-[90vw] max-w-5xl max-h-[85vh] overflow-y-auto rounded-lg border border-ast-border bg-ast-bg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 flex items-center justify-between px-4 py-2 border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm">
+              <span className="text-xs font-semibold tracking-wider text-ast-muted uppercase">Markets</span>
+              <button
+                onClick={() => setTrayOpen(false)}
+                className="text-ast-muted hover:text-ast-text transition-colors text-lg leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <CompanyTrayBoundary>
+              <CompanyTray items={items} />
+            </CompanyTrayBoundary>
+          </div>
+        </div>
+      )}
     </>
   );
 }
