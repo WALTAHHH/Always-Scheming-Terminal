@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ShortcutsHelp } from "./ShortcutsHelp";
+import { TickerBar } from "./TickerBar";
 import { useTheme } from "./ThemeProvider";
 import { createAuthBrowserClient } from "@/lib/supabase";
 
@@ -105,66 +106,82 @@ export function Header() {
   };
 
   return (
-    <header className="h-12 sm:h-14 border-b border-ast-border sticky top-0 z-50 bg-ast-bg/95 backdrop-blur-sm">
-      <div className="h-full px-3 sm:px-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Image
-            src="/logo.png"
-            alt="Always Scheming"
-            width={24}
-            height={24}
-            className="w-5 h-5 sm:w-6 sm:h-6"
-          />
-          <h1 className="font-semibold text-sm sm:text-lg tracking-tight">
-            <span className="text-ast-text hidden sm:inline">
-              <span className="text-ast-accent">Always</span>{" "}
-              <span className="text-ast-pink">Scheming</span>{" "}
-            </span>
-            <span className="text-ast-text">Terminal</span>
-          </h1>
-          <span className="text-ast-muted text-[10px] sm:text-xs">v0.1</span>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <span className="hidden sm:inline"><ShortcutsHelp /></span>
-          <a
-            href="/api/feed.xml"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-ast-muted hover:text-orange-400 text-xs transition-colors flex items-center gap-1"
-            title="RSS Feed"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="6.18" cy="17.82" r="2.18"/>
-              <path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56zm0 5.66v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"/>
-            </svg>
-            <span className="hidden sm:inline">RSS</span>
-          </a>
-          <ThemeToggle />
-          {userEmail && (
-            <Link
-              href="/profile"
-              className="w-7 h-7 rounded-full bg-ast-accent/20 border border-ast-accent/40 flex items-center justify-center text-ast-accent text-xs font-semibold hover:bg-ast-accent/30 transition-colors"
-              title={displayName || userEmail || 'Profile'}
+    <header className="border-b border-ast-border sticky top-0 z-50 bg-ast-bg/95 backdrop-blur-sm">
+      <div className="flex flex-col">
+        {/* Top row */}
+        <div className="h-12 sm:h-14 px-3 sm:px-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Image
+              src="/logo.png"
+              alt="Always Scheming"
+              width={24}
+              height={24}
+              className="w-5 h-5 sm:w-6 sm:h-6"
+            />
+            <h1 className="font-semibold text-sm sm:text-lg tracking-tight">
+              <span className="text-ast-text hidden sm:inline">
+                <span className="text-ast-accent">Always</span>{" "}
+                <span className="text-ast-pink">Scheming</span>{" "}
+              </span>
+              <span className="text-ast-text">Terminal</span>
+            </h1>
+            <span className="text-ast-muted text-[10px] sm:text-xs">v0.1</span>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="hidden sm:inline"><ShortcutsHelp /></span>
+            <a
+              href="/api/feed.xml"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ast-muted hover:text-orange-400 text-xs transition-colors flex items-center gap-1"
+              title="RSS Feed"
             >
-              {getAvatarInitials()}
-            </Link>
-          )}
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="hidden sm:inline text-ast-muted hover:text-ast-accent text-xs transition-colors"
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="6.18" cy="17.82" r="2.18"/>
+                <path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56zm0 5.66v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"/>
+              </svg>
+              <span className="hidden sm:inline">RSS</span>
+            </a>
+            <ThemeToggle />
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('ast-open-company-tray'))}
+              className="text-ast-muted hover:text-ast-mint text-xs transition-colors flex items-center gap-1"
+              title="Companies & Markets"
+              aria-label="Open companies tray"
             >
-              ⚙ Admin
-            </Link>
-          )}
-          <button
-            onClick={handleSignOut}
-            className="text-ast-muted hover:text-red-400 text-xs transition-colors"
-            title="Sign out"
-          >
-            Sign out
-          </button>
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 6v14h18V6H3zm16 12H5V8h14v10zM7 10h2v6H7v-6zm4 0h2v6h-2v-6zm4 0h2v6h-2v-6z"/>
+              </svg>
+              <span className="hidden sm:inline">Markets</span>
+            </button>
+            {userEmail && (
+              <Link
+                href="/profile"
+                className="w-7 h-7 rounded-full bg-ast-accent/20 border border-ast-accent/40 flex items-center justify-center text-ast-accent text-xs font-semibold hover:bg-ast-accent/30 transition-colors"
+                title={displayName || userEmail || 'Profile'}
+              >
+                {getAvatarInitials()}
+              </Link>
+            )}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="hidden sm:inline text-ast-muted hover:text-ast-accent text-xs transition-colors"
+              >
+                ⚙ Admin
+              </Link>
+            )}
+            <button
+              onClick={handleSignOut}
+              className="text-ast-muted hover:text-red-400 text-xs transition-colors"
+              title="Sign out"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
+        {/* Ticker bar */}
+        <TickerBar />
       </div>
     </header>
   );
