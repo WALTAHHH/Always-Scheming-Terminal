@@ -26,6 +26,8 @@ const TAG_DIMENSION_COLORS: Record<string, string> = {
 };
 
 function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (!tags) return null;
 
   const allTags: { dimension: string; value: string }[] = [];
@@ -40,7 +42,7 @@ function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
   if (allTags.length === 0) return null;
 
   const MAX_TAGS = 3;
-  const visible = allTags.slice(0, MAX_TAGS);
+  const visible = expanded ? allTags : allTags.slice(0, MAX_TAGS);
   const overflow = allTags.length - MAX_TAGS;
 
   return (
@@ -65,10 +67,21 @@ function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
           </span>
         );
       })}
-      {overflow > 0 && (
-        <span className="px-1.5 py-0.5 text-[10px] text-ast-muted whitespace-nowrap flex-shrink-0">
+      {!expanded && overflow > 0 && (
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(true); }}
+          className="px-1.5 py-0.5 text-[10px] text-ast-muted hover:text-ast-text transition-colors whitespace-nowrap flex-shrink-0"
+        >
           +{overflow}
-        </span>
+        </button>
+      )}
+      {expanded && overflow > 0 && (
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(false); }}
+          className="px-1.5 py-0.5 text-[10px] text-ast-muted hover:text-ast-text transition-colors whitespace-nowrap flex-shrink-0"
+        >
+          ↑
+        </button>
       )}
     </div>
   );
