@@ -296,49 +296,8 @@ export function SignalPanel({ items }: SignalPanelProps) {
     <div className="h-full flex flex-col bg-ast-bg">
       {/* Header */}
       <div className="h-11 px-4 border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-ast-text text-sm font-semibold tracking-wide">SIGNAL</span>
-          <div className="flex items-center border border-ast-border rounded overflow-hidden">
-            <button
-              onClick={() => setSourceFilter("all")}
-              className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                sourceFilter === "all"
-                  ? "bg-ast-accent/15 text-ast-accent"
-                  : "text-ast-muted hover:text-ast-text"
-              }`}
-            >
-              ALL
-            </button>
-            <div className="w-px h-3 bg-ast-border" />
-            <button
-              onClick={() => setSourceFilter("analysis")}
-              className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                sourceFilter === "analysis"
-                  ? "bg-ast-pink/15 text-ast-pink"
-                  : "text-ast-muted hover:text-ast-text"
-              }`}
-            >
-              ANALYSIS
-            </button>
-            <div className="w-px h-3 bg-ast-border" />
-            <button
-              onClick={() => setSourceFilter("news")}
-              className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                sourceFilter === "news"
-                  ? "bg-ast-gold/15 text-ast-gold"
-                  : "text-ast-muted hover:text-ast-text"
-              }`}
-            >
-              NEWS
-            </button>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-ast-muted text-[10px]">
-            {stats.clusters}s · {stats.sources}src
-          </span>
-          <span className="text-ast-accent text-[10px]">●</span>
-        </div>
+        <span className="text-ast-text text-sm font-semibold tracking-wide">SIGNAL</span>
+        <span className="text-ast-accent text-[10px]">●</span>
       </div>
       
       <div className="flex-1 overflow-y-auto flex flex-col">

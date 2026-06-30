@@ -446,35 +446,10 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   return (
     <>
       <NewItemsBanner count={newCount} onClick={loadNewItems} />
-      
-      {/* Panel toggle bar */}
-      <div className="h-8 px-4 border-b border-ast-border bg-ast-surface/50 flex items-center gap-4">
-        <span className="text-[10px] text-ast-muted uppercase tracking-wide">Panels:</span>
-        <button
-          onClick={() => togglePanel("feed")}
-          className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-            panels.feed 
-              ? "border-ast-accent text-ast-accent bg-ast-accent/10" 
-              : "border-ast-border text-ast-muted hover:text-ast-text"
-          }`}
-        >
-          Feed
-        </button>
-        <button
-          onClick={() => togglePanel("signal")}
-          className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-            panels.signal 
-              ? "border-ast-gold text-ast-gold bg-ast-gold/10" 
-              : "border-ast-border text-ast-muted hover:text-ast-text"
-          }`}
-        >
-          Signal
-        </button>
-      </div>
 
       <div 
         ref={containerRef}
-        className={`flex h-[calc(100vh-7.5rem)] sm:h-[calc(100vh-8rem)] ${isDraggingH || isDraggingV ? "select-none" : ""}`}
+        className={`flex h-[calc(100vh-6.5rem)] sm:h-[calc(100vh-7rem)] ${isDraggingH || isDraggingV ? "select-none" : ""}`}
       >
         {/* Left pane: Feed */}
         {panels.feed && (
