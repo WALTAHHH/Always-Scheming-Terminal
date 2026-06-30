@@ -79,7 +79,8 @@ export function TickerBar() {
   const formatChangePercent = (change: number | null) => {
     if (change === null) return "–";
     const sign = change >= 0 ? "+" : "";
-    return `${sign}${change.toFixed(2)}%`;
+    const arrow = change > 0 ? "▲" : change < 0 ? "▼" : "";
+    return `${arrow}${sign}${change.toFixed(2)}%`;
   };
 
   return (
