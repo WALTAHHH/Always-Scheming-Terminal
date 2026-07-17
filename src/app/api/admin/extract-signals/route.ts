@@ -91,6 +91,7 @@ Return ONLY valid JSON, no markdown:
 async function checkDuplicateSignal(
   supabase: ReturnType<typeof getServiceClient>,
   companies: string[],
+  entityIds: string[],
   signalType: string
 ): Promise<boolean> {
   if (companies.length === 0) return false;
@@ -133,17 +134,18 @@ async function checkDuplicateSignal(
   }
 
   // Step 3: Check for company overlap
-  const newCompanies = new Set(companies.map((c) => c.toLowerCase()));
-  const existingCompanies = new Set(
-    companyTags.map((t: any) => t.value.toLowerCase())
+  const newKeys = new Set([
+    ...entityIds.map((id) => `eid:${id}`),
+    ...companies.map((c) => `name:${c.toLowerCase()}`),
+  ]);
+  const existingKeys = new Set(
+    companyTags.map((t: any) =>
+      t.entity_id ? `eid:${t.entity_id}` : `name:${t.value.toLowerCase()}`
+    )
   );
-
-  for (const company of Array.from(newCompanies)) {
-    if (existingCompanies.has(company)) {
-      return true; // Duplicate found — same company + same signal_type
-    }
+  for (const key of Array.from(newKeys)) {
+    if (existingKeys.has(key)) return true;
   }
-
   return false;
 }
 
@@ -195,7 +197,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Change 1: Entity+type deduplication
-    const isDuplicate = await checkDuplicateSignal(supabase, companies, signal.signal_type);
+    const { data: itemTags } = await supabase
+      .from("content_tags")
+      .select("entity_id")
+      .eq("content_id", item.id)
+      .eq("dimension", "company")
+      .not("entity_id", "is", null);
+    const entityIds = (itemTags || []).map((t: any) => t.entity_id);
+    const isDuplicate = await checkDuplicateSignal(supabase, companies, entityIds, signal.signal_type);
     if (isDuplicate) {
       results.push({ id: item.id, title: item.title.slice(0, 60), status: "deduped", detail: `Duplicate for ${signal.signal_type}` });
       // Mark as processed (deduped)
