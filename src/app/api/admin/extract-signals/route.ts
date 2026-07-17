@@ -138,7 +138,7 @@ async function checkDuplicateSignal(
     companyTags.map((t: any) => t.value.toLowerCase())
   );
 
-  for (const company of newCompanies) {
+  for (const company of Array.from(newCompanies)) {
     if (existingCompanies.has(company)) {
       return true; // Duplicate found — same company + same signal_type
     }

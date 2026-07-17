@@ -37,17 +37,6 @@ interface WorthReading {
   url: string;
 }
 
-interface Deal {
-  id: string;
-  title: string;
-  source: string;
-  sourceUrl: string;
-  category: "fundraising" | "m-and-a" | "earnings";
-  companies: string[];
-  publishedAt: string | null;
-  url: string;
-}
-
 interface DbSignal {
   id: string;
   signal_type: string;
@@ -140,12 +129,10 @@ function ScoreBreakdownPanel({
 }
 
 type SourceFilter = "all" | "analysis" | "news";
-type MiddleTab = "deals" | "reading";
 
 export function SignalPanel({ items }: SignalPanelProps) {
   const [expandedStory] = useState<string | null>(null); // kept for future use
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-  const [middleTab, setMiddleTab] = useState<MiddleTab>("deals");
   const [signals, setSignals] = useState<DbSignal[]>([]);
   
   // Fetch DB signals
@@ -247,39 +234,12 @@ export function SignalPanel({ items }: SignalPanelProps) {
     }));
   }, [filteredItems]);
 
-  // Compute deals (Fundraising, M&A, Earnings)
-  const deals = useMemo<Deal[]>(() => {
-    const dealCategories = new Set(["fundraising", "m-and-a", "earnings"]);
-    
-    const dealItems = filteredItems.filter((item) => {
-      const tags = (item.tags as Record<string, string[]>) || {};
-      const categories = tags.category || [];
-      return categories.some((c) => dealCategories.has(c));
-    });
-    
-    dealItems.sort((a, b) => {
-      const aTime = a.published_at ? new Date(a.published_at).getTime() : 0;
-      const bTime = b.published_at ? new Date(b.published_at).getTime() : 0;
-      return bTime - aTime;
-    });
-    
-    return dealItems.slice(0, 5).map((item) => {
-      const tags = (item.tags as Record<string, string[]>) || {};
-      const categories = tags.category || [];
-      const category = categories.find((c) => dealCategories.has(c)) as Deal["category"] || "fundraising";
-      
-      return {
-        id: item.id,
-        title: item.title,
-        source: item.sources?.name || "Unknown",
-        sourceUrl: item.sources?.url || "",
-        category,
-        companies: (tags.company || []).slice(0, 3),
-        publishedAt: item.published_at,
-        url: item.url,
-      };
-    });
-  }, [filteredItems]);
+  // Compute deals from signals table (fundraising, acquisition, earnings)
+  const dealSignals = useMemo(() => {
+    return signals.filter((s) =>
+      ["fundraising", "acquisition", "earnings"].includes(s.signal_type)
+    );
+  }, [signals]);
 
   // Stats
   const stats = useMemo(() => {
@@ -312,7 +272,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
             {signals.length === 0 ? (
               <p className="text-ast-muted text-xs">No signals extracted yet</p>
             ) : (
-              signals.slice(0, 5).map((signal) => {
+              signals.slice(0, 10).map((signal) => {
                 const badge = getSignalBadge(signal.signal_type);
                 const scoreColor = signal.investment_relevance_score >= 0.8 
                   ? "text-ast-mint" 
@@ -338,6 +298,9 @@ export function SignalPanel({ items }: SignalPanelProps) {
                           <span className={`${scoreColor} text-[10px]`}>
                             ● {signal.investment_relevance_score.toFixed(2)}
                           </span>
+                          {signal.created_at && (
+                            <TimeAgo date={signal.created_at} className="text-ast-muted text-[10px]" />
+                          )}
                           {signal.companies.length > 0 && (
                             <div className="flex gap-1">
                               {signal.companies.slice(0, 3).map((c) => (
@@ -352,6 +315,12 @@ export function SignalPanel({ items }: SignalPanelProps) {
                 );
               })
             )}
+            {signals.length > 10 && (
+              <p className="text-ast-muted text-[10px] text-center pt-1">
+                +{signals.length - 10} more —{" "}
+                <a href="/api-explorer" className="text-ast-accent hover:underline">API Explorer</a>
+              </p>
+            )}
           </div>
         </div>
 
@@ -360,16 +329,16 @@ export function SignalPanel({ items }: SignalPanelProps) {
           <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
             <span className="text-ast-gold text-xs font-semibold tracking-wide">
               💰 DEALS
-              {deals.length > 0 && (
-                <span className="ml-1 text-[10px] text-ast-gold/70">({deals.length})</span>
+              {dealSignals.length > 0 && (
+                <span className="ml-1 text-[10px] text-ast-gold/70">({dealSignals.length})</span>
               )}
             </span>
           </div>
           <div className="px-4 py-3 space-y-3">
-            {deals.length === 0 ? (
+            {dealSignals.length === 0 ? (
               <p className="text-ast-muted text-xs">No deals or earnings yet</p>
             ) : (
-              deals.map((deal) => (
+              dealSignals.map((deal) => (
                 <a
                   key={deal.id}
                   href={deal.url}
@@ -379,22 +348,25 @@ export function SignalPanel({ items }: SignalPanelProps) {
                 >
                   <div className="flex items-start gap-2">
                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${
-                      deal.category === "fundraising" 
-                        ? "bg-ast-mint/20 text-ast-mint" 
-                        : deal.category === "m-and-a"
+                      deal.signal_type === "fundraising"
+                        ? "bg-ast-mint/20 text-ast-mint"
+                        : deal.signal_type === "acquisition"
                         ? "bg-ast-pink/20 text-ast-pink"
                         : "bg-ast-gold/20 text-ast-gold"
                     }`}>
-                      {deal.category === "m-and-a" ? "M&A" : deal.category === "fundraising" ? "RAISE" : "EARN"}
+                      {deal.signal_type === "acquisition" ? "M&A" : deal.signal_type === "fundraising" ? "RAISE" : "EARN"}
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
-                        {deal.title}
+                        {deal.summary}
                       </p>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <SourceFavicon url={deal.sourceUrl} size={12} />
-                        <span className="text-ast-muted text-[10px]">{deal.source}</span>
-                        <TimeAgo date={deal.publishedAt} className="text-ast-muted text-[10px]" />
+                        {deal.companies.length > 0 && (
+                          <span className="text-ast-muted text-[10px]">{deal.companies.slice(0, 2).join(", ")}</span>
+                        )}
+                        {deal.created_at && (
+                          <TimeAgo date={deal.created_at} className="text-ast-muted text-[10px]" />
+                        )}
                       </div>
                     </div>
                   </div>

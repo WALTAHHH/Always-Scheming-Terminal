@@ -10,50 +10,44 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export async function GET() {
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
-  // Query signals first
+  // Single query with JOINs
   const { data: signalsData, error: signalsError } = await supabase
     .from("signals")
-    .select("*")
+    .select(`
+      id, signal_type, summary, investment_relevance_score, created_at,
+      content:item_id (
+        id, title, url, published_at,
+        content_tags (value, dimension, entity_id)
+      )
+    `)
     .gte("investment_relevance_score", 0.5)
     .order("created_at", { ascending: false })
-    .limit(10);
+    .limit(20);
 
   if (signalsError) {
     return NextResponse.json({ error: signalsError.message }, { status: 500 });
   }
 
-  // Get content and company tags for each signal
-  const signalsWithDetails = await Promise.all(
-    (signalsData || []).map(async (signal) => {
-      // Get content details
-      const { data: content } = await supabase
-        .from("content")
-        .select("id, title, url, published_at")
-        .eq("id", signal.item_id)
-        .single();
+  // Map to existing response shape
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const signalsWithDetails = ((signalsData || []) as any[]).map((signal) => {
+    // Extract company tags where dimension = 'company' and entity_id is not null
+    const companyTags = (signal.content?.content_tags || [])
+      .filter((tag: any) => tag.dimension === "company" && tag.entity_id !== null)
+      .map((tag: any) => tag.value);
 
-      // Get company tags for this content — only resolved ones (have entity_id)
-      // so we don't show raw garbage tags like "direct-to-consumer" as companies
-      const { data: tags } = await supabase
-        .from("content_tags")
-        .select("value")
-        .eq("content_id", signal.item_id)
-        .eq("dimension", "company")
-        .not("entity_id", "is", null);
-
-      return {
-        id: signal.id,
-        signal_type: signal.signal_type,
-        summary: signal.summary,
-        investment_relevance_score: signal.investment_relevance_score,
-        companies: tags?.map((t) => t.value) || [],
-        title: content?.title || "",
-        url: content?.url || "",
-        published_at: content?.published_at || null,
-        created_at: signal.created_at,
-      };
-    })
-  );
+    return {
+      id: signal.id,
+      signal_type: signal.signal_type,
+      summary: signal.summary,
+      investment_relevance_score: signal.investment_relevance_score,
+      companies: companyTags,
+      title: signal.content?.title || "",
+      url: signal.content?.url || "",
+      published_at: signal.content?.published_at || null,
+      created_at: signal.created_at,
+    };
+  });
 
   return NextResponse.json({
     signals: signalsWithDetails,
