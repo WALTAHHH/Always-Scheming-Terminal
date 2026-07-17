@@ -7,7 +7,10 @@ export const runtime = "nodejs";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
+  const minScore = parseFloat(searchParams.get("min_score") || "0.3");
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
   // Single query with JOINs
@@ -20,9 +23,9 @@ export async function GET() {
         content_tags (value, dimension, entity_id)
       )
     `)
-    .gte("investment_relevance_score", 0.5)
+    .gte("investment_relevance_score", minScore)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(limit);
 
   if (signalsError) {
     return NextResponse.json({ error: signalsError.message }, { status: 500 });
