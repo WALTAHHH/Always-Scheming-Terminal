@@ -18,7 +18,7 @@ function getServiceClient() {
   );
 }
 
-async function callGemini(title: string, companies: string[], categories: string[]): Promise<{
+async function callGemini(title: string, body: string, companies: string[], categories: string[]): Promise<{
   signal_type: string;
   summary: string;
   investment_relevance_score: number;
@@ -27,14 +27,18 @@ async function callGemini(title: string, companies: string[], categories: string
   const apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) return { error: "GOOGLE_AI_API_KEY not set" };
 
+  // Truncate body to first 1500 chars
+  const truncatedBody = body ? body.slice(0, 1500) : "";
+
   const prompt = `You are a financial analyst specializing in the gaming industry. Extract a structured investment signal from this article.
 
 Title: ${title}
+Body: ${truncatedBody}
 Companies: ${companies.join(", ") || "none"}
 Categories: ${categories.join(", ") || "none"}
 
 Return ONLY valid JSON, no markdown:
-{"signal_type":"acquisition|fundraising|earnings|layoffs|leadership|product_launch|regulatory|platform_change|macro","summary":"one sentence max 120 chars","investment_relevance_score":0.0-1.0,"reasoning":"1-2 sentences"}`;
+{"signal_type":"acquisition|fundraising|earnings|layoffs|leadership|product_launch|regulatory|platform_change|macro","summary":"ONE declarative sentence, max 100 chars. State the specific fact: company, action, number if known. BAD: 'Xbox is undergoing restructuring.' GOOD: 'Microsoft cuts 3,200 Xbox roles, closing Bethesda studios.'","investment_relevance_score":0.0-1.0,"reasoning":"1-2 sentences"}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -84,6 +88,65 @@ Return ONLY valid JSON, no markdown:
   }
 }
 
+async function checkDuplicateSignal(
+  supabase: ReturnType<typeof getServiceClient>,
+  companies: string[],
+  signalType: string
+): Promise<boolean> {
+  if (companies.length === 0) return false;
+
+  // Get the last 48 hours timestamp
+  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
+  // Step 1: Find recent signals (last 48h) with the same signal_type
+  const { data: recentSignals, error } = await supabase
+    .from("signals")
+    .select("item_id")
+    .eq("signal_type", signalType)
+    .gte("created_at", fortyEightHoursAgo)
+    .limit(50);
+
+  if (error) {
+    console.error("Deduplication query (step 1) failed:", error);
+    return false;
+  }
+
+  if (!recentSignals || recentSignals.length === 0) {
+    return false;
+  }
+
+  // Step 2: Get company content_tags for those item_ids
+  const signalItemIds = recentSignals.map((s) => s.item_id);
+  const { data: companyTags, error: tagsError } = await supabase
+    .from("content_tags")
+    .select("value, content_id")
+    .in("content_id", signalItemIds)
+    .eq("dimension", "company");
+
+  if (tagsError) {
+    console.error("Deduplication query (step 2) failed:", tagsError);
+    return false;
+  }
+
+  if (!companyTags || companyTags.length === 0) {
+    return false;
+  }
+
+  // Step 3: Check for company overlap
+  const newCompanies = new Set(companies.map((c) => c.toLowerCase()));
+  const existingCompanies = new Set(
+    companyTags.map((t: any) => t.value.toLowerCase())
+  );
+
+  for (const company of Array.from(newCompanies)) {
+    if (existingCompanies.has(company)) {
+      return true; // Duplicate found — same company + same signal_type
+    }
+  }
+
+  return false;
+}
+
 export async function POST(req: NextRequest) {
   // Allow Vercel cron to bypass admin auth
   const isCron = req.headers.get("x-vercel-cron") === "1";
@@ -95,11 +158,13 @@ export async function POST(req: NextRequest) {
 
   const supabase = getServiceClient();
 
+  // Change 2: Use signals_extracted_at flag instead of re-scanning all content
   const { data: items, error: fetchError } = await supabase
     .from("content")
     .select("id, title, body, tags")
+    .is("signals_extracted_at", null) // Only items that haven't been processed
     .order("published_at", { ascending: false, nullsFirst: false })
-    .limit(200);
+    .limit(100); // Process up to 100 unprocessed items at a time
 
   if (fetchError) {
     return NextResponse.json({ error: fetchError.message }, { status: 500 });
@@ -110,26 +175,34 @@ export async function POST(req: NextRequest) {
     return tags.company?.length > 0 && tags.category?.length > 0;
   });
 
-  const eligibleIds = eligible.map((i) => i.id);
-  const { data: existingSignals } = await supabase
-    .from("signals")
-    .select("item_id")
-    .in("item_id", eligibleIds);
-
-  const signaled = new Set((existingSignals || []).map((s: any) => s.item_id));
-  const todo = eligible.filter((i) => !signaled.has(i.id));
-
   const results: { id: string; title: string; status: string; detail?: string }[] = [];
 
-  for (const item of todo) {
+  for (const item of eligible) {
     const tags = (item.tags as Record<string, string[]>) || {};
     const companies = tags.company || [];
     const categories = tags.category || [];
 
-    const signal = await callGemini(item.title, companies, categories);
+    const signal = await callGemini(item.title, item.body || "", companies, categories);
 
     if ("error" in signal) {
       results.push({ id: item.id, title: item.title.slice(0, 60), status: "llm_error", detail: signal.error });
+      // Still mark as processed to avoid retrying failed items
+      await supabase
+        .from("content")
+        .update({ signals_extracted_at: new Date().toISOString() })
+        .eq("id", item.id);
+      continue;
+    }
+
+    // Change 1: Entity+type deduplication
+    const isDuplicate = await checkDuplicateSignal(supabase, companies, signal.signal_type);
+    if (isDuplicate) {
+      results.push({ id: item.id, title: item.title.slice(0, 60), status: "deduped", detail: `Duplicate for ${signal.signal_type}` });
+      // Mark as processed (deduped)
+      await supabase
+        .from("content")
+        .update({ signals_extracted_at: new Date().toISOString() })
+        .eq("id", item.id);
       continue;
     }
 
@@ -147,6 +220,12 @@ export async function POST(req: NextRequest) {
     } else {
       results.push({ id: item.id, title: item.title.slice(0, 60), status: "ok", detail: `${signal.signal_type} (${signal.investment_relevance_score.toFixed(2)})` });
     }
+
+    // Change 2: Set signals_extracted_at on every processed item
+    await supabase
+      .from("content")
+      .update({ signals_extracted_at: new Date().toISOString() })
+      .eq("id", item.id);
   }
 
   const { count: totalSignals } = await supabase
@@ -154,18 +233,20 @@ export async function POST(req: NextRequest) {
     .select("*", { count: "exact", head: true });
 
   const extracted = results.filter((r) => r.status === "ok").length;
-  const errors = results.filter((r) => r.status !== "ok");
+  const errors = results.filter((r) => r.status !== "ok" && r.status !== "deduped");
+  const deduped = results.filter((r) => r.status === "deduped").length;
 
   return NextResponse.json({
     ok: true,
     summary: {
       eligible: eligible.length,
-      alreadySignaled: signaled.size,
-      processed: todo.length,
+      processed: eligible.length,
       extracted,
+      deduped,
       errors: errors.length,
       totalSignalsInDb: totalSignals,
     },
+    deduped: deduped > 0 ? results.filter(r => r.status === "deduped").slice(0, 10) : undefined,
     errors: errors.length > 0 ? errors : undefined,
     results: results.slice(0, 20),
   });
