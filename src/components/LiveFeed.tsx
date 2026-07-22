@@ -445,7 +445,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       <>
         <NewItemsBanner count={newCount} onClick={loadNewItems} />
         <div className="h-[calc(100vh-6rem)]">
-          <MobileSwipeView panels={mobilePanels} />
+          <MobileSwipeView panels={mobilePanels} initialIndex={1} />
         </div>
         <CompanyDrawerPortal />
       </>

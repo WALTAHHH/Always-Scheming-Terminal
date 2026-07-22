@@ -640,9 +640,9 @@ function ExtractSignalsButton({ onDone }: { onDone: () => void }) {
       <button
         onClick={handleExtract}
         disabled={running}
-        className="px-2 py-1 text-[10px] rounded border border-ast-accent/30 text-ast-accent hover:bg-ast-accent/10 disabled:opacity-50 transition-colors"
+        className="px-3 py-1.5 text-xs font-medium rounded border border-ast-gold/60 text-ast-gold hover:bg-ast-gold/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
       >
-        {running ? "Extracting..." : "Run Extraction"}
+        {running ? "⟳ Extracting..." : "⚡ Run Extraction"}
       </button>
       {result && (
         <div className={`text-[10px] mt-1 ${result.ok ? "text-ast-mint" : "text-ast-pink"}`}>
