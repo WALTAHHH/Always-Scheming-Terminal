@@ -97,15 +97,14 @@ async function checkDuplicateSignal(
   if (companies.length === 0) return false;
 
   // Get the last 48 hours timestamp
-  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Step 1: Find recent signals (last 48h) with the same signal_type
+  // Step 1: Find recent signals (last 7 days) with the same signal_type
   const { data: recentSignals, error } = await supabase
     .from("signals")
     .select("item_id")
     .eq("signal_type", signalType)
-    .gte("created_at", fortyEightHoursAgo)
-    .limit(50);
+    .gte("created_at", sevenDaysAgo)
 
   if (error) {
     console.error("Deduplication query (step 1) failed:", error);
@@ -120,7 +119,7 @@ async function checkDuplicateSignal(
   const signalItemIds = recentSignals.map((s) => s.item_id);
   const { data: companyTags, error: tagsError } = await supabase
     .from("content_tags")
-    .select("value, content_id")
+    .select("value, content_id, entity_id")
     .in("content_id", signalItemIds)
     .eq("dimension", "company");
 
