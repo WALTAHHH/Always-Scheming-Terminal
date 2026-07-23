@@ -9,7 +9,7 @@ import { TickerBar } from "./TickerBar";
 import { useTheme } from "./ThemeProvider";
 import { createAuthBrowserClient } from "@/lib/supabase";
 
-function ThemeToggle() {
+export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   
