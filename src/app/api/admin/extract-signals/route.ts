@@ -318,6 +318,23 @@ export async function POST(req: NextRequest) {
       .eq("id", item.id);
   }
 
+  // Self-chain: if there are more unprocessed items, trigger next batch
+  const { count: remaining } = await supabase
+    .from("content")
+    .select("id", { count: "exact", head: true })
+    .is("signals_extracted_at", null);
+
+  if (remaining && remaining > 0) {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+    // Fire and forget — don't await
+    fetch(`${baseUrl}/api/admin/extract-signals`, {
+      method: "POST",
+      headers: { "x-vercel-cron": "1" },
+    }).catch(() => {});
+  }
+
   const { count: totalSignals } = await supabase
     .from("signals")
     .select("*", { count: "exact", head: true });
@@ -335,6 +352,7 @@ export async function POST(req: NextRequest) {
       deduped,
       errors: errors.length,
       totalSignalsInDb: totalSignals,
+      remaining,
     },
     deduped: deduped > 0 ? results.filter(r => r.status === "deduped").slice(0, 10) : undefined,
     errors: errors.length > 0 ? errors : undefined,
