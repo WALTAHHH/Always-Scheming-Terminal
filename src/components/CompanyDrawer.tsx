@@ -85,8 +85,6 @@ interface InteractiveChartProps {
   currency: string;
   previousClose?: number;
   newsItems?: FeedItem[];
-  hoveredMarkerId?: string | null;
-  onMarkerHover?: (id: string | null) => void;
   onHover?: (price: number | null, date: string | null) => void;
   isLoading?: boolean;
 }
@@ -97,17 +95,13 @@ function InteractiveChart({
   currency, 
   previousClose,
   newsItems = [],
-  hoveredMarkerId: hoveredMarkerIdProp,
-  onMarkerHover,
   onHover,
   isLoading 
 }: InteractiveChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [activeMarker, setActiveMarker] = useState<NewsMarker | null>(null);
-  const [localHoveredMarkerId, setLocalHoveredMarkerId] = useState<string | null>(null);
-  const hoveredMarkerId = hoveredMarkerIdProp ?? localHoveredMarkerId;
-  const setHoveredMarkerId = onMarkerHover ?? setLocalHoveredMarkerId;
+  const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
 
   // Compute chart data (always, for hooks stability)
   const padding = { top: 12, bottom: 20, left: 8, right: 8 };
@@ -164,21 +158,6 @@ function InteractiveChart({
       
       if (minDiff <= 24 * 60 * 60 * 1000 * 2) {
         markers.push({ date: itemDate, x: closest.x, y: closest.y, item });
-      }
-    }
-    
-    // After computing markers array, offset stacked markers
-    const pointGroups = new Map<string, NewsMarker[]>();
-    for (const m of markers) {
-      const key = `${m.x.toFixed(1)},${m.y.toFixed(1)}`;
-      if (!pointGroups.has(key)) pointGroups.set(key, []);
-      pointGroups.get(key)!.push(m);
-    }
-    for (const group of pointGroups.values()) {
-      if (group.length > 1) {
-        group.forEach((m, i) => {
-          m.y = m.y + (i - (group.length - 1) / 2) * 2.5;
-        });
       }
     }
     
@@ -343,7 +322,7 @@ function InteractiveChart({
               x2={marker.x}
               y2={height - padding.bottom}
               stroke="#fbbf24"
-              strokeWidth="0.5"
+              strokeWidth="1"
               strokeDasharray="2,2"
               vectorEffect="non-scaling-stroke"
               opacity="0.5"
@@ -352,7 +331,7 @@ function InteractiveChart({
             <circle
               cx={marker.x}
               cy={marker.y}
-              r={hoveredMarkerId === marker.item.id ? 2.5 : 1.5}
+              r={hoveredMarkerId === marker.item.id ? 5.5 : 3.5}
               fill="#fbbf24"
               stroke="#0d1117"
               strokeWidth="1.5"
@@ -440,7 +419,6 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
   const [chartRange, setChartRange] = useState<ChartRange>("3mo");
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
-  const [hoveredCoverageId, setHoveredCoverageId] = useState<string | null>(null);
   const [pendingRange, setPendingRange] = useState<ChartRange | null>(null);
   
   // Cache previous history to prevent flicker during range changes
@@ -627,8 +605,6 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
                   currency={quote?.currency || "USD"}
                   previousClose={quote?.previousClose}
                   newsItems={relatedItems}
-                  hoveredMarkerId={hoveredCoverageId}
-                  onMarkerHover={setHoveredCoverageId}
                   isLoading={loading || pendingRange !== null}
                   onHover={(price, date) => {
                     setHoverPrice(price);
@@ -682,16 +658,9 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
                 ) : (
                   <div className="space-y-3">
                     {relatedItems.map((item) => (
-                      <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="block group"
-                        onMouseEnter={() => setHoveredCoverageId(item.id)}
-                        onMouseLeave={() => setHoveredCoverageId(null)}
-                      >
-                        <div className={`flex items-start gap-2 rounded px-1 -mx-1 transition-colors ${
-                          hoveredCoverageId === item.id ? "bg-amber-400/10" : ""
-                        }`}>
-                          <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 transition-colors ${
-                            hoveredCoverageId === item.id ? "bg-amber-300 ring-2 ring-amber-400/40" : "bg-amber-400"
-                          }`} />
+                      <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="block group">
+                        <div className="flex items-start gap-2">
+                          <span className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
                           <div>
                             <p className="text-xs text-ast-text group-hover:text-ast-accent line-clamp-2">{item.title}</p>
                             <div className="flex items-center gap-2 mt-1">
