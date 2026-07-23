@@ -10,6 +10,31 @@ const VALID_SIGNAL_TYPES = new Set([
   "product_launch", "regulatory", "platform_change", "macro",
 ]);
 
+function inferLikelySignalTypes(categories: string[]): string[] {
+  const mapping: Record<string, string[]> = {
+    "fundraising": ["fundraising"],
+    "m-and-a": ["acquisition"],
+    "earnings": ["earnings"],
+    "layoffs": ["layoffs"],
+  };
+  const result: string[] = [];
+  for (const cat of categories) {
+    const mapped = mapping[cat];
+    if (mapped) {
+      result.push(...mapped);
+    }
+  }
+  return Array.from(new Set(result)); // dedupe
+}
+
+function jaccardSimilarity(a: string, b: string): number {
+  const setA = new Set(a.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+  const setB = new Set(b.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+  const intersection = Array.from(setA).filter(x => setB.has(x)).length;
+  const unionSize = setA.size + setB.size - intersection;
+  return unionSize === 0 ? 0 : intersection / unionSize;
+}
+
 function getServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -148,6 +173,34 @@ async function checkDuplicateSignal(
   return false;
 }
 
+async function checkDuplicateSummary(
+  supabase: ReturnType<typeof getServiceClient>,
+  signalType: string,
+  summary: string
+): Promise<boolean> {
+  if (!summary) return false;
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: recentSignals, error } = await supabase
+    .from("signals")
+    .select("summary")
+    .eq("signal_type", signalType)
+    .gte("created_at", sevenDaysAgo)
+    .limit(100); // Limit to avoid huge fetches
+  if (error) {
+    console.error("Summary deduplication query failed:", error);
+    return false;
+  }
+  if (!recentSignals || recentSignals.length === 0) {
+    return false;
+  }
+  for (const existing of recentSignals) {
+    if (jaccardSimilarity(summary, existing.summary) >= 0.6) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function POST(req: NextRequest) {
   // Allow Vercel cron to bypass admin auth
   const isCron = req.headers.get("x-vercel-cron") === "1";
@@ -183,6 +236,31 @@ export async function POST(req: NextRequest) {
     const companies = tags.company || [];
     const categories = tags.category || [];
 
+    // Entity extraction for dedup
+    const { data: itemTags } = await supabase
+      .from("content_tags")
+      .select("entity_id")
+      .eq("content_id", item.id)
+      .eq("dimension", "company")
+      .not("entity_id", "is", null);
+    const entityIds = (itemTags || []).map((t: any) => t.entity_id);
+
+    // Pre-dedup: skip Gemini if company already has a recent signal of a likely type
+    const likelyTypes = inferLikelySignalTypes(categories);
+    if (likelyTypes.length > 0) {
+      let preDeduped = false;
+      for (const type of likelyTypes) {
+        const preDedup = await checkDuplicateSignal(supabase, companies, entityIds, type);
+        if (preDedup) {
+          results.push({ id: item.id, title: item.title.slice(0, 60), status: "deduped", detail: `Pre-dedup: ${type}` });
+          await supabase.from("content").update({ signals_extracted_at: new Date().toISOString() }).eq("id", item.id);
+          preDeduped = true;
+          break;
+        }
+      }
+      if (preDeduped) continue;
+    }
+
     const signal = await callGemini(item.title, item.body || "", companies, categories);
 
     if ("error" in signal) {
@@ -195,22 +273,26 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // Change 1: Entity+type deduplication
-    const { data: itemTags } = await supabase
-      .from("content_tags")
-      .select("entity_id")
-      .eq("content_id", item.id)
-      .eq("dimension", "company")
-      .not("entity_id", "is", null);
-    const entityIds = (itemTags || []).map((t: any) => t.entity_id);
+        // Deduplication based on actual signal_type (post-Gemini)
     const isDuplicate = await checkDuplicateSignal(supabase, companies, entityIds, signal.signal_type);
     if (isDuplicate) {
       results.push({ id: item.id, title: item.title.slice(0, 60), status: "deduped", detail: `Duplicate for ${signal.signal_type}` });
-      // Mark as processed (deduped)
-      await supabase
-        .from("content")
-        .update({ signals_extracted_at: new Date().toISOString() })
-        .eq("id", item.id);
+      await supabase.from("content").update({ signals_extracted_at: new Date().toISOString() }).eq("id", item.id);
+      continue;
+    }
+
+    // Summary similarity dedup
+    const isSummaryDuplicate = await checkDuplicateSummary(supabase, signal.signal_type, signal.summary);
+    if (isSummaryDuplicate) {
+      results.push({ id: item.id, title: item.title.slice(0, 60), status: "deduped", detail: `Summary duplicate for ${signal.signal_type}` });
+      await supabase.from("content").update({ signals_extracted_at: new Date().toISOString() }).eq("id", item.id);
+      continue;
+    }
+
+    // Score threshold
+    if (signal.investment_relevance_score < 0.65) {
+      results.push({ id: item.id, title: item.title.slice(0, 60), status: "low_score", detail: `Score ${signal.investment_relevance_score.toFixed(2)} below threshold` });
+      await supabase.from("content").update({ signals_extracted_at: new Date().toISOString() }).eq("id", item.id);
       continue;
     }
 
