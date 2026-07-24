@@ -1,0 +1,31 @@
+  const handlePreset = async (url: string) => {
+    setLoading(true);
+    // Apply limit to URL
+    let finalUrl = url;
+    if (url.includes("limit=")) {
+      finalUrl = url.replace(/limit=\\d+/, `limit=${limit}`);
+    } else {
+      finalUrl = `${url}${url.includes("?") ? "&" : "?"}limit=${limit}`;
+    }
+    setRequestUrl(finalUrl);
+    setResponse(null);
+    setStatus(null);
+    try {
+      const headers: HeadersInit = {};
+      if (finalUrl !== "/api/v1/signals") {
+        if (!apiKey.trim()) {
+          throw new Error("API key required for this endpoint");
+        }
+        headers["Authorization"] = `Bearer ${apiKey.trim()}`;
+      }
+      const res = await fetch(finalUrl, { headers });
+      setStatus(res.status);
+      const data = await res.json();
+      setResponse(data);
+    } catch (err) {
+      setStatus(0);
+      setResponse({ error: String(err) });
+    } finally {
+      setLoading(false);
+    }
+  };

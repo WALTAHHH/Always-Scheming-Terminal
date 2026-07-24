@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireApiKey } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
@@ -62,6 +63,9 @@ export async function GET(req: NextRequest) {
  * Used by the pipeline dashboard "add alias" button on unresolved tags.
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireApiKey(req);
+  if (auth instanceof NextResponse) return auth;
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
