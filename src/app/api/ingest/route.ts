@@ -34,12 +34,16 @@ export async function POST(req: NextRequest) {
           process.env.SUPABASE_SERVICE_ROLE_KEY!,
           { auth: { persistSession: false } }
         );
-        const { data: untagged } = await supabase
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentItems } = await supabase
           .from('content')
           .select('id, title, body, tags')
-          .or('tags->>company.is.null,tags->company.eq.[]')
-          .gte('published_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-          .limit(20);
+          .gte('published_at', thirtyDaysAgo)
+          .limit(60);
+        const untagged = (recentItems || []).filter((item) => {
+          const tags = (item.tags as Record<string, string[]>) || {};
+          return !tags.company || tags.company.length === 0;
+        }).slice(0, 20);
         if (!untagged?.length) return;
 
         for (const item of untagged) {

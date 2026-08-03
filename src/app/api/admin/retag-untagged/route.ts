@@ -21,21 +21,27 @@ export async function POST(req: Request) {
     { auth: { persistSession: false } }
   )
 
-  // Query untagged rows
-  const { data: untagged, error: queryError } = await supabase
+  // Query items with null tags OR missing company tags
+  // Fetch a larger batch and filter in JS (same pattern as extract-signals)
+  const { data: items, error: queryError } = await supabase
     .from('content')
     .select('id, title, body, tags')
-    .or('tags->>company.is.null,tags->company.eq.[]')
-    .order('published_at', { ascending: false })
-    .limit(200)
+    .order('published_at', { ascending: false, nullsFirst: false })
+    .limit(500)
 
   if (queryError) {
-    console.error('Failed to query untagged content:', queryError)
+    console.error('Failed to query content:', queryError)
     return NextResponse.json(
       { ok: false, error: 'Database query failed', details: queryError.message },
       { status: 500 }
     )
   }
+
+  // Filter to items missing company tags
+  const untagged = (items || []).filter((item) => {
+    const tags = (item.tags as Record<string, string[]>) || {}
+    return !tags.company || tags.company.length === 0
+  }).slice(0, 200)
 
   const processed = untagged.length
   let tagged = 0
