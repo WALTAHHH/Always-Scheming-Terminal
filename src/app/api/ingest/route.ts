@@ -4,16 +4,20 @@ import { ingestAll } from "@/lib/ingest";
 export const maxDuration = 60; // Vercel function timeout
 
 export async function POST(req: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
+  const isCron = req.headers.get("x-vercel-cron") === "1";
 
-  // If CRON_SECRET is configured, require it via Authorization header.
-  // This secures both external cron jobs AND direct API calls.
-  // The admin UI (same-origin) must also send the header — set NEXT_PUBLIC_CRON_SECRET
-  // or use the admin page which reads it from the server environment.
-  if (cronSecret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isCron) {
+    const cronSecret = process.env.CRON_SECRET;
+
+    // If CRON_SECRET is configured, require it via Authorization header.
+    // This secures both external cron jobs AND direct API calls.
+    // The admin UI (same-origin) must also send the header — set NEXT_PUBLIC_CRON_SECRET
+    // or use the admin page which reads it from the server environment.
+    if (cronSecret) {
+      const authHeader = req.headers.get("authorization");
+      if (authHeader !== `Bearer ${cronSecret}`) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
     }
   }
 
