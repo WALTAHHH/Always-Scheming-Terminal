@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     .from("signals")
     .select(`
       id, signal_type, summary, investment_relevance_score, created_at,
-      content:item_id (
+      content:content_id (
         id, title, url, published_at,
         content_tags (value, dimension, entity_id)
       )
