@@ -20,6 +20,7 @@ export async function GET(request: Request) {
   const dateTo = searchParams.get("date_to");
   const limit = parseInt(searchParams.get("limit") || "50", 10);
   const cursor = searchParams.get("cursor");
+  const minImportance = searchParams.get("min_importance");
 
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
       author,
       published_at,
       ingested_at,
+      importance_score,
       source_id,
       sources (name, url, source_type),
       content_tags (dimension, value, entity_id),
@@ -60,6 +62,13 @@ export async function GET(request: Request) {
   // Filter by signal_type if provided (requires join)
   if (signalType) {
     query = query.eq("signals.signal_type", signalType);
+  }
+
+  if (minImportance !== null) {
+    const minScore = parseFloat(minImportance);
+    if (!isNaN(minScore)) {
+      query = query.gte("importance_score", minScore);
+    }
   }
 
   const { data, error } = await query;

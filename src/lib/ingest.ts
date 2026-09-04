@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { tagItem, tagItemWithAI } from "./tagger";
 import { extractSignal } from "./signal-extractor";
 import { resolveEntitiesFromText, resolveCompanyNamesToEntityIds } from "./entity-resolver";
+import { generateEmbedding } from "./embeddings";
 
 const parser = new Parser({
   timeout: 8000, // Reduced from 15s for faster failure on stale feeds
@@ -15,7 +16,7 @@ const parser = new Parser({
  * Fetch RSS with exponential backoff retry.
  * Max 2 retries with 1s, 2s delays for transient failures.
  */
-async function fetchWithRetry(url: string, maxRetries = 2): Promise<Parser.Output<Record<string, unknown>>> {
+export async function fetchWithRetry(url: string, maxRetries = 2): Promise<Parser.Output<Record<string, unknown>>> {
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
