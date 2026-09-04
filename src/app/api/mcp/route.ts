@@ -268,6 +268,7 @@ export async function POST(request: NextRequest) {
     const server = buildMcpServer();
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless
+      enableJsonResponse: true,      // return plain JSON, not SSE stream
     });
 
     await server.connect(transport);
