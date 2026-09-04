@@ -127,7 +127,7 @@ async function checkDuplicateSignal(
   // Step 1: Find recent signals (last 7 days) with the same signal_type
   const { data: recentSignals, error } = await supabase
     .from("signals")
-    .select("item_id")
+    .select("content_id")
     .eq("signal_type", signalType)
     .gte("created_at", sevenDaysAgo)
 
@@ -140,8 +140,8 @@ async function checkDuplicateSignal(
     return false;
   }
 
-  // Step 2: Get company content_tags for those item_ids
-  const signalItemIds = recentSignals.map((s) => s.item_id);
+  // Step 2: Get company content_tags for those content_ids
+  const signalItemIds = recentSignals.map((s) => s.content_id);
   const { data: companyTags, error: tagsError } = await supabase
     .from("content_tags")
     .select("value, content_id, entity_id")
@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { error: insertError } = await supabase.from("signals").insert({
-      item_id: item.id,
+      content_id: item.id,
       signal_type: signal.signal_type,
       summary: signal.summary,
       investment_relevance_score: signal.investment_relevance_score,

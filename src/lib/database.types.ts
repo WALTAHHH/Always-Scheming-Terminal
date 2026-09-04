@@ -381,7 +381,7 @@ export type Database = {
       signals: {
         Row: {
           id: string
-          item_id: string
+          content_id: string
           signal_type: string
           summary: string
           investment_relevance_score: number
@@ -391,7 +391,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          item_id: string
+          content_id: string
           signal_type: string
           summary: string
           investment_relevance_score: number
@@ -401,7 +401,7 @@ export type Database = {
         }
         Update: {
           id?: string
-          item_id?: string
+          content_id?: string
           signal_type?: string
           summary?: string
           investment_relevance_score?: number

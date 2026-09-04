@@ -196,7 +196,7 @@ export async function extractSignal(options: ExtractSignalOptions): Promise<void
 
     // Write to signals table
     const payload: SignalInsert = {
-      item_id: item.id,
+      content_id: item.id,
       signal_type: signal.signal_type,
       summary: signal.summary,
       investment_relevance_score: signal.investment_relevance_score,
