@@ -2,6 +2,7 @@ import Parser from "rss-parser";
 import { createClient } from "@supabase/supabase-js";
 import { tagItem, tagItemWithAI } from "./tagger";
 import { extractSignal } from "./signal-extractor";
+import { scoreItem } from "./importance";
 import { resolveEntitiesFromText, resolveCompanyNamesToEntityIds } from "./entity-resolver";
 
 const parser = new Parser({
@@ -226,6 +227,15 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
           try {
             const itemData = data.find((d: { id: string }) => d.id === id);
             if (!itemData) continue;
+
+            // Compute importance score
+            const score = scoreItem({
+                title: item.title,
+                body: item.body,
+                tags,
+                sources: { source_type: source.source_type }
+            });
+            await supabase.from('content').update({ importance_score: score }).eq('id', id);
 
             const text = `${itemData.title} ${itemData.body || ""}`;
             
