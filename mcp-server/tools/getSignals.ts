@@ -8,18 +8,11 @@ export function registerSignalsTool(server: McpServer, baseUrl: string, apiKey: 
     {
       title: 'Get AST Signals',
       description: 'Get recent investment signals from AST. Signals are LLM-extracted structured events (acquisitions, fundraising, earnings, layoffs) from gaming industry news.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          limit: { type: 'number', description: 'Max signals to return (default 10, max 50)' },
-          min_score: { type: 'number', description: 'Minimum investment relevance score 0-1 (default 0.3)' },
-          signal_type: { 
-            type: 'string', 
-            enum: ['acquisition', 'fundraising', 'earnings', 'layoffs', 'leadership', 'product_launch', 'regulatory', 'platform_change', 'macro'],
-            description: 'Filter by signal type (optional)'
-          }
-        }
-      }
+      inputSchema: z.object({
+        limit: z.number().optional().describe('Max signals to return (default 10, max 50)'),
+        min_score: z.number().optional().describe('Minimum investment relevance score 0-1 (default 0.3)'),
+        signal_type: z.enum(['acquisition', 'fundraising', 'earnings', 'layoffs', 'leadership', 'product_launch', 'regulatory', 'platform_change', 'macro']).optional().describe('Filter by signal type (optional)'),
+      }),
     },
     async (args: { limit?: number; min_score?: number; signal_type?: string }) => {
       const limit = args.limit ?? 10;
