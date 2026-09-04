@@ -17,7 +17,7 @@ type SignalInsert = Database["public"]["Tables"]["signals"]["Insert"];
 
 // ── Gate Logic ─────────────────────────────────────────────────────
 
-interface ItemForGate {
+export interface ItemForGate {
   id: string;
   title: string;
   body: string | null;

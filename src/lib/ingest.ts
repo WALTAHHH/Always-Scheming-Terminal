@@ -229,12 +229,13 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
             if (!itemData) continue;
 
             // Compute importance score
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const score = scoreItem({
                 title: item.title,
                 body: item.body,
                 tags,
-                sources: { source_type: source.source_type }
-            });
+                sources: { name: source.name, url: source.url, source_type: source.source_type }
+            } as any);
             await supabase.from('content').update({ importance_score: score }).eq('id', id);
 
             const text = `${itemData.title} ${itemData.body || ""}`;
