@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "mcp-server",
+    "scripts",
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ]
+}

@@ -23,6 +23,8 @@
     "yahoo-finance2": "^3.13.0"
   },
   "devDependencies": {
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
