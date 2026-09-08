@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   if (embedding.length === 768) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc('match_content', {
-      query_embedding: embedding as unknown as string,
+      query_embedding: embedding,
       match_limit: k,
       date_from: date_from ?? null,
       entity_value: entity ?? null,
@@ -85,10 +85,11 @@ export async function POST(request: Request) {
         articles = [];
       }
     }
-    if (articles.length === 0) {
+    // Only query if we still have no articles AND (no entity filter or we have contentIds to filter)
+    if (articles.length === 0 && (!entity || (contentIds && contentIds.length > 0))) {
       let q = supabase
         .from('content')
-        .select('id, title, body, url, published_at')
+        .select('id, title, body, url, published_at, signals (signal_type, summary)')
         .order('published_at', { ascending: false })
         .limit(k);
       if (date_from) q = q.gte('published_at', date_from);
@@ -107,8 +108,8 @@ export async function POST(request: Request) {
       title: a.title,
       url: a.url,
       published_at: a.published_at,
-      signal_type: a.signal_type ?? null,
-      summary: a.summary ?? null,
+      signal_type: a.signals?.[0]?.signal_type ?? a.signal_type ?? null,
+      summary: a.signals?.[0]?.summary ?? a.summary ?? null,
     })),
     model: 'gemini-2.5-flash-lite',
   });
