@@ -145,6 +145,7 @@ function buildMcpServer() {
       limit: z.number().min(1).max(100).optional().describe("Max articles (default 20)"),
       date_from: z.string().optional().describe("ISO date, e.g. 2026-08-01"),
       date_to: z.string().optional().describe("ISO date"),
+      entity: z.string().optional().describe("Company name to filter articles, e.g. 'Roblox'"),
       min_importance: z
         .number()
         .min(0)
@@ -152,7 +153,7 @@ function buildMcpServer() {
         .optional()
         .describe("Min importance score (0.4+ for high-signal only)"),
     },
-    async ({ limit = 20, date_from, date_to, min_importance }) => {
+    async ({ limit = 20, date_from, date_to, min_importance, entity }) => {
       const sb = makeSupabase();
       let q = sb
         .from("content")
@@ -229,10 +230,13 @@ function buildMcpServer() {
       if (articles.length === 0) {
         let q = sb
           .from("content")
-          .select("id, title, body, url, published_at")
+          .select("id, title, body, url, published_at, content_tags(dimension, value)")
           .order("published_at", { ascending: false })
           .limit(k);
         if (date_from) q = q.gte("published_at", date_from);
+        if (entity) {
+          q = q.eq("content_tags.dimension", "company").eq("content_tags.value", entity);
+        }
         const { data } = await q;
         articles = data ?? [];
       }

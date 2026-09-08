@@ -72,14 +72,30 @@ export async function POST(request: Request) {
 
   // Fallback: recency-based retrieval
   if (articles.length === 0) {
-    let q = supabase
-      .from('content')
-      .select('id, title, body, url, published_at')
-      .order('published_at', { ascending: false })
-      .limit(k);
-    if (date_from) q = q.gte('published_at', date_from);
-    const { data } = await q;
-    articles = data ?? [];
+    let contentIds: string[] | undefined;
+    if (entity) {
+      const { data: tagMatches } = await supabase
+        .from('content_tags')
+        .select('content_id')
+        .eq('dimension', 'company')
+        .eq('value', entity)
+        .limit(100);
+      contentIds = tagMatches?.map(t => t.content_id).filter((id): id is string => !!id) ?? [];
+      if (contentIds.length === 0) {
+        articles = [];
+      }
+    }
+    if (articles.length === 0) {
+      let q = supabase
+        .from('content')
+        .select('id, title, body, url, published_at')
+        .order('published_at', { ascending: false })
+        .limit(k);
+      if (date_from) q = q.gte('published_at', date_from);
+      if (contentIds && contentIds.length > 0) q = q.in('id', contentIds);
+      const { data } = await q;
+      articles = data ?? [];
+    }
   }
 
   const brief = await synthesizeBrief(query, articles);
