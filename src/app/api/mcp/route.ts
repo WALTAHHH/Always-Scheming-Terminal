@@ -160,6 +160,9 @@ function buildMcpServer() {
         .order("published_at", { ascending: false, nullsFirst: false })
         .limit(limit);
       if (date_from) q = q.gte("published_at", date_from);
+        if (entity) {
+          q = q.eq("content_tags.dimension", "company").eq("content_tags.value", entity);
+        }
       if (date_to) q = q.lte("published_at", date_to);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (min_importance != null) q = (q as any).gte("importance_score", min_importance);
@@ -229,10 +232,13 @@ function buildMcpServer() {
       if (articles.length === 0) {
         let q = sb
           .from("content")
-          .select("id, title, body, url, published_at")
+          .select("id, title, body, url, published_at, content_tags(dimension, value)")
           .order("published_at", { ascending: false })
           .limit(k);
         if (date_from) q = q.gte("published_at", date_from);
+        if (entity) {
+          q = q.eq("content_tags.dimension", "company").eq("content_tags.value", entity);
+        }
         const { data } = await q;
         articles = data ?? [];
       }
