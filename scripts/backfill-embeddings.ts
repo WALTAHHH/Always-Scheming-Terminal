@@ -18,6 +18,21 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
+/**
+ * Convert an embedding array to the string representation expected by the
+ * Supabase vector(768) column.
+ *
+ * The vector column expects a PostgreSQL vector literal, which is a string
+ * containing a comma-separated list of numbers inside square brackets, e.g.
+ * '[0.1,0.2,-0.3]'. This matches the format used in the migration
+ * `ALTER TABLE content ADD COLUMN embedding vector(768)` and the RPC call
+ * `match_content(query_embedding vector(768), ...)` where the embedding is
+ * cast as a string (see brief route).
+ */
+function embeddingToVectorString(embedding: number[]): string {
+  return `[${embedding.join(",")}]`;
+}
+
 async function backfillEmbeddings() {
   const BATCH_SIZE = 50;
   let offset = 0;
@@ -65,9 +80,7 @@ async function backfillEmbeddings() {
         continue;
       }
 
-      // Convert embedding array to string representation expected by vector(768) column.
-      // The vector column expects a string like '[0.1,0.2,...]' (JSON array without outer quotes).
-      const embeddingStr = `[${embedding.join(",")}]`;
+      const embeddingStr = embeddingToVectorString(embedding);
 
       const { error: updateError } = await supabase
         .from("content")
