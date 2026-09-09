@@ -1,5 +1,5 @@
 /**
- * Gemini text-embedding-004 (768 dimensions).
+ * Gemini text-embedding-004 (1536 dimensions).
  * Fire-and-forget safe — returns [] on any failure.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
