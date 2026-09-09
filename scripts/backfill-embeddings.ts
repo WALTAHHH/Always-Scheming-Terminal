@@ -75,7 +75,7 @@ async function backfillEmbeddings() {
         console.warn(`  Row ${row.id}: failed to generate embedding (maybe GOOGLE_AI_API_KEY not set)`);
         continue;
       }
-      if (embedding.length !== 768) {
+      if (embedding.length !== 1536) {
         console.warn(`  Row ${row.id}: unexpected embedding length ${embedding.length}, skipping`);
         continue;
       }

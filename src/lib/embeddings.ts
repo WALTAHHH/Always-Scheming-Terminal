@@ -12,11 +12,11 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), 6000);
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: { parts: [{ text }] } }),
+        body: JSON.stringify({ content: { parts: [{ text }] }, outputDimensionality: 1536 }),
         signal: controller.signal,
       }
     );
