@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let articles: any[] = [];
 
-  if (embedding.length === 768) {
+  if (embedding.length === 1536) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc('match_content', {
       query_embedding: embedding,
