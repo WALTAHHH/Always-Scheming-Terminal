@@ -217,7 +217,7 @@ function buildMcpServer() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let articles: any[] = [];
 
-      if (embedding.length === 768) {
+      if (embedding.length === 1536) {
         const { data } = await (sb as any).rpc("match_content", {
           query_embedding: embedding,
           match_limit: k,
