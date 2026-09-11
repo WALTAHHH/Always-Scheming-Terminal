@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ShortcutsHelp } from "./ShortcutsHelp";
+
 import { TickerBar } from "./TickerBar";
 import { useTheme } from "./ThemeProvider";
 import { createAuthBrowserClient } from "@/lib/supabase";
@@ -128,7 +128,7 @@ export function Header() {
             <span className="text-ast-muted text-[10px] sm:text-xs">v0.1</span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            <span className="hidden sm:inline"><ShortcutsHelp /></span>
+            
             <a
               href="/api/feed.xml"
               target="_blank"
