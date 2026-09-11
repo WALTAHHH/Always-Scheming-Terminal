@@ -292,7 +292,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                           {badge.label}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-ast-text text-xs leading-tight line-clamp-1 group-hover:text-ast-accent transition-colors">
+                          <p className="text-ast-text text-sm font-medium leading-snug line-clamp-2 group-hover:text-ast-accent transition-colors">
                             {signal.summary}
                           </p>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -358,7 +358,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                         {deal.signal_type === "acquisition" ? "M&A" : deal.signal_type === "fundraising" ? "RAISE" : "EARN"}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-ast-text text-xs leading-tight line-clamp-2 group-hover:text-ast-accent transition-colors">
+                        <p className="text-ast-text text-sm font-medium leading-snug line-clamp-2 group-hover:text-ast-accent transition-colors">
                           {deal.summary}
                         </p>
                         <div className="flex items-center gap-1.5 mt-0.5">
