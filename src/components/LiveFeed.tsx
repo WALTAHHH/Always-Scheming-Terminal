@@ -199,72 +199,20 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     };
   }, [isDraggingV, topHeight]);
 
-  // Toggle panel visibility (single-panel mode on mobile/PWA)
-  const togglePanel = useCallback((panel: keyof PanelVisibility) => {
+  
+
+  // Select a single panel (tab bar)
+  const selectPanel = useCallback((panel: keyof PanelVisibility) => {
     setPanels((prev) => {
-      let next: PanelVisibility;
-      
-      if (isMobile) {
-        // Mobile/PWA: only one panel at a time (radio button behavior)
-        next = { feed: false, signal: false, [panel]: true } as PanelVisibility;
-      } else {
-        // Desktop: toggle individual panels
-        next = { ...prev, [panel]: !prev[panel] };
-      }
-      
+      const next = { feed: false, signal: false, [panel]: true } as PanelVisibility;
       localStorage.setItem(STORAGE_KEY_PANELS, JSON.stringify(next));
       return next;
     });
-  }, [isMobile]);
-
-  // Adjust split positions
-  const adjustLeftWidth = useCallback((delta: number) => {
-    setLeftWidth((prev) => {
-      const next = Math.min(Math.max(prev + delta, MIN_PANE_WIDTH), MAX_PANE_WIDTH);
-      localStorage.setItem(STORAGE_KEY_HORIZONTAL, next.toString());
-      return next;
-    });
   }, []);
 
-  const adjustTopHeight = useCallback((delta: number) => {
-    setTopHeight((prev) => {
-      const next = Math.min(Math.max(prev + delta, MIN_PANE_HEIGHT), MAX_PANE_HEIGHT);
-      localStorage.setItem(STORAGE_KEY_VERTICAL, next.toString());
-      return next;
-    });
-  }, []);
+  
 
-  // Listen for keyboard shortcuts
-  useEffect(() => {
-    function handleShortcut(e: Event) {
-      const detail = (e as CustomEvent<{ key: string }>).detail;
-      switch (detail.key) {
-        case "toggle-feed":
-          togglePanel("feed");
-          break;
-        case "toggle-signal":
-          togglePanel("signal");
-          break;
-        case "toggle-companies":
-          // Companies is now a modal via header icon — no panel toggle
-          break;
-        case "shrink-left":
-          adjustLeftWidth(-5);
-          break;
-        case "grow-left":
-          adjustLeftWidth(5);
-          break;
-        case "shrink-top":
-          adjustTopHeight(-5);
-          break;
-        case "grow-top":
-          adjustTopHeight(5);
-          break;
-      }
-    }
-    window.addEventListener("ast-shortcut", handleShortcut);
-    return () => window.removeEventListener("ast-shortcut", handleShortcut);
-  }, [togglePanel, adjustLeftWidth, adjustTopHeight]);
+  
 
   // Update global items for company drawer
   useEffect(() => {
@@ -439,6 +387,9 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     },
   ], [items, sources, hasMore, loadingMore, loadMore]);
 
+  // Active tab for tab bar
+  const activeTab = panels.feed && !panels.signal ? 'feed' : panels.signal && !panels.feed ? 'signal' : 'feed';
+
   // Mobile view
   if (isMobile) {
     return (
@@ -456,6 +407,29 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   return (
     <>
       <NewItemsBanner count={newCount} onClick={loadNewItems} />
+
+      <div className="hidden sm:flex h-9 border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm">
+        <button
+          onClick={() => selectPanel('feed')}
+          className={`flex-1 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
+            activeTab === 'feed'
+              ? 'text-ast-text border-b-2 border-ast-accent bg-ast-surface'
+              : 'text-ast-muted hover:text-ast-text'
+          }`}
+        >
+          FEED
+        </button>
+        <button
+          onClick={() => selectPanel('signal')}
+          className={`flex-1 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
+            activeTab === 'signal'
+              ? 'text-ast-text border-b-2 border-ast-accent bg-ast-surface'
+              : 'text-ast-muted hover:text-ast-text'
+          }`}
+        >
+          SIGNAL
+        </button>
+      </div>
 
       <div 
         ref={containerRef}
