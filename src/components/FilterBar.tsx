@@ -207,6 +207,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
@@ -226,9 +227,11 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
       const detail = (e as CustomEvent<{ key: string }>).detail;
       switch (detail.key) {
         case "source":
+          setTrayOpen(true);
           setOpenDropdown((prev) => (prev === "source" ? null : "source"));
           break;
         case "company":
+          setTrayOpen(true);
           setOpenDropdown((prev) => (prev === "company" ? null : "company"));
           break;
         case "search": {
@@ -241,6 +244,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
         }
         case "close":
           setOpenDropdown(null);
+          setTrayOpen(false);
           break;
       }
     }
@@ -312,104 +316,132 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
   return (
     <div className="h-11 border-b border-ast-border bg-ast-bg sticky top-0 z-40 flex items-center">
       {/* ── Desktop filter bar ── */}
-      <div className="hidden sm:flex max-w-5xl mx-auto px-4 items-center gap-2 w-full overflow-x-auto" ref={barRef}>
-        <FilterDropdown
-          label="Source"
-          options={sourceOptions}
-          selected={filters.sources}
-          isOpen={openDropdown === "source"}
-          onToggleOpen={() => setOpenDropdown(openDropdown === "source" ? null : "source")}
-          onToggleValue={(v) =>
-            updateFilters({ sources: toggleInArray(filters.sources, v) })
-          }
-        />
-        <FilterDropdown
-          label="Category"
-          options={categoryOptions}
-          selected={filters.categories}
-          isOpen={openDropdown === "category"}
-          onToggleOpen={() => setOpenDropdown(openDropdown === "category" ? null : "category")}
-          onToggleValue={(v) =>
-            updateFilters({ categories: toggleInArray(filters.categories, v) })
-          }
-        />
-        <FilterDropdown
-          label="Platform"
-          options={platformOptions}
-          selected={filters.platforms}
-          isOpen={openDropdown === "platform"}
-          onToggleOpen={() => setOpenDropdown(openDropdown === "platform" ? null : "platform")}
-          onToggleValue={(v) =>
-            updateFilters({ platforms: toggleInArray(filters.platforms, v) })
-          }
-        />
-        <FilterDropdown
-          label="Theme"
-          options={themeOptions}
-          selected={filters.themes}
-          isOpen={openDropdown === "theme"}
-          onToggleOpen={() => setOpenDropdown(openDropdown === "theme" ? null : "theme")}
-          onToggleValue={(v) =>
-            updateFilters({ themes: toggleInArray(filters.themes, v) })
-          }
-        />
-        {companyOptions.length > 0 && (
-          <FilterDropdown
-            label="Company"
-            options={companyOptions}
-            selected={filters.companies}
-            isOpen={openDropdown === "company"}
-            onToggleOpen={() => setOpenDropdown(openDropdown === "company" ? null : "company")}
-            onToggleValue={(v) =>
-              updateFilters({ companies: toggleInArray(filters.companies, v) })
-            }
-          />
-        )}
+      <div className="hidden sm:flex max-w-5xl mx-auto px-4 flex-col" ref={barRef}>
+        {/* Trigger row */}
+        <div className="flex items-center gap-2 w-full py-2">
+          <button
+            onClick={() => setTrayOpen(!trayOpen)}
+            className={`px-3 py-1.5 text-xs rounded border transition-colors flex items-center gap-2 ${
+              trayOpen || hasActiveFilters
+                ? "border-ast-accent text-ast-accent bg-ast-accent/10"
+                : "border-ast-border text-ast-muted hover:border-ast-muted"
+            }`}
+          >
+            <span>⚙ Filter</span>
+            {activeFilterCount > 0 && (
+              <span className="px-1.5 py-0.5 bg-ast-accent/20 rounded text-[10px]">
+                · {activeFilterCount}
+              </span>
+            )}
+          </button>
 
-        {/* AND/OR toggle */}
-        <button
-          onClick={() =>
-            updateFilters({ mode: filters.mode === "and" ? "or" : "and" })
-          }
-          className={`px-2 py-1.5 text-[10px] rounded border font-semibold transition-colors ${
-            filters.mode === "and"
-              ? "border-ast-accent text-ast-accent"
-              : "border-ast-border text-ast-muted"
-          }`}
-        >
-          {filters.mode.toUpperCase()}
-        </button>
+          <div className="flex-1" />
 
-        <div className="flex-1" />
+          {/* Search */}
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search..."
+              value={filters.search}
+              onChange={(e) => updateFilters({ search: e.target.value })}
+              className="bg-ast-surface border border-ast-border rounded px-3 py-1.5 text-xs text-ast-text placeholder:text-ast-muted w-48 focus:border-ast-accent focus:outline-none transition-colors"
+            />
+            {filters.search && (
+              <button
+                onClick={() => updateFilters({ search: "" })}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-ast-muted hover:text-ast-text text-xs"
+              >
+                ✕
+              </button>
+            )}
+          </div>
 
-        {/* Search */}
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search..."
-            value={filters.search}
-            onChange={(e) => updateFilters({ search: e.target.value })}
-            className="bg-ast-surface border border-ast-border rounded px-3 py-1.5 text-xs text-ast-text placeholder:text-ast-muted w-48 focus:border-ast-accent focus:outline-none transition-colors"
-          />
-          {filters.search && (
+          {/* Clear all */}
+          {hasActiveFilters && (
             <button
-              onClick={() => updateFilters({ search: "" })}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-ast-muted hover:text-ast-text text-xs"
+              onClick={clearAll}
+              className="px-3 py-1.5 text-xs rounded border border-ast-pink/40 text-ast-pink hover:bg-ast-pink/10 transition-colors"
             >
-              ✕
+              ✕ Clear
             </button>
           )}
         </div>
 
-        {/* Clear all */}
-        {hasActiveFilters && (
-          <button
-            onClick={clearAll}
-            className="px-3 py-1.5 text-xs rounded border border-ast-pink/40 text-ast-pink hover:bg-ast-pink/10 transition-colors"
-          >
-            ✕ Clear
-          </button>
-        )}
+        {/* Slide-down tray */}
+        <div
+          className={`overflow-hidden transition-all duration-200 ease-in-out border-b border-ast-border bg-ast-bg ${
+            trayOpen ? "max-h-[400px]" : "max-h-0"
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 max-w-5xl mx-auto">
+            <FilterDropdown
+              label="Source"
+              options={sourceOptions}
+              selected={filters.sources}
+              isOpen={openDropdown === "source"}
+              onToggleOpen={() => setOpenDropdown(openDropdown === "source" ? null : "source")}
+              onToggleValue={(v) =>
+                updateFilters({ sources: toggleInArray(filters.sources, v) })
+              }
+            />
+            <FilterDropdown
+              label="Category"
+              options={categoryOptions}
+              selected={filters.categories}
+              isOpen={openDropdown === "category"}
+              onToggleOpen={() => setOpenDropdown(openDropdown === "category" ? null : "category")}
+              onToggleValue={(v) =>
+                updateFilters({ categories: toggleInArray(filters.categories, v) })
+              }
+            />
+            <FilterDropdown
+              label="Platform"
+              options={platformOptions}
+              selected={filters.platforms}
+              isOpen={openDropdown === "platform"}
+              onToggleOpen={() => setOpenDropdown(openDropdown === "platform" ? null : "platform")}
+              onToggleValue={(v) =>
+                updateFilters({ platforms: toggleInArray(filters.platforms, v) })
+              }
+            />
+            <FilterDropdown
+              label="Theme"
+              options={themeOptions}
+              selected={filters.themes}
+              isOpen={openDropdown === "theme"}
+              onToggleOpen={() => setOpenDropdown(openDropdown === "theme" ? null : "theme")}
+              onToggleValue={(v) =>
+                updateFilters({ themes: toggleInArray(filters.themes, v) })
+              }
+            />
+            {companyOptions.length > 0 && (
+              <FilterDropdown
+                label="Company"
+                options={companyOptions}
+                selected={filters.companies}
+                isOpen={openDropdown === "company"}
+                onToggleOpen={() => setOpenDropdown(openDropdown === "company" ? null : "company")}
+                onToggleValue={(v) =>
+                  updateFilters({ companies: toggleInArray(filters.companies, v) })
+                }
+              />
+            )}
+
+            {/* AND/OR toggle */}
+            <button
+              onClick={() =>
+                updateFilters({ mode: filters.mode === "and" ? "or" : "and" })
+              }
+              className={`px-2 py-1.5 text-[10px] rounded border font-semibold transition-colors ${
+                filters.mode === "and"
+                  ? "border-ast-accent text-ast-accent"
+                  : "border-ast-border text-ast-muted"
+              }`}
+            >
+              {filters.mode.toUpperCase()}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ── Mobile filter bar ── */}
