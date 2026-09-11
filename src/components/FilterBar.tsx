@@ -9,12 +9,6 @@ interface TagOption {
   count: number;
 }
 
-interface FilterBarProps {
-  sources: { name: string }[];
-  tagCounts: Record<string, Record<string, number>>;
-  onFilterChange: (filters: FilterState) => void;
-}
-
 export interface FilterState {
   sources: string[];
   categories: string[];
@@ -35,104 +29,15 @@ export const EMPTY_FILTERS: FilterState = {
   mode: "or",
 };
 
-function FilterDropdown({
-  label,
-  options,
-  selected,
-  isOpen,
-  onToggleOpen,
-  onToggleValue,
-}: {
-  label: string;
-  options: TagOption[];
-  selected: string[];
-  isOpen: boolean;
-  onToggleOpen: () => void;
-  onToggleValue: (value: string) => void;
-}) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Calculate position when dropdown opens
-  useEffect(() => {
-    if (isOpen && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setPosition({
-        top: rect.bottom + 4,
-        left: rect.left,
-      });
-    }
-  }, [isOpen]);
-
-  if (options.length === 0) return null;
-
-  const dropdownMenu = (
-    <div 
-      className="fixed bg-ast-surface border border-ast-border rounded-lg shadow-xl min-w-[180px] max-h-[300px] overflow-y-auto"
-      style={{ top: position.top, left: position.left, zIndex: 99999 }}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => onToggleValue(opt.value)}
-          className={`w-full text-left px-3 py-1.5 text-xs hover:bg-ast-bg/50 flex items-center justify-between transition-colors ${
-            selected.includes(opt.value) ? "text-ast-accent" : "text-ast-text"
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            <span
-              className={`w-3 h-3 rounded-sm border flex items-center justify-center ${
-                selected.includes(opt.value)
-                  ? "border-ast-accent bg-ast-accent/20"
-                  : "border-ast-border"
-              }`}
-            >
-              {selected.includes(opt.value) && (
-                <span className="text-ast-accent text-[8px]">✓</span>
-              )}
-            </span>
-            {opt.value}
-          </span>
-          <span className="text-ast-muted text-[10px]">{opt.count}</span>
-        </button>
-      ))}
-    </div>
-  );
-
-  return (
-    <div className="relative">
-      <button
-        ref={buttonRef}
-        onClick={onToggleOpen}
-        className={`px-3 py-1.5 text-xs rounded border transition-colors ${
-          selected.length > 0
-            ? "border-ast-accent text-ast-accent bg-ast-accent/10"
-            : "border-ast-border text-ast-muted hover:border-ast-muted"
-        }`}
-      >
-        {label}
-        {selected.length > 0 && (
-          <span className="ml-1.5 px-1.5 py-0.5 bg-ast-accent/20 rounded text-[10px]">
-            {selected.length}
-          </span>
-        )}
-        <span className="ml-1">▾</span>
-      </button>
-
-      {isOpen && mounted && createPortal(dropdownMenu, document.body)}
-    </div>
-  );
+interface FilterBarProps {
+  sources: { name: string }[];
+  tagCounts: Record<string, Record<string, number>>;
+  onFilterChange: (filters: FilterState) => void;
 }
 
-// ── Mobile filter list (inline, no dropdown positioning issues) ────
+// ── Inline filter section inside the drawer ────────────────────────────────
 
-function MobileFilterList({
+function FilterSection({
   label,
   options,
   selected,
@@ -148,41 +53,35 @@ function MobileFilterList({
   if (options.length === 0) return null;
 
   return (
-    <div>
+    <div className="border-b border-ast-border/50">
       <button
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded border transition-colors ${
-          selected.length > 0
-            ? "border-ast-accent text-ast-accent bg-ast-accent/10"
-            : "border-ast-border text-ast-muted"
-        }`}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-ast-muted hover:text-ast-text transition-colors"
       >
-        <span>
-          {label}
+        <span className="flex items-center gap-2">
+          <span className="uppercase tracking-widest text-[10px] font-semibold">{label}</span>
           {selected.length > 0 && (
-            <span className="ml-1.5 px-1.5 py-0.5 bg-ast-accent/20 rounded text-[10px]">
+            <span className="px-1.5 py-0.5 rounded-full bg-ast-accent/20 text-ast-accent text-[10px] font-medium">
               {selected.length}
             </span>
           )}
         </span>
-        <span>{open ? "▾" : "▸"}</span>
+        <span className="text-[10px]">{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
-        <div className="mt-1 border border-ast-border rounded-lg overflow-hidden max-h-[200px] overflow-y-auto">
+        <div className="pb-2 max-h-[240px] overflow-y-auto">
           {options.map((opt) => (
             <button
               key={opt.value}
               onClick={() => onToggleValue(opt.value)}
-              className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
-                selected.includes(opt.value)
-                  ? "text-ast-accent bg-ast-accent/5"
-                  : "text-ast-text"
+              className={`w-full text-left px-4 py-1.5 text-xs flex items-center justify-between transition-colors hover:bg-ast-surface/50 ${
+                selected.includes(opt.value) ? "text-ast-accent" : "text-ast-text"
               }`}
             >
               <span className="flex items-center gap-2">
                 <span
-                  className={`w-3 h-3 rounded-sm border flex items-center justify-center ${
+                  className={`w-3 h-3 rounded-sm border flex-shrink-0 flex items-center justify-center ${
                     selected.includes(opt.value)
                       ? "border-ast-accent bg-ast-accent/20"
                       : "border-ast-border"
@@ -203,22 +102,15 @@ function MobileFilterList({
   );
 }
 
+// ── Main FilterBar ─────────────────────────────────────────────────────────
+
 export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps) {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [trayOpen, setTrayOpen] = useState(false);
-  const barRef = useRef<HTMLDivElement>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (barRef.current && !barRef.current.contains(e.target as Node)) {
-        setOpenDropdown(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    setMounted(true);
   }, []);
 
   // Listen for keyboard shortcut events from KeyboardNav
@@ -227,24 +119,11 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
       const detail = (e as CustomEvent<{ key: string }>).detail;
       switch (detail.key) {
         case "source":
-          setTrayOpen(true);
-          setOpenDropdown((prev) => (prev === "source" ? null : "source"));
-          break;
         case "company":
-          setTrayOpen(true);
-          setOpenDropdown((prev) => (prev === "company" ? null : "company"));
+          setDrawerOpen(true);
           break;
-        case "search": {
-          setOpenDropdown(null);
-          const search = barRef.current?.querySelector<HTMLInputElement>(
-            'input[placeholder="Search..."]'
-          );
-          search?.focus();
-          break;
-        }
         case "close":
-          setOpenDropdown(null);
-          setTrayOpen(false);
+          setDrawerOpen(false);
           break;
       }
     }
@@ -274,181 +153,79 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
 
   const hasActiveFilters = activeFilterCount > 0;
 
-  // Build tag options from actual item counts
-  const toOptions = (dim: string): TagOption[] => {
-    const counts = tagCounts[dim] || {};
-    return Object.entries(counts)
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count);
+  const clearAll = () => {
+    setFilters(EMPTY_FILTERS);
+    onFilterChange(EMPTY_FILTERS);
   };
 
-  // Category options: always show all categories, even with 0 count
+  // Build options
+  const toOptions = (dim: string): TagOption[] =>
+    Object.entries(tagCounts[dim] || {})
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count);
+
   const categoryOptions: TagOption[] = ALL_CATEGORIES.map((cat) => ({
     value: cat,
     count: tagCounts.category?.[cat] || 0,
   })).sort((a, b) => b.count - a.count);
 
-  // Platform options: always show all platforms, even with 0 count
   const platformOptions: TagOption[] = ALL_PLATFORMS.map((plat) => ({
     value: plat,
     count: tagCounts.platform?.[plat] || 0,
   })).sort((a, b) => b.count - a.count);
 
-  // Theme options: always show all themes, even with 0 count
   const themeOptions: TagOption[] = ALL_THEMES.map((theme) => ({
     value: theme,
     count: tagCounts.theme?.[theme] || 0,
   })).sort((a, b) => b.count - a.count);
 
-  const sourceOptions: TagOption[] = sources.map((s) => ({
-    value: s.name,
-    count: tagCounts._sources?.[s.name] || 0,
-  })).sort((a, b) => b.count - a.count);
+  const sourceOptions: TagOption[] = sources
+    .map((s) => ({ value: s.name, count: tagCounts._sources?.[s.name] || 0 }))
+    .sort((a, b) => b.count - a.count);
 
   const companyOptions = toOptions("company");
 
-  const clearAll = () => {
-    setFilters(EMPTY_FILTERS);
-    onFilterChange(EMPTY_FILTERS);
-    setOpenDropdown(null);
-  };
+  // ── Drawer portal ──
+  const drawer = mounted ? (
+    <>
+      {/* Backdrop */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-[9990] bg-black/40 backdrop-blur-[2px]"
+          onClick={() => setDrawerOpen(false)}
+        />
+      )}
 
-  return (
-    <div className="h-11 border-b border-ast-border bg-ast-bg sticky top-0 z-40 flex items-center">
-      {/* ── Desktop filter bar ── */}
-      <div className="hidden sm:flex max-w-5xl mx-auto px-4 flex-col" ref={barRef}>
-        {/* Trigger row */}
-        <div className="flex items-center gap-2 w-full py-2">
-          <button
-            onClick={() => setTrayOpen(!trayOpen)}
-            className={`px-3 py-1.5 text-xs rounded border transition-colors flex items-center gap-2 ${
-              trayOpen || hasActiveFilters
-                ? "border-ast-accent text-ast-accent bg-ast-accent/10"
-                : "border-ast-border text-ast-muted hover:border-ast-muted"
-            }`}
-          >
-            <span>⚙ Filter</span>
-            {activeFilterCount > 0 && (
-              <span className="px-1.5 py-0.5 bg-ast-accent/20 rounded text-[10px]">
-                · {activeFilterCount}
-              </span>
-            )}
-          </button>
-
-          <div className="flex-1" />
-
-          {/* Search */}
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search..."
-              value={filters.search}
-              onChange={(e) => updateFilters({ search: e.target.value })}
-              className="bg-ast-surface border border-ast-border rounded px-3 py-1.5 text-xs text-ast-text placeholder:text-ast-muted w-48 focus:border-ast-accent focus:outline-none transition-colors"
-            />
-            {filters.search && (
+      {/* Slide-in drawer from left */}
+      <div
+        className={`fixed top-0 left-0 h-full z-[9995] w-72 bg-ast-bg border-r border-ast-border flex flex-col shadow-2xl transition-transform duration-200 ease-in-out ${
+          drawerOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {/* Drawer header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-ast-border">
+          <span className="text-xs font-semibold tracking-widest uppercase text-ast-muted">Filters</span>
+          <div className="flex items-center gap-2">
+            {hasActiveFilters && (
               <button
-                onClick={() => updateFilters({ search: "" })}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-ast-muted hover:text-ast-text text-xs"
+                onClick={clearAll}
+                className="text-[10px] text-ast-pink hover:text-ast-pink/80 transition-colors"
               >
-                ✕
+                Clear all
               </button>
             )}
-          </div>
-
-          {/* Clear all */}
-          {hasActiveFilters && (
             <button
-              onClick={clearAll}
-              className="px-3 py-1.5 text-xs rounded border border-ast-pink/40 text-ast-pink hover:bg-ast-pink/10 transition-colors"
+              onClick={() => setDrawerOpen(false)}
+              className="text-ast-muted hover:text-ast-text transition-colors text-base leading-none"
             >
-              ✕ Clear
-            </button>
-          )}
-        </div>
-
-        {/* Slide-down tray */}
-        <div
-          className={`overflow-hidden transition-all duration-200 ease-in-out border-b border-ast-border bg-ast-bg ${
-            trayOpen ? "max-h-[400px]" : "max-h-0"
-          }`}
-        >
-          <div className="flex flex-wrap items-center gap-2 px-4 py-3 max-w-5xl mx-auto">
-            <FilterDropdown
-              label="Source"
-              options={sourceOptions}
-              selected={filters.sources}
-              isOpen={openDropdown === "source"}
-              onToggleOpen={() => setOpenDropdown(openDropdown === "source" ? null : "source")}
-              onToggleValue={(v) =>
-                updateFilters({ sources: toggleInArray(filters.sources, v) })
-              }
-            />
-            <FilterDropdown
-              label="Category"
-              options={categoryOptions}
-              selected={filters.categories}
-              isOpen={openDropdown === "category"}
-              onToggleOpen={() => setOpenDropdown(openDropdown === "category" ? null : "category")}
-              onToggleValue={(v) =>
-                updateFilters({ categories: toggleInArray(filters.categories, v) })
-              }
-            />
-            <FilterDropdown
-              label="Platform"
-              options={platformOptions}
-              selected={filters.platforms}
-              isOpen={openDropdown === "platform"}
-              onToggleOpen={() => setOpenDropdown(openDropdown === "platform" ? null : "platform")}
-              onToggleValue={(v) =>
-                updateFilters({ platforms: toggleInArray(filters.platforms, v) })
-              }
-            />
-            <FilterDropdown
-              label="Theme"
-              options={themeOptions}
-              selected={filters.themes}
-              isOpen={openDropdown === "theme"}
-              onToggleOpen={() => setOpenDropdown(openDropdown === "theme" ? null : "theme")}
-              onToggleValue={(v) =>
-                updateFilters({ themes: toggleInArray(filters.themes, v) })
-              }
-            />
-            {companyOptions.length > 0 && (
-              <FilterDropdown
-                label="Company"
-                options={companyOptions}
-                selected={filters.companies}
-                isOpen={openDropdown === "company"}
-                onToggleOpen={() => setOpenDropdown(openDropdown === "company" ? null : "company")}
-                onToggleValue={(v) =>
-                  updateFilters({ companies: toggleInArray(filters.companies, v) })
-                }
-              />
-            )}
-
-            {/* AND/OR toggle */}
-            <button
-              onClick={() =>
-                updateFilters({ mode: filters.mode === "and" ? "or" : "and" })
-              }
-              className={`px-2 py-1.5 text-[10px] rounded border font-semibold transition-colors ${
-                filters.mode === "and"
-                  ? "border-ast-accent text-ast-accent"
-                  : "border-ast-border text-ast-muted"
-              }`}
-            >
-              {filters.mode.toUpperCase()}
+              ×
             </button>
           </div>
         </div>
-      </div>
 
-      {/* ── Mobile filter bar ── */}
-      <div className="sm:hidden">
-        {/* Top row: search + filter toggle */}
-        <div className="flex items-center gap-2 px-3 py-2">
-          <div className="relative flex-1">
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-ast-border/50">
+          <div className="relative">
             <input
               type="text"
               placeholder="Search..."
@@ -465,95 +242,145 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
               </button>
             )}
           </div>
+        </div>
+
+        {/* AND/OR toggle */}
+        <div className="px-4 py-2 border-b border-ast-border/50 flex items-center gap-2">
+          <span className="text-[10px] text-ast-muted uppercase tracking-widest">Match</span>
           <button
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className={`px-3 py-1.5 text-xs rounded border transition-colors flex-shrink-0 ${
-              hasActiveFilters
-                ? "border-ast-accent text-ast-accent bg-ast-accent/10"
+            onClick={() => updateFilters({ mode: filters.mode === "and" ? "or" : "and" })}
+            className={`px-2 py-1 text-[10px] rounded border font-semibold transition-colors ${
+              filters.mode === "and"
+                ? "border-ast-accent text-ast-accent"
                 : "border-ast-border text-ast-muted"
             }`}
           >
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 bg-ast-accent/20 rounded text-[10px]">
-                {activeFilterCount}
-              </span>
-            )}
+            {filters.mode === "and" ? "ALL (AND)" : "ANY (OR)"}
           </button>
         </div>
 
-        {/* Slide-down filter panel */}
-        {mobileOpen && (
-          <div className="px-3 pb-3 space-y-2 border-t border-ast-border/50 pt-2 relative z-50 bg-ast-bg">
-            <MobileFilterList
-              label="Source"
-              options={sourceOptions}
-              selected={filters.sources}
-              onToggleValue={(v) =>
-                updateFilters({ sources: toggleInArray(filters.sources, v) })
-              }
+        {/* Filter sections — scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <FilterSection
+            label="Source"
+            options={sourceOptions}
+            selected={filters.sources}
+            onToggleValue={(v) => updateFilters({ sources: toggleInArray(filters.sources, v) })}
+          />
+          <FilterSection
+            label="Category"
+            options={categoryOptions}
+            selected={filters.categories}
+            onToggleValue={(v) => updateFilters({ categories: toggleInArray(filters.categories, v) })}
+          />
+          <FilterSection
+            label="Platform"
+            options={platformOptions}
+            selected={filters.platforms}
+            onToggleValue={(v) => updateFilters({ platforms: toggleInArray(filters.platforms, v) })}
+          />
+          <FilterSection
+            label="Theme"
+            options={themeOptions}
+            selected={filters.themes}
+            onToggleValue={(v) => updateFilters({ themes: toggleInArray(filters.themes, v) })}
+          />
+          {companyOptions.length > 0 && (
+            <FilterSection
+              label="Company"
+              options={companyOptions}
+              selected={filters.companies}
+              onToggleValue={(v) => updateFilters({ companies: toggleInArray(filters.companies, v) })}
             />
-            <MobileFilterList
-              label="Category"
-              options={categoryOptions}
-              selected={filters.categories}
-              onToggleValue={(v) =>
-                updateFilters({ categories: toggleInArray(filters.categories, v) })
-              }
-            />
-            <MobileFilterList
-              label="Platform"
-              options={platformOptions}
-              selected={filters.platforms}
-              onToggleValue={(v) =>
-                updateFilters({ platforms: toggleInArray(filters.platforms, v) })
-              }
-            />
-            <MobileFilterList
-              label="Theme"
-              options={themeOptions}
-              selected={filters.themes}
-              onToggleValue={(v) =>
-                updateFilters({ themes: toggleInArray(filters.themes, v) })
-              }
-            />
-            {companyOptions.length > 0 && (
-              <MobileFilterList
-                label="Company"
-                options={companyOptions}
-                selected={filters.companies}
-                onToggleValue={(v) =>
-                  updateFilters({ companies: toggleInArray(filters.companies, v) })
-                }
-              />
-            )}
+          )}
+        </div>
+      </div>
+    </>
+  ) : null;
 
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                onClick={() =>
-                  updateFilters({ mode: filters.mode === "and" ? "or" : "and" })
-                }
-                className={`px-2 py-1.5 text-[10px] rounded border font-semibold transition-colors ${
-                  filters.mode === "and"
-                    ? "border-ast-accent text-ast-accent"
-                    : "border-ast-border text-ast-muted"
-                }`}
-              >
-                {filters.mode.toUpperCase()}
-              </button>
+  return (
+    <>
+      {/* ── Trigger row — desktop ── */}
+      <div className="hidden sm:flex h-9 border-b border-ast-border bg-ast-bg items-center px-4 gap-3 sticky top-0 z-40">
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded border transition-colors ${
+            hasActiveFilters
+              ? "border-ast-accent text-ast-accent bg-ast-accent/10"
+              : "border-ast-border text-ast-muted hover:text-ast-text hover:border-ast-muted"
+          }`}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/>
+          </svg>
+          <span>Filter</span>
+          {activeFilterCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-ast-accent/20 text-ast-accent text-[10px] font-medium">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
 
-              {hasActiveFilters && (
+        {/* Active filter pills */}
+        {hasActiveFilters && (
+          <div className="flex items-center gap-1.5 flex-1 overflow-x-auto">
+            {[...filters.sources, ...filters.categories, ...filters.platforms, ...filters.themes, ...filters.companies].map((v) => (
+              <span key={v} className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 bg-ast-surface border border-ast-border rounded text-[10px] text-ast-text">
+                {v}
                 <button
-                  onClick={clearAll}
-                  className="px-3 py-1.5 text-xs rounded border border-ast-pink/40 text-ast-pink hover:bg-ast-pink/10 transition-colors"
-                >
-                  ✕ Clear All
-                </button>
-              )}
-            </div>
+                  onClick={() => {
+                    const next = {
+                      ...filters,
+                      sources: filters.sources.filter(x => x !== v),
+                      categories: filters.categories.filter(x => x !== v),
+                      platforms: filters.platforms.filter(x => x !== v),
+                      themes: filters.themes.filter(x => x !== v),
+                      companies: filters.companies.filter(x => x !== v),
+                    };
+                    setFilters(next);
+                    onFilterChange(next);
+                  }}
+                  className="text-ast-muted hover:text-ast-pink ml-0.5"
+                >×</button>
+              </span>
+            ))}
+            {filters.search && (
+              <span className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 bg-ast-surface border border-ast-border rounded text-[10px] text-ast-text">
+                "{filters.search}"
+                <button onClick={() => updateFilters({ search: "" })} className="text-ast-muted hover:text-ast-pink ml-0.5">×</button>
+              </span>
+            )}
+            <button onClick={clearAll} className="flex-shrink-0 text-[10px] text-ast-pink hover:text-ast-pink/80 ml-1">
+              Clear all
+            </button>
           </div>
         )}
       </div>
-    </div>
+
+      {/* ── Mobile trigger row ── */}
+      <div className="sm:hidden flex h-9 border-b border-ast-border bg-ast-bg items-center px-3 gap-2 sticky top-0 z-40">
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded border transition-colors ${
+            hasActiveFilters
+              ? "border-ast-accent text-ast-accent bg-ast-accent/10"
+              : "border-ast-border text-ast-muted"
+          }`}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/>
+          </svg>
+          <span>Filter</span>
+          {activeFilterCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-ast-accent/20 text-ast-accent text-[10px] font-medium">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Drawer portal */}
+      {mounted && createPortal(drawer, document.body)}
+    </>
   );
 }
