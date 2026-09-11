@@ -70,6 +70,21 @@ function getSignalBadge(signalType: string): { label: string; color: string } {
   return map[signalType] || { label: signalType.toUpperCase().slice(0, 6), color: "ast-muted" };
 }
 
+function getSignalBorderColor(signalType: string): string {
+  const map: Record<string, string> = {
+    acquisition: "border-l-ast-pink",
+    fundraising: "border-l-ast-gold",
+    earnings: "border-l-ast-gold",
+    product_launch: "border-l-ast-mint",
+    layoffs: "border-l-ast-pink",
+    leadership: "border-l-ast-muted",
+    regulatory: "border-l-ast-muted",
+    platform_change: "border-l-ast-accent",
+    macro: "border-l-ast-accent",
+  };
+  return map[signalType] || "border-l-ast-accent";
+}
+
 function ScoreBreakdownPanel({ 
   breakdown, 
   leadUrl,
@@ -285,7 +300,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                       href={signal.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block group rounded hover:bg-ast-mint/5 transition-colors -mx-2 px-2"
+                      className={`block group rounded hover:bg-ast-mint/5 transition-colors -mx-2 px-2 border-l-2 ${getSignalBorderColor(signal.signal_type)}`}
                     >
                       <div className="flex items-start gap-2">
                         <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-${badge.color}/20 text-${badge.color}`}>
@@ -345,7 +360,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                     href={deal.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block group"
+                    className={`block group border-l-2 ${getSignalBorderColor(deal.signal_type)}`}
                   >
                     <div className="flex items-start gap-2">
                       <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${
