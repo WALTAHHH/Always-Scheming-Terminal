@@ -81,7 +81,7 @@ export function ClusterRow({ cluster }: ClusterRowProps) {
         <div className="ml-3 sm:ml-6 border-l border-ast-border/50">
           {cluster.related.map((item) => (
             <div key={item.id} className="opacity-80">
-              <FeedRow item={item} />
+              <FeedRow item={item} isRelated />
             </div>
           ))}
         </div>

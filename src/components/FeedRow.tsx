@@ -120,10 +120,11 @@ function getArticleAge(publishedAt: string | null): "fresh" | "normal" | "old" {
 }
 
 interface FeedRowProps {
+  isRelated?: boolean;
   item: FeedItem;
 }
 
-export function FeedRow({ item }: FeedRowProps) {
+export function FeedRow({ item, isRelated = false }: FeedRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [age, setAge] = useState<"fresh" | "normal" | "old">("normal");
   
@@ -139,7 +140,7 @@ export function FeedRow({ item }: FeedRowProps) {
   }, [item.published_at]);
 
   return (
-    <div className={`border-l-2 ${borderColor} ${age === "old" ? "opacity-50" : ""}`}>
+    <div className={`${isRelated ? "" : `border-l-2 ${borderColor}`} ${age === "old" ? "opacity-50" : ""}`}>
       <a
         href={item.url}
         target="_blank"
