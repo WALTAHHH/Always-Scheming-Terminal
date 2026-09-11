@@ -185,202 +185,169 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
 
   const companyOptions = toOptions("company");
 
-  // ── Drawer portal ──
-  const drawer = mounted ? (
-    <>
-      {/* Backdrop */}
-      {drawerOpen && (
-        <div
-          className="fixed inset-0 z-[9990] bg-black/40 backdrop-blur-[2px]"
-          onClick={() => setDrawerOpen(false)}
-        />
-      )}
-
-      {/* Slide-in drawer from left */}
-      <div
-        className={`fixed top-0 left-0 h-full z-[9995] w-72 bg-ast-bg border-r border-ast-border flex flex-col shadow-2xl transition-transform duration-200 ease-in-out ${
-          drawerOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        {/* Drawer header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-ast-border">
-          <span className="text-xs font-semibold tracking-widest uppercase text-ast-muted">Filters</span>
-          <div className="flex items-center gap-2">
-            {hasActiveFilters && (
-              <button
-                onClick={clearAll}
-                className="text-[10px] text-ast-pink hover:text-ast-pink/80 transition-colors"
-              >
-                Clear all
-              </button>
-            )}
-            <button
-              onClick={() => setDrawerOpen(false)}
-              className="text-ast-muted hover:text-ast-text transition-colors text-base leading-none"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-
-        {/* Search */}
-        <div className="px-4 py-3 border-b border-ast-border/50">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search..."
-              value={filters.search}
-              onChange={(e) => updateFilters({ search: e.target.value })}
-              className="w-full bg-ast-surface border border-ast-border rounded px-3 py-1.5 text-xs text-ast-text placeholder:text-ast-muted focus:border-ast-accent focus:outline-none transition-colors"
-            />
-            {filters.search && (
-              <button
-                onClick={() => updateFilters({ search: "" })}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-ast-muted hover:text-ast-text text-xs"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* AND/OR toggle */}
-        <div className="px-4 py-2 border-b border-ast-border/50 flex items-center gap-2">
-          <span className="text-[10px] text-ast-muted uppercase tracking-widest">Match</span>
-          <button
-            onClick={() => updateFilters({ mode: filters.mode === "and" ? "or" : "and" })}
-            className={`px-2 py-1 text-[10px] rounded border font-semibold transition-colors ${
-              filters.mode === "and"
-                ? "border-ast-accent text-ast-accent"
-                : "border-ast-border text-ast-muted"
-            }`}
-          >
-            {filters.mode === "and" ? "ALL (AND)" : "ANY (OR)"}
-          </button>
-        </div>
-
-        {/* Filter sections — scrollable */}
-        <div className="flex-1 overflow-y-auto">
-          <FilterSection
-            label="Source"
-            options={sourceOptions}
-            selected={filters.sources}
-            onToggleValue={(v) => updateFilters({ sources: toggleInArray(filters.sources, v) })}
-          />
-          <FilterSection
-            label="Category"
-            options={categoryOptions}
-            selected={filters.categories}
-            onToggleValue={(v) => updateFilters({ categories: toggleInArray(filters.categories, v) })}
-          />
-          <FilterSection
-            label="Platform"
-            options={platformOptions}
-            selected={filters.platforms}
-            onToggleValue={(v) => updateFilters({ platforms: toggleInArray(filters.platforms, v) })}
-          />
-          <FilterSection
-            label="Theme"
-            options={themeOptions}
-            selected={filters.themes}
-            onToggleValue={(v) => updateFilters({ themes: toggleInArray(filters.themes, v) })}
-          />
-          {companyOptions.length > 0 && (
-            <FilterSection
-              label="Company"
-              options={companyOptions}
-              selected={filters.companies}
-              onToggleValue={(v) => updateFilters({ companies: toggleInArray(filters.companies, v) })}
-            />
-          )}
-        </div>
-      </div>
-    </>
-  ) : null;
 
   return (
     <>
-      {/* ── Trigger row — desktop ── */}
-      <div className="hidden sm:flex h-9 border-b border-ast-border bg-ast-bg items-center px-4 gap-3 sticky top-0 z-40">
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded border transition-colors ${
-            hasActiveFilters
-              ? "border-ast-accent text-ast-accent bg-ast-accent/10"
-              : "border-ast-border text-ast-muted hover:text-ast-text hover:border-ast-muted"
-          }`}
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/>
-          </svg>
-          <span>Filter</span>
-          {activeFilterCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-ast-accent/20 text-ast-accent text-[10px] font-medium">
-              {activeFilterCount}
-            </span>
+      {/* Drawer + tab portal — rendered at body level to escape overflow/stacking contexts */}
+      {mounted && createPortal(
+        <>
+          {/* Backdrop */}
+          {drawerOpen && (
+            <div
+              className="fixed inset-0 z-[9990] bg-black/40 backdrop-blur-[2px]"
+              onClick={() => setDrawerOpen(false)}
+            />
           )}
-        </button>
 
-        {/* Active filter pills */}
-        {hasActiveFilters && (
-          <div className="flex items-center gap-1.5 flex-1 overflow-x-auto">
-            {[...filters.sources, ...filters.categories, ...filters.platforms, ...filters.themes, ...filters.companies].map((v) => (
-              <span key={v} className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 bg-ast-surface border border-ast-border rounded text-[10px] text-ast-text">
-                {v}
+          {/* Drawer + attached tab, slide in together from the left */}
+          <div
+            className={`fixed top-0 left-0 h-full z-[9995] flex transition-transform duration-200 ease-in-out ${
+              drawerOpen ? "translate-x-0" : "-translate-x-72"
+            }`}
+          >
+            {/* Drawer panel */}
+            <div className="w-72 h-full bg-ast-bg border-r border-ast-border flex flex-col shadow-2xl">
+              {/* Drawer header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-ast-border">
+                <span className="text-xs font-semibold tracking-widest uppercase text-ast-muted">Filters</span>
+                <div className="flex items-center gap-2">
+                  {hasActiveFilters && (
+                    <button
+                      onClick={clearAll}
+                      className="text-[10px] text-ast-pink hover:text-ast-pink/80 transition-colors"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setDrawerOpen(false)}
+                    className="text-ast-muted hover:text-ast-text transition-colors text-base leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              {/* Search */}
+              <div className="px-4 py-3 border-b border-ast-border/50">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={filters.search}
+                    onChange={(e) => updateFilters({ search: e.target.value })}
+                    className="w-full bg-ast-surface border border-ast-border rounded px-3 py-1.5 text-xs text-ast-text placeholder:text-ast-muted focus:border-ast-accent focus:outline-none transition-colors"
+                  />
+                  {filters.search && (
+                    <button
+                      onClick={() => updateFilters({ search: "" })}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-ast-muted hover:text-ast-text text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* AND/OR toggle */}
+              <div className="px-4 py-2 border-b border-ast-border/50 flex items-center gap-2">
+                <span className="text-[10px] text-ast-muted uppercase tracking-widest">Match</span>
                 <button
-                  onClick={() => {
-                    const next = {
-                      ...filters,
-                      sources: filters.sources.filter(x => x !== v),
-                      categories: filters.categories.filter(x => x !== v),
-                      platforms: filters.platforms.filter(x => x !== v),
-                      themes: filters.themes.filter(x => x !== v),
-                      companies: filters.companies.filter(x => x !== v),
-                    };
-                    setFilters(next);
-                    onFilterChange(next);
-                  }}
-                  className="text-ast-muted hover:text-ast-pink ml-0.5"
-                >×</button>
+                  onClick={() => updateFilters({ mode: filters.mode === "and" ? "or" : "and" })}
+                  className={`px-2 py-1 text-[10px] rounded border font-semibold transition-colors ${
+                    filters.mode === "and"
+                      ? "border-ast-accent text-ast-accent"
+                      : "border-ast-border text-ast-muted"
+                  }`}
+                >
+                  {filters.mode === "and" ? "ALL (AND)" : "ANY (OR)"}
+                </button>
+              </div>
+
+              {/* Filter sections — scrollable */}
+              <div className="flex-1 overflow-y-auto">
+                <FilterSection
+                  label="Source"
+                  options={sourceOptions}
+                  selected={filters.sources}
+                  onToggleValue={(v) => updateFilters({ sources: toggleInArray(filters.sources, v) })}
+                />
+                <FilterSection
+                  label="Category"
+                  options={categoryOptions}
+                  selected={filters.categories}
+                  onToggleValue={(v) => updateFilters({ categories: toggleInArray(filters.categories, v) })}
+                />
+                <FilterSection
+                  label="Platform"
+                  options={platformOptions}
+                  selected={filters.platforms}
+                  onToggleValue={(v) => updateFilters({ platforms: toggleInArray(filters.platforms, v) })}
+                />
+                <FilterSection
+                  label="Theme"
+                  options={themeOptions}
+                  selected={filters.themes}
+                  onToggleValue={(v) => updateFilters({ themes: toggleInArray(filters.themes, v) })}
+                />
+                {companyOptions.length > 0 && (
+                  <FilterSection
+                    label="Company"
+                    options={companyOptions}
+                    selected={filters.companies}
+                    onToggleValue={(v) => updateFilters({ companies: toggleInArray(filters.companies, v) })}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Pull tab — attached to right edge of drawer, always visible */}
+            <button
+              onClick={() => setDrawerOpen((o) => !o)}
+              className={`absolute top-1/2 -translate-y-1/2 left-72 flex flex-col items-center justify-center gap-1.5
+                w-6 py-4 rounded-r border-y border-r border-ast-border bg-ast-surface shadow-md
+                transition-colors hover:bg-ast-surface/80
+                ${hasActiveFilters ? "border-l-2 border-l-ast-accent" : "border-l border-l-ast-border"}`}
+              title="Toggle filters"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={hasActiveFilters ? "text-ast-accent" : "text-ast-muted"}>
+                <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/>
+              </svg>
+              <span
+                className={`text-[9px] font-semibold tracking-widest uppercase [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180
+                  ${hasActiveFilters ? "text-ast-accent" : "text-ast-muted"}`}
+              >
+                {activeFilterCount > 0 ? `${activeFilterCount}` : "filter"}
               </span>
-            ))}
-            {filters.search && (
-              <span className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 bg-ast-surface border border-ast-border rounded text-[10px] text-ast-text">
-                "{filters.search}"
-                <button onClick={() => updateFilters({ search: "" })} className="text-ast-muted hover:text-ast-pink ml-0.5">×</button>
-              </span>
-            )}
-            <button onClick={clearAll} className="flex-shrink-0 text-[10px] text-ast-pink hover:text-ast-pink/80 ml-1">
-              Clear all
             </button>
           </div>
-        )}
-      </div>
 
-      {/* ── Mobile trigger row ── */}
-      <div className="sm:hidden flex h-9 border-b border-ast-border bg-ast-bg items-center px-3 gap-2 sticky top-0 z-40">
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded border transition-colors ${
-            hasActiveFilters
-              ? "border-ast-accent text-ast-accent bg-ast-accent/10"
-              : "border-ast-border text-ast-muted"
-          }`}
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/>
-          </svg>
-          <span>Filter</span>
-          {activeFilterCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-ast-accent/20 text-ast-accent text-[10px] font-medium">
-              {activeFilterCount}
-            </span>
+          {/* Tab visible when drawer is CLOSED — fixed to left edge */}
+          {!drawerOpen && (
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className={`fixed top-1/2 -translate-y-1/2 left-0 z-[9985] flex flex-col items-center justify-center gap-1.5
+                w-6 py-4 rounded-r border-y border-r border-ast-border bg-ast-surface shadow-md
+                transition-colors hover:bg-ast-surface/80
+                ${hasActiveFilters ? "border-l-2 border-l-ast-accent" : "border-l border-l-ast-border"}`}
+              title="Open filters"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={hasActiveFilters ? "text-ast-accent" : "text-ast-muted"}>
+                <line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/>
+              </svg>
+              <span
+                className={`text-[9px] font-semibold tracking-widest uppercase [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180
+                  ${hasActiveFilters ? "text-ast-accent" : "text-ast-muted"}`}
+              >
+                {activeFilterCount > 0 ? `${activeFilterCount}` : "filter"}
+              </span>
+            </button>
           )}
-        </button>
-      </div>
-
-      {/* Drawer portal */}
-      {mounted && createPortal(drawer, document.body)}
+        </>,
+        document.body
+      )}
     </>
   );
 }
