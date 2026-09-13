@@ -12,6 +12,37 @@ function getServiceRoleClient() {
   );
 }
 
+function computeCandidates(tag: string, entities: Array<{id: string, canonical_name: string}>): string[] {
+  const scored = new Map<string, number>();
+  const tagLower = tag.toLowerCase();
+  const tagWords = tagLower.split(/\s+/).filter(w => w.length > 0);
+  for (const ent of entities) {
+    const canonical = ent.canonical_name;
+    const canonicalLower = canonical.toLowerCase();
+    let score = 0;
+    // Case-insensitive containment
+    if (tagLower.includes(canonicalLower) || canonicalLower.includes(tagLower)) {
+      score += 2;
+    }
+    // Word overlap
+    const canonicalWords = canonicalLower.split(/\s+/).filter(w => w.length > 0);
+    const overlap = tagWords.filter(w => canonicalWords.includes(w)).length;
+    score += overlap;
+    if (score > 0) {
+      // Dedupe by canonical_name. Keep highest score per canonical name
+      const existing = scored.get(canonical);
+      if (!existing || score > existing) {
+        scored.set(canonical, score);
+      }
+    }
+  }
+  // Sort descending by score, keep top 2
+  return Array.from(scored.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([name]) => name);
+}
+
 export async function GET(req: NextRequest) {
   // Auth check via session
   const supabase = await createAuthServerClient();
@@ -143,7 +174,8 @@ export async function GET(req: NextRequest) {
         .from("content_tags")
         .select("value")
         .eq("dimension", "company")
-        .is("entity_id", null);
+        .is("entity_id", null)
+        .limit(5000);
 
     if (unresolvedError) {
       console.error("Pipeline query failed: unresolved tags data", unresolvedError);
@@ -155,9 +187,80 @@ export async function GET(req: NextRequest) {
       unresolvedCounts[row.value] = (unresolvedCounts[row.value] || 0) + 1;
     });
 
-    const topUnresolved = Object.entries(unresolvedCounts)
+    let topUnresolved = Object.entries(unresolvedCounts)
       .map(([value, count]) => ({ value, count }))
       .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Candidate suggestions per unresolved tag
+    const { data: allEntities } = await serviceClient
+      .from("entities")
+      .select("id, canonical_name")
+      .order("canonical_name");
+
+    // Add candidates to each unresolved tag
+    const topUnresolvedWithCandidates = topUnresolved.map(item => ({
+      ...item,
+      candidates: computeCandidates(item.value, allEntities || [])
+    }));
+    // Replace topUnresolved for response
+    topUnresolved = topUnresolvedWithCandidates;
+
+    // Entity coverage stats (topEntities)
+    const { data: resolvedTagData, error: resolvedTagError } = await serviceClient
+      .from("content_tags")
+      .select("entity_id, entities!inner(canonical_name)")
+      .eq("dimension", "company")
+      .not("entity_id", "is", null)
+      .limit(5000);
+
+    if (resolvedTagError) {
+      console.error("Pipeline query failed: resolved tag counts", resolvedTagError);
+      throw resolvedTagError;
+    }
+
+    const { data: aliasData, error: aliasError } = await serviceClient
+      .from("entity_aliases")
+      .select("entity_id")
+      .limit(1000);
+
+    if (aliasError) {
+      console.error("Pipeline query failed: alias counts", aliasError);
+      throw aliasError;
+    }
+
+    // Group tag counts by entity_id
+    const tagCountsByEntity: Record<string, number> = {};
+    (resolvedTagData || []).forEach((row: { entity_id: string }) => {
+      const entityId = row.entity_id;
+      tagCountsByEntity[entityId] = (tagCountsByEntity[entityId] || 0) + 1;
+    });
+
+    // Group alias counts by entity_id
+    const aliasCountsByEntity: Record<string, number> = {};
+    (aliasData || []).forEach((row: { entity_id: string }) => {
+      const entityId = row.entity_id;
+      aliasCountsByEntity[entityId] = (aliasCountsByEntity[entityId] || 0) + 1;
+    });
+
+    // Build merged array
+    const mergedEntities: Array<{ canonical_name: string, tagCount: number, aliasCount: number }> = [];
+    const seenEntityIds = new Set<string>();
+    (resolvedTagData || []).forEach((row: { entity_id: string, entities: { canonical_name: string }[] }) => {
+      const entityId = row.entity_id;
+      if (seenEntityIds.has(entityId)) return;
+      seenEntityIds.add(entityId);
+      const canonicalName = row.entities[0]?.canonical_name;
+      if (!canonicalName) return; // should not happen
+      mergedEntities.push({
+        canonical_name: canonicalName,
+        tagCount: tagCountsByEntity[entityId] || 0,
+        aliasCount: aliasCountsByEntity[entityId] || 0,
+      });
+    });
+
+    const topEntities = mergedEntities
+      .sort((a, b) => b.tagCount - a.tagCount)
       .slice(0, 10);
 
     // 8. Articles ingested per day — last 14 days
@@ -246,6 +349,7 @@ export async function GET(req: NextRequest) {
         resolved,
         resolvedPct: Math.round(resolvedPct * 10) / 10,
         topUnresolved,
+        topEntities,
       },
       articleTimeSeries,
       signalTimeSeries,
