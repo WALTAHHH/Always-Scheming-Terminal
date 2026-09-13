@@ -600,7 +600,8 @@ interface PipelineStats {
     total: number;
     resolved: number;
     resolvedPct: number;
-    topUnresolved: { value: string; count: number }[];
+    topEntities: { canonical_name: string; tagCount: number; aliasCount: number }[];
+    topUnresolved: { value: string; count: number; candidates: string[] }[];
   };
   articleTimeSeries: { date: string; count: number }[];
   signalTimeSeries: { date: string; count: number }[];
@@ -1007,6 +1008,29 @@ function PipelineDashboard() {
                       </button>
                     </div>
                   </div>
+                  {tag.candidates && tag.candidates.length > 0 && (
+                    <div className="mt-1 ml-2">
+                      <div className="text-[10px] text-ast-muted mb-0.5">possible match</div>
+                      <div className="flex flex-wrap gap-1">
+                        {tag.candidates.map((candidate) => (
+                          <button
+                            key={candidate}
+                            onClick={() =>
+                              setAliasForm({
+                                tag: tag.value,
+                                input: candidate,
+                                saving: false,
+                                err: null,
+                              })
+                            }
+                            className="text-[10px] bg-ast-accent/10 text-ast-accent border border-ast-accent/20 rounded px-1.5 py-0.5 cursor-pointer hover:bg-ast-accent/20"
+                          >
+                            {candidate}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {aliasForm?.tag === tag.value && (
                     <form
                       onSubmit={async (e) => {
@@ -1080,6 +1104,43 @@ function PipelineDashboard() {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+        {stats.entityResolution.topEntities.length > 0 && (
+          <div className="border-t border-ast-border pt-3">
+            <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-2">
+              TOP ENTITIES
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-[10px] text-ast-muted mb-1">By Tag Count</div>
+                <div className="space-y-1">
+                  {stats.entityResolution.topEntities
+                    .sort((a, b) => b.tagCount - a.tagCount)
+                    .slice(0, 5)
+                    .map((entity) => (
+                      <div key={entity.canonical_name} className="flex items-center justify-between text-xs">
+                        <span className="text-ast-text truncate">{entity.canonical_name}</span>
+                        <span className="tabular-nums text-[10px] text-ast-muted">{entity.tagCount}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-ast-muted mb-1">By Alias Count</div>
+                <div className="space-y-1">
+                  {stats.entityResolution.topEntities
+                    .sort((a, b) => b.aliasCount - a.aliasCount)
+                    .slice(0, 5)
+                    .map((entity) => (
+                      <div key={entity.canonical_name} className="flex items-center justify-between text-xs">
+                        <span className="text-ast-text truncate">{entity.canonical_name}</span>
+                        <span className="tabular-nums text-[10px] text-ast-muted">{entity.aliasCount}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
