@@ -85,6 +85,13 @@ function getSignalBorderColor(signalType: string): string {
   return map[signalType] || "border-l-ast-accent";
 }
 
+function formatSignalType(signalType: string): string {
+  return signalType
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 function ScoreBreakdownPanel({ 
   breakdown, 
   leadUrl,
@@ -311,9 +318,17 @@ export function SignalPanel({ items }: SignalPanelProps) {
                             {signal.summary}
                           </p>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <span className={`${scoreColor} text-[10px]`}>
-                              ● {signal.investment_relevance_score.toFixed(2)}
-                            </span>
+                            <div className="relative inline-flex group/tip">
+                              <span className={`${scoreColor} text-[10px]`}>
+                                ● {signal.investment_relevance_score.toFixed(2)}
+                              </span>
+                              <div className="absolute left-0 top-full mt-1 hidden group-hover/tip:block z-50">
+                                <div className="px-2 py-1 rounded text-[10px] whitespace-normal max-w-xs border border-ast-border bg-ast-surface shadow-lg text-ast-text">
+                                  Investment relevance score: {signal.investment_relevance_score.toFixed(2)}. AI-assigned 0–1 relevance to portfolio companies and investment thesis.<br />
+                                  Signal type: {formatSignalType(signal.signal_type)}
+                                </div>
+                              </div>
+                            </div>
                             {signal.created_at && (
                               <TimeAgo date={signal.created_at} className="text-ast-muted text-[10px]" />
                             )}

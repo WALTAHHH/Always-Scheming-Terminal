@@ -180,4 +180,16 @@ export const V1_SOURCES = [
     feed_url: "https://shannonliao.substack.com/feed",
     source_type: "newsletter",
   },
+  {
+    name: "Road to VR",
+    url: "https://roadtovr.com",
+    feed_url: "https://roadtovr.com/feed/",
+    source_type: "news",
+  },
+  {
+    name: "UploadVR",
+    url: "https://www.uploadvr.com",
+    feed_url: "https://www.uploadvr.com/feed/",
+    source_type: "news",
+  },
 ] as const;

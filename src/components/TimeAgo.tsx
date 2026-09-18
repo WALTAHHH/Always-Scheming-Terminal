@@ -13,10 +13,15 @@ function formatTimeAgo(dateStr: string | null): string {
   if (diffMins < 1) return "now";
   if (diffMins < 60) return `${diffMins}m`;
   if (diffHours < 24) return `${diffHours}h`;
-  return d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
+  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+  if (diffDays >= 1 && diffDays <= 6) return `${diffDays}d`;
+  // Older than 6 days: show abbreviated date
+  const nowDate = new Date();
+  const showYear = d.getFullYear() !== nowDate.getFullYear();
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: showYear ? "numeric" : undefined,
   });
 }
 
