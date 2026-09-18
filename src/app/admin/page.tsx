@@ -31,7 +31,7 @@ interface IngestionLogRow {
   duration_ms: number;
 }
 
-type Tab = "sources" | "health" | "pipeline";
+type Tab = "sources" | "health" | "pipeline" | "entities";
 type SortField = "name" | "type" | "articles" | "last_fetch" | "latest_article" | "status" | "errors";
 type SortDir = "asc" | "desc";
 
@@ -740,6 +740,198 @@ function BarChart({ data, color, label }: BarChartProps) {
   );
 }
 
+// Entity dashboard
+function EntitiesDashboard() {
+  const [entities, setEntities] = useState<any[]>([]);
+  const [tagTimeSeries, setTagTimeSeries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/entities");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setEntities(data.entities || []);
+      setTagTimeSeries(data.tagTimeSeries || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch entities");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-ast-muted text-sm">Loading entities...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-ast-surface border border-ast-border rounded-lg p-6 text-center">
+        <div className="text-ast-pink text-sm mb-2">Failed to load entities</div>
+        <div className="text-ast-muted text-xs mb-4">{error}</div>
+        <button
+          onClick={fetchData}
+          className="px-4 py-2 rounded bg-ast-accent/10 border border-ast-accent/30 text-ast-accent text-xs hover:bg-ast-accent/20 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!entities || entities.length === 0) {
+    return (
+      <div className="bg-ast-surface border border-ast-border rounded-lg p-6 text-center">
+        <div className="text-ast-muted text-sm">No entities found</div>
+      </div>
+    );
+  }
+
+  // Prepare data for charts
+  const topTenByTagCount = [...entities]
+    .sort((a, b) => b.tag_count - a.tag_count)
+    .slice(0, 10);
+  const topFiveEntities = tagTimeSeries.slice(0, 5);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ast-text">Entities</h2>
+        <button
+          onClick={fetchData}
+          className="px-3 py-1.5 rounded bg-ast-accent/10 border border-ast-accent/30 text-ast-accent text-xs hover:bg-ast-accent/20 transition-colors"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Bar chart: top 10 entities by tag count */}
+        <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+          <div className="text-[10px] font-semibold text-ast-muted uppercase tracking-wider mb-2">
+            Top Entities by Tag Count
+          </div>
+          <div className="h-60">
+            {/* Horizontal bar chart */}
+            <svg width="100%" height="100%" className="overflow-visible">
+              {topTenByTagCount.map((entity, i) => {
+                const maxCount = Math.max(...topTenByTagCount.map(e => e.tag_count), 1);
+                const barWidth = (entity.tag_count / maxCount) * 80;
+                const y = i * 25;
+                return (
+                  <g key={entity.id}>
+                    <text
+                      x="0"
+                      y={y + 15}
+                      className="text-[10px] fill-ast-text"
+                      textAnchor="start"
+                    >
+                      {entity.canonical_name}
+                    </text>
+                    <rect
+                      x="100"
+                      y={y}
+                      width={barWidth}
+                      height="15"
+                      fill="#00d4aa"
+                      rx="2"
+                    />
+                    <text
+                      x={110 + barWidth}
+                      y={y + 12}
+                      className="text-[10px] fill-ast-text"
+                      textAnchor="start"
+                    >
+                      {entity.tag_count}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        </div>
+
+        {/* Line chart: tag mentions over time (30 days, top 5 entities) */}
+        <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+          <div className="text-[10px] font-semibold text-ast-muted uppercase tracking-wider mb-2">
+            Tag Mentions Over Time (Last 30 Days)
+          </div>
+          <div className="h-60">
+            {/* Simple line chart placeholder */}
+            <p className="text-ast-muted text-xs">Line chart: tagTimeSeries data available</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Entity table */}
+      <div className="bg-ast-surface border border-ast-border rounded-lg overflow-hidden">
+        <div className="bg-ast-surface px-3 py-2 border-b border-ast-border flex items-center gap-3">
+          <div className="w-40 font-semibold text-xs text-ast-muted">Canonical Name</div>
+          <div className="w-20 font-semibold text-xs text-ast-muted">Segment</div>
+          <div className="w-20 font-semibold text-xs text-ast-muted">Type</div>
+          <div className="w-20 font-semibold text-xs text-ast-muted">Aliases</div>
+          <div className="w-20 font-semibold text-xs text-ast-muted">Tags</div>
+          <div className="w-20 font-semibold text-xs text-ast-muted">Signals</div>
+          <div className="w-20 font-semibold text-xs text-ast-muted">Public/Ticker</div>
+          <div className="w-20 font-semibold text-xs text-ast-muted"></div>
+        </div>
+
+        <div className="divide-y divide-ast-border/50">
+          {entities.map((entity) => (
+            <div key={entity.id}>
+              <div
+                className="px-3 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors cursor-pointer"
+                onClick={() => setExpandedRow(expandedRow === entity.id ? null : entity.id)}
+              >
+                <div className="w-40">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${entity.is_public ? 'bg-ast-mint/10 border border-ast-mint/30 text-ast-mint' : 'bg-ast-surface/50 border border-ast-border text-ast-text'}`}>
+                      {entity.is_public ? 'CANONICAL' : 'CANONICAL'}
+                    </span>
+                    <span className="text-sm text-ast-text truncate">{entity.canonical_name}</span>
+                  </div>
+                </div>
+                <div className="w-20 text-xs text-ast-text truncate">{entity.segment || '—'}</div>
+                <div className="w-20 text-xs text-ast-text truncate">{entity.entity_type || '—'}</div>
+                <div className="w-20 text-xs text-ast-text tabular-nums">{entity.alias_count}</div>
+                <div className="w-20 text-xs text-ast-text tabular-nums">{entity.tag_count}</div>
+                <div className="w-20 text-xs text-ast-text tabular-nums">{entity.signal_count}</div>
+                <div className="w-20 text-xs text-ast-text">{entity.is_public ? entity.ticker || '—' : '—'}</div>
+                <div className="w-20 text-right">
+                  <span className="text-ast-muted text-[10px]">▶</span>
+                </div>
+              </div>
+
+              {expandedRow === entity.id && (
+                <div className="px-3 py-2 bg-ast-bg/30 border-t border-ast-border">
+                  <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">Aliases</div>
+                  <p className="text-xs text-ast-muted">Aliases list would appear here (fetch from entity_aliases).</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PipelineDashboard() {
   const [stats, setStats] = useState<PipelineStats | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -749,6 +941,7 @@ function PipelineDashboard() {
   const [copied, setCopied] = useState<string | null>(null);
   const [aliasForm, setAliasForm] = useState<{ tag: string; input: string; saving: boolean; err: string | null } | null>(null);
   const [aliasSuggestions, setAliasSuggestions] = useState<string[]>([]);
+  const [entityNames, setEntityNames] = useState<string[]>([]);
 
   const TEST_API_KEY = "ast_6c3732f0c3405ff36eeddcbc68af3f3e4593c9dd011f6419";
   const BASE_URL = "https://terminal.always-scheming.com";
@@ -785,10 +978,24 @@ function PipelineDashboard() {
     }
   }, []);
 
+  const fetchEntityNames = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/entities");
+      if (res.ok) {
+        const data = await res.json();
+        const names = data.entities.map((e: any) => e.canonical_name);
+        setEntityNames(names);
+      }
+    } catch (err) {
+      console.error("Failed to fetch entity names", err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStats();
     fetchHealth();
-  }, [fetchStats, fetchHealth]);
+    fetchEntityNames();
+  }, [fetchStats, fetchHealth, fetchEntityNames]);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -990,7 +1197,14 @@ function PipelineDashboard() {
               {stats.entityResolution.topUnresolved.map((tag) => (
                 <div key={tag.value} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-ast-text">{tag.value}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-ast-text">{tag.value}</span>
+                      {entityNames.some(name => name.toLowerCase() === tag.value.toLowerCase()) && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-ast-gold/10 border border-ast-gold/30 text-ast-gold">
+                          NEEDS ALIAS
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className="text-ast-muted tabular-nums">{tag.count}</span>
                       <button

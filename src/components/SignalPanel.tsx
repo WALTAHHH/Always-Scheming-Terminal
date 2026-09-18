@@ -323,9 +323,21 @@ export function SignalPanel({ items }: SignalPanelProps) {
                                 ● {signal.investment_relevance_score.toFixed(2)}
                               </span>
                               <div className="absolute left-0 top-full mt-1 hidden group-hover/tip:block z-50">
-                                <div className="px-2 py-1 rounded text-[10px] whitespace-normal max-w-xs border border-ast-border bg-ast-surface shadow-lg text-ast-text">
-                                  Investment relevance score: {signal.investment_relevance_score.toFixed(2)}. AI-assigned 0–1 relevance to portfolio companies and investment thesis.<br />
-                                  Signal type: {formatSignalType(signal.signal_type)}
+                                <div className="px-3 py-2 rounded text-[10px] min-w-[180px] border border-ast-border bg-ast-surface shadow-lg text-ast-text">
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-baseline justify-between">
+                                      <span className="text-ast-muted">Relevance</span>
+                                      <span className={`text-sm font-bold ${scoreColor}`}>
+                                        {signal.investment_relevance_score.toFixed(2)}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-baseline justify-between">
+                                      <span className="text-ast-muted">Signal</span>
+                                      <span className="text-ast-text font-medium">
+                                        {formatSignalType(signal.signal_type)}
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
