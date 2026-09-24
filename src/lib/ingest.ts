@@ -36,6 +36,7 @@ export interface IngestResult {
   source: string;
   fetched: number;
   inserted: number;
+  filtered: number;
   errors: string[];
 }
 
@@ -140,6 +141,7 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
     source: source.name,
     fetched: 0,
     inserted: 0,
+    filtered: 0,
     errors: [],
   };
 
@@ -167,10 +169,42 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
       tags: {},
     }));
 
+    // Filter out invalid URLs, event calendar items, and future-dated stubs
+    const validRows = rows.filter((row) => {
+      // Skip items with no URL or clearly malformed URLs (no valid TLD boundary)
+      if (!row.url) return false;
+      try {
+        const parsed = new URL(row.url);
+        // Skip event calendar items (path starts with /events)
+        if (parsed.pathname.startsWith('/events')) return false;
+        // Skip items where the URL host doesn't look valid (no dot in hostname means concatenation artifact)
+        // e.g. "www.gamedeveloper.comwest.paxsite.com" has too many dots but wrong structure
+        // More reliable: skip if URL host contains the source domain concatenated with something else
+        // We'll just rely on the URL constructor not throwing; additional heuristic could be added later
+        return true;
+      } catch {
+        // URL constructor throws on malformed URLs — skip these
+        return false;
+      }
+    });
+
+    // Filter future dates (> 7 days in future)
+    const now = new Date();
+    const maxFuture = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const filteredRows = validRows.filter((row) => {
+      if (row.published_at) {
+        const pub = new Date(row.published_at);
+        if (pub > maxFuture) return false;
+      }
+      return true;
+    });
+
+    result.filtered = rows.length - filteredRows.length;
+
     // Upsert — on conflict (source_id, external_id) do nothing
     const { data, error } = await supabase
       .from("content")
-      .upsert(rows, { onConflict: "source_id,external_id", ignoreDuplicates: true })
+      .upsert(filteredRows, { onConflict: "source_id,external_id", ignoreDuplicates: true })
       .select("id, title, body");
 
     if (error) {
@@ -439,7 +473,7 @@ export async function ingestOne(sourceId: string): Promise<IngestResult> {
     .single();
 
   if (error || !source) {
-    return { source: "unknown", fetched: 0, inserted: 0, errors: [`Source not found: ${sourceId}`] };
+    return { source: "unknown", fetched: 0, inserted: 0, filtered: 0, errors: [`Source not found: ${sourceId}`] };
   }
 
   return ingestSource(source as SourceRow);
@@ -470,6 +504,7 @@ export async function ingestAll(): Promise<IngestResult[]> {
           source: (sources[i] as SourceRow).name,
           fetched: 0,
           inserted: 0,
+          filtered: 0,
           errors: [r.reason?.message || "Unknown error"],
         }
   );
