@@ -546,7 +546,7 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
                 </a>
               )}
               {!companyData && (
-                <div className="text-ast-muted text-sm">No data available for &quot;{companyName}&quot;</div>
+                <div className="text-ast-muted text-sm">No data available for "{companyName}"</div>
               )}
             </div>
           ) : (
@@ -644,38 +644,38 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
                   )}
                 </div>
               )}
-
-              {/* Coverage section */}
-              <div className="px-5 py-4">
-                <div className="text-xs text-ast-accent uppercase font-semibold mb-3">
-                  Recent Coverage ({relatedItems.length})
-                  {relatedItems.length > 0 && (
-                    <span className="text-ast-muted font-normal ml-2">· shown on chart</span>
-                  )}
-                </div>
-                {relatedItems.length === 0 ? (
-                  <p className="text-ast-muted text-xs">No recent coverage found.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {relatedItems.map((item) => (
-                      <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="block group">
-                        <div className="flex items-start gap-2">
-                          <span className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-xs text-ast-text group-hover:text-ast-accent line-clamp-2">{item.title}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] text-ast-muted">{item.sources?.name}</span>
-                              <span className="text-[10px] text-ast-muted">{getHoursAgo(item.published_at)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
             </>
           )}
+
+          {/* Coverage — always shown, outside both branches */}
+          <div className="px-5 py-4">
+            <div className="text-xs text-ast-accent uppercase font-semibold mb-3">
+              Recent Coverage ({relatedItems.length})
+              {relatedItems.length > 0 && companyData?.ticker && (
+                <span className="text-ast-muted font-normal ml-2">· shown on chart</span>
+              )}
+            </div>
+            {relatedItems.length === 0 ? (
+              <p className="text-ast-muted text-xs">No recent coverage found.</p>
+            ) : (
+              <div className="space-y-3">
+                {relatedItems.map((item) => (
+                  <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="block group">
+                    <div className="flex items-start gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs text-ast-text group-hover:text-ast-accent line-clamp-2">{item.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-ast-muted">{item.sources?.name}</span>
+                          <span className="text-[10px] text-ast-muted">{getHoursAgo(item.published_at)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
