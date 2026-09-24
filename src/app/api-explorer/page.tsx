@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { ThemeToggle } from "@/components/Header";
 // JSON tokenization for syntax highlighting
 function tokenizeJson(json: string): { type: string; value: string }[] {
@@ -76,6 +77,7 @@ export default function ApiExplorerPage() {
   const [requestUrl, setRequestUrl] = useState("/api/v1/signals");
   const [limit, setLimit] = useState(10);
   const [showFullResponse, setShowFullResponse] = useState(false);
+  const [showSavedFeedback, setShowSavedFeedback] = useState(false);
 
 
   // Load API key from localStorage on mount
@@ -93,13 +95,33 @@ export default function ApiExplorerPage() {
     }
   }, [apiKey]);
 
-  const presetButtons = [
-    { label: "Latest Items", url: "/api/v1/items?limit=10" },
-    { label: "Top Signals", url: "/api/v1/signals" },
-    { label: "Entities", url: "/api/v1/entities?limit=20" },
-    { label: "Items by Company", url: "/api/v1/items?signal_type=company&limit=10" },
-    { label: "Recent Deals", url: "/api/v1/signals" },
-  ];
+  const endpoints = [
+      { 
+        path: "GET /api/v1/signals", 
+        description: "Top investment signals (public)",
+        url: "/api/v1/signals",
+        requiresAuth: false
+      },
+      { 
+        path: "GET /api/v1/items?limit=10", 
+        description: "Latest news items (requires API key)",
+        url: "/api/v1/items?limit=10",
+        requiresAuth: true
+      },
+      { 
+        path: "GET /api/v1/entities?limit=20", 
+        description: "Entity directory (requires API key)",
+        url: "/api/v1/entities?limit=20",
+        requiresAuth: true
+      },
+      { 
+        path: "GET /api/v1/signals (deals)", 
+        description: "Recent deals (client-side filtered)",
+        url: "/api/v1/signals",
+        requiresAuth: false,
+        isDeals: true
+      },
+    ];
 
   const handlePreset = async (url: string) => {
     setLoading(true);
@@ -144,9 +166,11 @@ export default function ApiExplorerPage() {
       const res = await fetch(url);
       setStatus(res.status);
       const data = await res.json();
-      // Filter for deals
-      const deals = Array.isArray(data) ? data.filter((item: any) => item.signal_type === "deal") : [];
-      setResponse(deals);
+      // Filter for deals (fundraising, acquisition, earnings)
+      const deals = data.signals?.filter((item: any) => 
+        ["fundraising", "acquisition", "earnings"].includes(item.signal_type)
+      ) ?? [];
+      setResponse({ signals: deals, count: deals.length });
     } catch (err) {
       setStatus(0);
       setResponse({ error: String(err) });
@@ -167,9 +191,15 @@ export default function ApiExplorerPage() {
       {/* Header */}
       <header className="border-b border-ast-border sticky top-0 z-50 bg-ast-bg/95 backdrop-blur-sm">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div>
-            <h1 className="text-ast-text text-sm font-semibold tracking-wide">API EXPLORER</h1>
-            <p className="text-ast-muted text-xs">Live queries against /api/v1</p>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-ast-muted hover:text-ast-text transition-colors text-xs">
+              ← Terminal
+            </Link>
+            <span className="text-ast-border">|</span>
+            <div>
+              <h1 className="text-ast-text text-sm font-semibold tracking-wide">API EXPLORER</h1>
+              <p className="text-ast-muted text-xs">Live queries against /api/v1</p>
+            </div>
           </div>
           <ThemeToggle />
         </div>
@@ -191,17 +221,23 @@ export default function ApiExplorerPage() {
               placeholder="Paste your API key here"
               className="flex-1 bg-ast-bg border border-ast-border rounded px-3 py-2 text-ast-text placeholder:text-ast-muted focus:border-ast-accent focus:outline-none"
             />
-            <button
-              onClick={() => {
-                if (apiKey.trim()) {
-                  localStorage.setItem("ast_api_explorer_key", apiKey);
-                  alert("API key saved");
-                }
-              }}
-              className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/80 transition-colors"
-            >
-              Save
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (apiKey.trim()) {
+                    localStorage.setItem("ast_api_explorer_key", apiKey);
+                    setShowSavedFeedback(true);
+                    setTimeout(() => setShowSavedFeedback(false), 2000);
+                  }
+                }}
+                className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/80 transition-colors"
+              >
+                Save
+              </button>
+              {showSavedFeedback && (
+                <span className="text-ast-mint text-sm animate-pulse">✓ Saved</span>
+              )}
+            </div>
             <button
               onClick={() => {
                 setApiKey("");
@@ -214,44 +250,77 @@ export default function ApiExplorerPage() {
           </div>
         </div>
 
-        {/* Preset buttons */}
+        {/* Endpoint cards */}
         <div className="border border-ast-border rounded-lg px-4 py-3 bg-ast-surface">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-ast-accent text-xs font-semibold tracking-wide uppercase">Quick Presets</span>
+            <span className="text-ast-accent text-xs font-semibold tracking-wide uppercase">Endpoints</span>
             <label className="flex items-center gap-2 text-xs text-ast-muted">
               Limit
               <input type="number" min={1} max={100} value={limit} onChange={e => setLimit(Number(e.target.value))} className="bg-ast-bg border border-ast-border rounded px-2 py-1 text-xs text-ast-text w-16" />
             </label>
           </div>
-          <div className="flex flex-wrap gap-3">
-            {presetButtons.map((preset) => (
-              <button
-                key={preset.label}
-                onClick={() => preset.label === "Recent Deals" ? handleRecentDeals() : handlePreset(preset.url)}
-                disabled={loading}
-                className="px-4 py-2 border border-ast-accent/30 text-ast-accent bg-ast-accent/10 rounded hover:bg-ast-accent/20 disabled:opacity-50 transition-colors"
-              >
-                {preset.label}
-              </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {endpoints.map((endpoint) => (
+              <div key={endpoint.path} className="border border-ast-border bg-ast-surface rounded-lg p-3">
+                <div className="font-mono text-ast-accent text-xs mb-1">{endpoint.path}</div>
+                <div className="text-ast-muted text-xs mb-2">{endpoint.description}</div>
+                <button
+                  onClick={() => endpoint.isDeals ? handleRecentDeals() : handlePreset(endpoint.url)}
+                  disabled={loading}
+                  className="px-3 py-1 text-xs border border-ast-accent/40 text-ast-accent rounded hover:bg-ast-accent/10 disabled:opacity-50 transition-colors"
+                >
+                  Run →
+                </button>
+              </div>
             ))}
           </div>
         </div>
 
-        {/* Request URL */}
+        {/* Endpoint Reference */}
         <div className="border border-ast-border rounded-lg px-4 py-3 bg-ast-surface">
-          <h3 className="text-ast-accent text-xs font-semibold tracking-wide uppercase mb-2">Request URL</h3>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={requestUrl}
-              onChange={(e) => setRequestUrl(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handlePreset(requestUrl)}
-              className="flex-1 bg-ast-bg border border-ast-border rounded px-3 py-2 text-xs font-mono text-ast-text focus:border-ast-accent focus:outline-none"
-            />
-            <button onClick={() => handlePreset(requestUrl)} className="px-3 py-2 text-xs border border-ast-accent/40 text-ast-accent rounded hover:bg-ast-accent/10 transition-colors">
-              Run
-            </button>
-          </div>
+          <details className="group">
+            <summary className="text-ast-accent text-xs font-semibold tracking-wide uppercase cursor-pointer list-none">
+              Endpoint Reference
+              <span className="float-right text-ast-muted">▸</span>
+            </summary>
+            <div className="mt-3">
+              <div className="text-xs text-ast-muted mb-2">Authentication required for endpoints marked "Yes"</div>
+              <div className="border border-ast-border rounded overflow-hidden">
+                <div className="bg-ast-surface grid grid-cols-3 border-b border-ast-border px-3 py-2 text-xs font-semibold">
+                  <div className="text-ast-accent">Endpoint</div>
+                  <div className="text-ast-accent">Auth Required</div>
+                  <div className="text-ast-accent">Key Params</div>
+                </div>
+                <div className="divide-y divide-ast-border/50">
+                  <div className="grid grid-cols-3 px-3 py-2 text-xs">
+                    <div className="font-mono text-ast-text">/api/v1/signals</div>
+                    <div className="text-ast-mint">No</div>
+                    <div className="text-ast-muted">limit, signal_type (optional)</div>
+                  </div>
+                  <div className="grid grid-cols-3 px-3 py-2 text-xs">
+                    <div className="font-mono text-ast-text">/api/v1/items</div>
+                    <div className="text-ast-pink">Yes</div>
+                    <div className="text-ast-muted">limit, cursor, source_id, signal_type, date_from, date_to</div>
+                  </div>
+                  <div className="grid grid-cols-3 px-3 py-2 text-xs">
+                    <div className="font-mono text-ast-text">/api/v1/entities</div>
+                    <div className="text-ast-pink">Yes</div>
+                    <div className="text-ast-muted">limit, cursor, entity_type, alias</div>
+                  </div>
+                  <div className="grid grid-cols-3 px-3 py-2 text-xs">
+                    <div className="font-mono text-ast-text">/api/v1/sources</div>
+                    <div className="text-ast-pink">Yes</div>
+                    <div className="text-ast-muted">limit</div>
+                  </div>
+                  <div className="grid grid-cols-3 px-3 py-2 text-xs">
+                    <div className="font-mono text-ast-text">/api/v1/health</div>
+                    <div className="text-ast-mint">No</div>
+                    <div className="text-ast-muted">—</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
         </div>
 
         {/* Response panel */}
