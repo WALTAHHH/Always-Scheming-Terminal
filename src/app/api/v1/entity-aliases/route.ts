@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireApiKey } from "@/lib/api-auth";
+import { createAuthServerClient } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
@@ -63,14 +63,30 @@ export async function GET(req: NextRequest) {
  * Used by the pipeline dashboard "add alias" button on unresolved tags.
  */
 export async function POST(req: NextRequest) {
-  const auth = await requireApiKey(req);
-  if (auth instanceof NextResponse) return auth;
+  // Auth check via session + admin role
+  const authClient = await createAuthServerClient();
+  const { data: { session }, error } = await authClient.auth.getSession();
 
+  if (error || !session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Check role in profiles table using service role client to bypass RLS
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
   );
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', session.user.id)
+    .single();
+
+  if (profile?.role !== 'admin') {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   if (!body?.alias || !body?.canonical_name) {
@@ -118,3 +134,4 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, alias, entity: entity.canonical_name });
 }
+
