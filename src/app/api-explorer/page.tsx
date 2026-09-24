@@ -78,6 +78,7 @@ export default function ApiExplorerPage() {
   const [limit, setLimit] = useState(10);
   const [showFullResponse, setShowFullResponse] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
+  const [copied, setCopied] = useState(false);
 
 
   // Load API key from localStorage on mount
@@ -112,6 +113,12 @@ export default function ApiExplorerPage() {
         path: "GET /api/v1/entities?limit=20", 
         description: "Entity directory (requires API key)",
         url: "/api/v1/entities?limit=20",
+        requiresAuth: true
+      },
+      { 
+        path: "GET /api/v1/items?signal_type=deal", 
+        description: "News items about deals (requires API key)",
+        url: "/api/v1/items?signal_type=deal",
         requiresAuth: true
       },
       { 
@@ -295,7 +302,7 @@ export default function ApiExplorerPage() {
                   <div className="grid grid-cols-3 px-3 py-2 text-xs">
                     <div className="font-mono text-ast-text">/api/v1/signals</div>
                     <div className="text-ast-mint">No</div>
-                    <div className="text-ast-muted">limit, signal_type (optional)</div>
+                    <div className="text-ast-muted">limit</div>
                   </div>
                   <div className="grid grid-cols-3 px-3 py-2 text-xs">
                     <div className="font-mono text-ast-text">/api/v1/items</div>
@@ -323,6 +330,23 @@ export default function ApiExplorerPage() {
           </details>
         </div>
 
+        {/* Request URL */}
+        <div className="border border-ast-border rounded-lg px-4 py-3 bg-ast-surface">
+          <h3 className="text-ast-accent text-xs font-semibold tracking-wide uppercase mb-2">Request URL</h3>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={requestUrl}
+              onChange={(e) => setRequestUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handlePreset(requestUrl)}
+              className="flex-1 bg-ast-bg border border-ast-border rounded px-3 py-2 text-xs font-mono text-ast-text focus:border-ast-accent focus:outline-none"
+            />
+            <button onClick={() => handlePreset(requestUrl)} className="px-3 py-2 text-xs border border-ast-accent/40 text-ast-accent rounded hover:bg-ast-accent/10 transition-colors">
+              Run
+            </button>
+          </div>
+        </div>
+
         {/* Response panel */}
         <div className="border border-ast-border rounded-lg overflow-hidden bg-ast-surface">
           <div className="bg-ast-surface px-3 py-2 border-b border-ast-border flex items-center justify-between">
@@ -342,14 +366,28 @@ export default function ApiExplorerPage() {
                 </span>
               )}
             </div>
-            {truncated && (
-              <button
-                onClick={() => setShowFullResponse(!showFullResponse)}
-                className="text-xs text-ast-accent hover:text-ast-accent/80"
-              >
-                {showFullResponse ? "Show less" : "Show full response"}
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {truncated && (
+                <button
+                  onClick={() => setShowFullResponse(!showFullResponse)}
+                  className="text-xs text-ast-accent hover:text-ast-accent/80"
+                >
+                  {showFullResponse ? "Show less" : "Show full response"}
+                </button>
+              )}
+              {response && (
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(response, null, 2));
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  }}
+                  className="px-2 py-1 text-xs border border-ast-border text-ast-muted rounded hover:text-ast-text transition-colors"
+                >
+                  {copied ? "✓ Copied" : "Copy"}
+                </button>
+              )}
+            </div>
           </div>
           <div className="p-4">
             {loading ? (
