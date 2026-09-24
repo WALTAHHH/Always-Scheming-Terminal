@@ -1212,7 +1212,7 @@ function PipelineDashboard() {
                           setAliasForm(
                             aliasForm?.tag === tag.value
                               ? null
-                              : { tag: tag.value, input: "", saving: false, err: null }
+                              : { tag: tag.value, input: tag.value, saving: false, err: null }
                           )
                         }
                         className="text-[10px] text-ast-accent hover:text-ast-text transition-colors"
@@ -1243,6 +1243,7 @@ function PipelineDashboard() {
                       }}
                       className="flex flex-col gap-1 pl-2"
                     >
+                      <div className="text-xs text-ast-muted">Mapping: {aliasForm.tag} →</div>
                       <div className="relative flex items-center gap-1">
                         <input
                           autoFocus
