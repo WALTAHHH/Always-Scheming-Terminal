@@ -26,9 +26,9 @@ const RANGE_CONFIG: Record<ChartRange, { range: string; interval: string; label:
 // Curated baskets
 const COMPANY_BASKETS: Record<string, string[]> = {
   "AS Index": [
-    // AS Primitives Index — 13 companies across Input/Interface/Infra
+    // AS Primitives Index — 12 companies across Input/Interface/Infra
     "Apple", "Coinbase", "Google", "Meta", "Microsoft", "Nvidia",
-    "Roblox", "Samsung", "Snap", "Sony", "Take-Two Interactive", "Tencent", "Unity",
+    "Roblox", "Snap", "Sony", "Take-Two Interactive", "Tencent", "Unity",
   ],
   "Western": [
     "Electronic Arts", "Take-Two Interactive", "Ubisoft", "CD Projekt", "Embracer Group", "Paradox Interactive",

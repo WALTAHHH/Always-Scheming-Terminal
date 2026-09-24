@@ -13,7 +13,7 @@ const INDEX_COMPANIES = [
   { name: "Microsoft", ticker: "MSFT", category: "input,infra" },
   { name: "Nvidia", ticker: "NVDA", category: "infra" },
   { name: "Roblox", ticker: "RBLX", category: "interface,infra" },
-  { name: "Samsung", ticker: "005930.KS", category: "input" },
+
   { name: "Snap", ticker: "SNAP", category: "input,interface" },
   { name: "Sony", ticker: "SONY", category: "input" },
   { name: "Take-Two", ticker: "TTWO", category: "infra" },
@@ -160,15 +160,7 @@ async function fetchCompanyData(
     } catch (retryError) {
       console.error(`Error fetching ${ticker} (retry):`, retryError);
       
-      // Samsung fallback: try SSNLF (OTC) if KRX ticker fails
-      if (ticker === "005930.KS") {
-        try {
-          console.log("Trying Samsung SSNLF fallback...");
-          return await attemptFetch("SSNLF");
-        } catch (fallbackError) {
-          console.error("Samsung SSNLF fallback also failed:", fallbackError);
-        }
-      }
+
       
       // All attempts failed, return null data with error
       return {
@@ -291,7 +283,10 @@ export async function GET(
   };
 
   // Cache the response
-  indexCache = { data: response, timestamp: Date.now() };
+  const hasErrors = companies.some(c => c.error);
+  if (!hasErrors) {
+    indexCache = { data: response, timestamp: Date.now() };
+  }
 
   return NextResponse.json(response);
 }
