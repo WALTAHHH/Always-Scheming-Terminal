@@ -142,6 +142,17 @@ export function Header() {
               </svg>
               <span className="hidden sm:inline">RSS</span>
             </a>
+            <a
+              href="/api-explorer"
+              className="text-ast-muted hover:text-ast-accent text-xs transition-colors flex items-center gap-1"
+              title="API Explorer"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+              </svg>
+              <span className="hidden sm:inline">API</span>
+            </a>
             <ThemeToggle />
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('ast-open-company-tray'))}

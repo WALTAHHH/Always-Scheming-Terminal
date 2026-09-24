@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createAuthBrowserClient } from "@/lib/supabase";
 import { Profile, UserPreferences } from "@/lib/database.types";
 
@@ -388,6 +389,14 @@ export default function ProfilePage() {
 
             <div className="text-xs text-ast-muted">
               Pro features: API access, priority support, custom feeds
+            </div>
+            <div className="mt-3">
+              <Link
+                href="/api-explorer"
+                className="text-ast-accent hover:text-ast-accent/80 text-sm underline"
+              >
+                Open API Explorer →
+              </Link>
             </div>
           </section>
 

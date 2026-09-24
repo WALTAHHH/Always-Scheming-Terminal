@@ -291,7 +291,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
               {signals.length === 0 ? (
                 <p className="text-ast-muted text-xs">No signals extracted yet</p>
               ) : (
-                signals.slice(0, 10).map((signal) => {
+                signals.map((signal) => {
                   const badge = getSignalBadge(signal.signal_type);
                   const scoreColor = signal.investment_relevance_score >= 0.8 
                     ? "text-ast-mint" 
@@ -354,12 +354,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                   );
                 })
               )}
-              {signals.length > 10 && (
-                <p className="text-ast-muted text-[10px] text-center pt-1">
-                  +{signals.length - 10} more —{" "}
-                  <a href="/api-explorer" className="text-ast-accent hover:underline">API Explorer</a>
-                </p>
-              )}
+              
             </div>
           </div>
   
