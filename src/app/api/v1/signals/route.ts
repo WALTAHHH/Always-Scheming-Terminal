@@ -65,7 +65,7 @@ export async function GET(request: Request) {
   }
 
   // Build FeedItem objects for clustering (only need title, published_at, id)
-  const feedItems: FeedItem[] = Array.from(signalByContentId.values()).map((signal) => ({
+  const feedItemsUnsorted: FeedItem[] = Array.from(signalByContentId.values()).map((signal) => ({
     id: signal.content_id,
     title: signal.title,
     published_at: signal.published_at,
@@ -84,6 +84,10 @@ export async function GET(request: Request) {
     // Unused but required by Content
     url: signal.url,
   }));
+  // Sort by published_at descending (most recent first) as the feed UI does
+  const feedItems = feedItemsUnsorted.sort((a, b) => 
+    new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime()
+  );
 
   // Cluster articles by title similarity within 72h
   const clusters = clusterItems(feedItems);
