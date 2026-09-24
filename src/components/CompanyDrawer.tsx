@@ -331,7 +331,7 @@ function InteractiveChart({
             <circle
               cx={marker.x}
               cy={marker.y}
-              r={hoveredMarkerId === marker.item.id ? 5.5 : 3.5}
+              r={hoveredMarkerId === marker.item.id ? 2.5 : 1.5}
               fill="#fbbf24"
               stroke="#0d1117"
               strokeWidth="1.5"
