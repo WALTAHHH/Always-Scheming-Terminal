@@ -276,11 +276,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
 
   return (
     <div className="h-full flex flex-col bg-ast-bg">
-      {/* Header */}
-      <div className="h-11 px-4 border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm flex items-center justify-between">
-        <span className="text-ast-text text-sm font-semibold tracking-wide">SIGNAL</span>
-        <span className="text-ast-accent text-[10px]">●</span>
-      </div>
+
       
       <div className="flex-1 overflow-y-auto flex flex-col">
         <div className="max-w-5xl mx-auto w-full">
