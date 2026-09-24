@@ -116,12 +116,6 @@ export default function ApiExplorerPage() {
         requiresAuth: true
       },
       { 
-        path: "GET /api/v1/items?signal_type=deal", 
-        description: "News items about deals (requires API key)",
-        url: "/api/v1/items?signal_type=deal",
-        requiresAuth: true
-      },
-      { 
         path: "GET /api/v1/signals (deals)", 
         description: "Recent deals (client-side filtered)",
         url: "/api/v1/signals",
@@ -173,11 +167,9 @@ export default function ApiExplorerPage() {
       const res = await fetch(url);
       setStatus(res.status);
       const data = await res.json();
-      // Filter for deals (fundraising, acquisition, earnings)
-      const deals = data.signals?.filter((item: any) => 
-        ["fundraising", "acquisition", "earnings"].includes(item.signal_type)
-      ) ?? [];
-      setResponse({ signals: deals, count: deals.length });
+      // Filter for deals
+      const deals = Array.isArray(data) ? data.filter((item: any) => item.signal_type === "deal") : [];
+      setResponse(deals);
     } catch (err) {
       setStatus(0);
       setResponse({ error: String(err) });
