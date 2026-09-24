@@ -298,12 +298,10 @@ export function SignalPanel({ items }: SignalPanelProps) {
                     : "text-ast-gold";
                   
                   return (
-                    <a
+                    <div
                       key={signal.id}
-                      href={signal.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`block group rounded hover:bg-ast-mint/5 transition-colors -mx-2 px-2 border-l-2 ${getSignalBorderColor(signal.signal_type)}`}
+                      onClick={() => window.open(signal.url, '_blank', 'noopener,noreferrer')}
+                      className={`block group rounded hover:bg-ast-mint/5 cursor-pointer transition-colors -mx-2 px-2 border-l-2 ${getSignalBorderColor(signal.signal_type)}`}
                     >
                       <div className="flex items-start gap-2">
                         <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-${badge.color}/20 text-${badge.color}`}>
@@ -350,7 +348,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                           </div>
                         </div>
                       </div>
-                    </a>
+                    </div>
                   );
                 })
               )}
@@ -378,12 +376,10 @@ export function SignalPanel({ items }: SignalPanelProps) {
                 <p className="text-ast-muted text-xs">No deals or earnings yet</p>
               ) : (
                 dealSignals.map((deal) => (
-                  <a
+                  <div
                     key={deal.id}
-                    href={deal.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`block group border-l-2 ${getSignalBorderColor(deal.signal_type)}`}
+                    onClick={() => window.open(deal.url, '_blank', 'noopener,noreferrer')}
+                    className={`block group border-l-2 cursor-pointer ${getSignalBorderColor(deal.signal_type)}`}
                   >
                     <div className="flex items-start gap-2">
                       <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${
@@ -409,7 +405,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                         </div>
                       </div>
                     </div>
-                  </a>
+                  </div>
                 ))
               )}
             </div>
