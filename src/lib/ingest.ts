@@ -120,6 +120,19 @@ async function applyAITagsAsync(
         }
       }
 
+      // After upserting AI company tag rows — resolve entity_ids
+      const aiCompanies = item.tags.company || []; // the AI-extracted company names
+      if (aiCompanies.length > 0) {
+        const aiEntityMap = await resolveCompanyNamesToEntityIds(aiCompanies);
+        for (const [name, entityId] of aiEntityMap) {
+          await supabase.from("content_tags").update({ entity_id: entityId })
+            .eq("content_id", item.id)
+            .eq("dimension", "company")
+            .eq("value", name)
+            .is("entity_id", null);
+        }
+      }
+
       return { id: item.id, success: true };
     } catch (err) {
       console.error(`[AI tag async] Failed for item ${item.id}:`, err);
@@ -351,11 +364,31 @@ async function ingestSource(source: SourceRow): Promise<IngestResult> {
               sources: { source_type: source.source_type },
             };
 
-            await extractSignal({
+            const signalCompanies = await extractSignal({
               supabase,
               item: itemForSignal,
               hasResolvedEntity,
             });
+
+            // Resolve signal company names and update content_tags
+            if (signalCompanies && signalCompanies.length > 0) {
+              const signalEntityMap = await resolveCompanyNamesToEntityIds(signalCompanies);
+              for (const [name, entityId] of signalEntityMap) {
+                await supabase.from("content_tags").upsert({
+                  content_id: id,
+                  dimension: "company",
+                  value: name,
+                  entity_id: entityId,
+                  manual: false,
+                }, { onConflict: "content_id,dimension,value", ignoreDuplicates: false });
+              }
+              // Also update content.tags JSONB if new companies were resolved
+              if (signalEntityMap.size > 0) {
+                const currentTags = tags as Record<string, string[]>;
+                const merged = [...new Set([...(currentTags.company || []), ...signalCompanies])];
+                await supabase.from("content").update({ tags: { ...currentTags, company: merged } }).eq("id", id);
+              }
+            }
           } catch (err) {
             // Entity resolution or signal extraction failed — log but don't break ingestion
             console.warn(`[ingest] Entity resolution/signal extraction failed for item ${id}:`, err);
