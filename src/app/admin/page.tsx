@@ -883,10 +883,6 @@ function EntitiesDashboard() {
     .sort((a, b) => b.tag_count - a.tag_count)
     .slice(0, 10);
   const topFiveEntities = tagTimeSeries.slice(0, 5);
-  const entityBarData = topTenByTagCount.map(e => ({
-    date: e.canonical_name,
-    count: e.tag_count,
-  }));
 
   return (
     <div className="space-y-6">
@@ -905,15 +901,26 @@ function EntitiesDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Bar chart: top 10 entities by tag count */}
         <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
-          <div className="text-[10px] font-semibold text-ast-muted uppercase tracking-wider mb-2">
+          <div className="text-[10px] font-semibold text-ast-muted uppercase tracking-wider mb-3">
             Top Entities by Tag Count
           </div>
-          <div className="h-60">
-            <BarChart
-              data={entityBarData}
-              color="var(--ast-accent)"
-              label="Top Entities by Tag Count"
-            />
+          <div className="space-y-1.5">
+            {topTenByTagCount.map((entity) => {
+              const maxCount = Math.max(...topTenByTagCount.map(e => e.tag_count), 1);
+              const pct = (entity.tag_count / maxCount) * 100;
+              return (
+                <div key={entity.id} className="flex items-center gap-2">
+                  <div className="w-28 text-[10px] text-ast-muted truncate flex-shrink-0 text-right">{entity.canonical_name}</div>
+                  <div className="flex-1 bg-ast-bg rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-ast-accent/70"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="w-8 text-[10px] text-ast-muted tabular-nums text-right flex-shrink-0">{entity.tag_count}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
