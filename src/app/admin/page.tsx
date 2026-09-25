@@ -904,20 +904,22 @@ function EntitiesDashboard() {
           <div className="text-[10px] font-semibold text-ast-muted uppercase tracking-wider mb-3">
             Top Entities by Tag Count
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {topTenByTagCount.map((entity) => {
               const maxCount = Math.max(...topTenByTagCount.map(e => e.tag_count), 1);
-              const pct = (entity.tag_count / maxCount) * 100;
+              const pct = Math.max((entity.tag_count / maxCount) * 100, 1);
               return (
-                <div key={entity.id} className="flex items-center gap-2">
-                  <div className="w-28 text-[10px] text-ast-muted truncate flex-shrink-0 text-right">{entity.canonical_name}</div>
-                  <div className="flex-1 bg-ast-bg rounded-full h-2 overflow-hidden">
+                <div key={entity.id} className="space-y-0.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-ast-text truncate max-w-[160px]">{entity.canonical_name}</span>
+                    <span className="text-[10px] text-ast-muted tabular-nums ml-2 flex-shrink-0">{entity.tag_count}</span>
+                  </div>
+                  <div className="w-full bg-ast-border/40 rounded h-1.5 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-ast-accent/70"
+                      className="h-full rounded bg-ast-accent"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <div className="w-8 text-[10px] text-ast-muted tabular-nums text-right flex-shrink-0">{entity.tag_count}</div>
                 </div>
               );
             })}
