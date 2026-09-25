@@ -50,6 +50,13 @@ export function shouldExtractSignal(
     return true;
   }
 
+  // Path 3: AI tagger found company names + high-value category
+  // (entity may not be in DB yet, but article is clearly about a named company)
+  const hasAICompanies = (item.tags.company || []).length > 0;
+  if (hasAICompanies && categories.some(cat => highValueCategories.includes(cat))) {
+    return true;
+  }
+
   return false;
 }
 
@@ -67,6 +74,7 @@ interface SignalExtractionResult {
     | "platform_change"
     | "macro";
   summary: string;
+  companies: string[];
   investment_relevance_score: number;
   reasoning: string;
 }
@@ -174,8 +182,9 @@ interface ExtractSignalOptions {
  * Extract and store signal for an item if it passes the gate.
  * Non-throwing — all errors are caught and logged.
  */
-export async function extractSignal(options: ExtractSignalOptions): Promise<void> {
+export async function extractSignal(options: ExtractSignalOptions): Promise<string[] | null> {
   const { supabase, item, hasResolvedEntity } = options;
+  let companies: string[] | null = null;
 
   try {
     // Compute importance score (gate dependency)
@@ -183,7 +192,7 @@ export async function extractSignal(options: ExtractSignalOptions): Promise<void
 
     // Check gate
     if (!shouldExtractSignal(item, importanceScore, hasResolvedEntity)) {
-      return; // Silent — gate didn't fire
+      return null; // Silent — gate didn't fire
     }
 
     // Extract signal via LLM
@@ -191,8 +200,10 @@ export async function extractSignal(options: ExtractSignalOptions): Promise<void
     if (!signal) {
       // LLM failed or timed out — log but don't break ingestion
       console.warn(`[signal-extractor] Failed to extract signal for item ${item.id}`);
-      return;
+      return null;
     }
+
+    companies = signal.companies || [];
 
     // Write to signals table
     const payload: SignalInsert = {
@@ -213,4 +224,6 @@ export async function extractSignal(options: ExtractSignalOptions): Promise<void
     // Catch-all — signal extraction must never break ingestion
     console.error(`[signal-extractor] Unexpected error for item ${item.id}:`, err);
   }
+
+  return companies;
 }

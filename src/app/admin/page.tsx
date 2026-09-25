@@ -1380,7 +1380,7 @@ export default function AdminPage() {
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [logs, setLogs] = useState<IngestionLogRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("sources");
+  const [tab, setTab] = useState<Tab>("pipeline");
   const [sortField, setSortField] = useState<SortField>("articles");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [minArticles, setMinArticles] = useState("");
@@ -1522,6 +1522,16 @@ export default function AdminPage() {
       <div className="border-b border-ast-border bg-ast-bg/95 sticky top-[53px] z-40">
         <div className="max-w-5xl mx-auto px-4 flex items-center gap-0">
           <button
+            onClick={() => setTab("pipeline")}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              tab === "pipeline"
+                ? "border-ast-accent text-ast-accent"
+                : "border-transparent text-ast-muted hover:text-ast-text"
+            }`}
+          >
+            Pipeline
+          </button>
+          <button
             onClick={() => setTab("sources")}
             className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
               tab === "sources"
@@ -1540,16 +1550,6 @@ export default function AdminPage() {
             }`}
           >
             Ingestion Health
-          </button>
-          <button
-            onClick={() => setTab("pipeline")}
-            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-              tab === "pipeline"
-                ? "border-ast-accent text-ast-accent"
-                : "border-transparent text-ast-muted hover:text-ast-text"
-            }`}
-          >
-            Pipeline
           </button>
           <div className="ml-auto">
             <FetchAllButton onDone={() => { fetchSources(); fetchLogs(); }} />

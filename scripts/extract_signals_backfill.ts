@@ -23,7 +23,7 @@ async function run() {
   console.log('Extracting signals for', eligible.length, 'eligible articles...');
 
   for (const item of eligible) {
-    await extractSignal({
+    const companies = await extractSignal({
       supabase: sb,
       item: {
         id: item.id,
@@ -34,6 +34,7 @@ async function run() {
       },
       hasResolvedEntity: true,
     });
+    // Companies are returned but not used in this backfill script
     process.stdout.write('.');
   }
 
