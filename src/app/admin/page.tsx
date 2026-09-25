@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -741,75 +741,112 @@ function BarChart({ data, color, label }: BarChartProps) {
 }
 
 function MultiLineChart({ data }: { data: { entity: string, data: { date: string, count: number }[] }[] }) {
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; date: string; values: { entity: string; count: number; color: string }[] } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+
   if (!data || data.length === 0) {
     return (
-      <div className="h-60 flex items-center justify-center">
+      <div className="h-48 flex items-center justify-center">
         <span className="text-ast-muted text-xs">No data available</span>
       </div>
     );
   }
 
-  // Flatten all data points to get union of dates
   const allDates = Array.from(new Set(
     data.flatMap(series => series.data.map(d => d.date))
   )).sort();
   if (allDates.length === 0) {
     return (
-      <div className="h-60 flex items-center justify-center">
+      <div className="h-48 flex items-center justify-center">
         <span className="text-ast-muted text-xs">No dates available</span>
       </div>
     );
   }
 
-  // Global max count across all series
   const globalMax = Math.max(...data.flatMap(series => series.data.map(d => d.count)), 1);
-
-  // Colors palette
   const colors = ['var(--ast-accent)', 'var(--ast-gold)', 'var(--ast-pink)', '#9c88ff', '#00a8ff'];
+  const PAD_L = 4; const PAD_R = 4; const PAD_T = 4; const PAD_B = 4;
+  const W = 100 - PAD_L - PAD_R;
+  const H = 60 - PAD_T - PAD_B;
 
-  // Normalize date to x position (0-100)
   const dateToX = (date: string) => {
     const index = allDates.indexOf(date);
-    return allDates.length === 1 ? 50 : (index / (allDates.length - 1)) * 100;
+    return PAD_L + (allDates.length === 1 ? W / 2 : (index / (allDates.length - 1)) * W);
   };
+  const countToY = (count: number) => PAD_T + H - (count / globalMax) * H;
 
-  // Normalize count to y position (0-60) (inverted because SVG y=0 is top)
-  const countToY = (count: number) => {
-    return 60 - (count / globalMax) * 60;
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / rect.width;
+    // Find nearest date index
+    const idx = Math.round((relX * (allDates.length - 1)));
+    const clampedIdx = Math.max(0, Math.min(allDates.length - 1, idx));
+    const date = allDates[clampedIdx];
+    const values = data.slice(0, 5).map((series, i) => {
+      const pt = series.data.find(d => d.date === date);
+      return { entity: series.entity, count: pt?.count ?? 0, color: colors[i % colors.length] };
+    });
+    setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, date, values });
   };
 
   return (
-    <div className="relative">
-      <svg
-        viewBox="0 0 100 60"
-        preserveAspectRatio="none"
-        className="w-full h-full"
-      >
-        {data.slice(0, 5).map((series, idx) => {
-          const points = series.data
-            .map(d => `${dateToX(d.date)},${countToY(d.count)}`)
-            .join(' ');
-          return (
-            <polyline
-              key={series.entity}
-              points={points}
-              fill="none"
-              stroke={colors[idx % colors.length]}
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
+    <div className="space-y-2">
+      <div className="relative" style={{ height: '160px' }}>
+        <svg
+          ref={svgRef}
+          viewBox="0 0 100 60"
+          preserveAspectRatio="none"
+          className="w-full h-full cursor-crosshair"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setTooltip(null)}
+        >
+          {data.slice(0, 5).map((series, idx) => {
+            const points = series.data
+              .map(d => `${dateToX(d.date)},${countToY(d.count)}`)
+              .join(' ');
+            return (
+              <polyline
+                key={series.entity}
+                points={points}
+                fill="none"
+                stroke={colors[idx % colors.length]}
+                strokeWidth="1.5"
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })}
+          {tooltip && (
+            <line
+              x1={dateToX(tooltip.date)} y1={PAD_T}
+              x2={dateToX(tooltip.date)} y2={PAD_T + H}
+              stroke="currentColor" strokeWidth="0.5" strokeDasharray="2,2"
+              vectorEffect="non-scaling-stroke" className="text-ast-muted/50"
             />
-          );
-        })}
-      </svg>
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3 mt-2 justify-center">
+          )}
+        </svg>
+        {tooltip && (
+          <div
+            className="absolute pointer-events-none z-10 bg-ast-surface border border-ast-border rounded px-2 py-1.5 shadow-lg text-[10px] space-y-0.5"
+            style={{ left: tooltip.x + 10, top: 4, maxWidth: 160 }}
+          >
+            <div className="text-ast-muted mb-1">{new Date(tooltip.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+            {tooltip.values.filter(v => v.count > 0).map(v => (
+              <div key={v.entity} className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: v.color }} />
+                <span className="text-ast-text truncate">{v.entity}</span>
+                <span className="text-ast-muted ml-auto pl-2 tabular-nums">{v.count}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Legend — below chart, not overlapping */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center">
         {data.slice(0, 5).map((series, idx) => (
           <div key={series.entity} className="flex items-center gap-1 text-[10px]">
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: colors[idx % colors.length] }}
-            />
-            <span className="text-ast-muted truncate max-w-[80px]">{series.entity}</span>
+            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: colors[idx % colors.length] }} />
+            <span className="text-ast-muted">{series.entity}</span>
           </div>
         ))}
       </div>
@@ -960,7 +997,7 @@ function EntitiesDashboard() {
                 <div className="w-40">
                   <div className="flex items-center gap-2">
                     <span className={`text-xs px-1.5 py-0.5 rounded ${entity.is_public ? 'bg-ast-mint/10 border border-ast-mint/30 text-ast-mint' : 'bg-ast-surface/50 border border-ast-border text-ast-text'}`}>
-                      {entity.is_public ? 'CANONICAL' : 'CANONICAL'}
+                      {entity.is_public ? 'PUBLIC' : 'PRIVATE'}
                     </span>
                     <span className="text-sm text-ast-text truncate">{entity.canonical_name}</span>
                   </div>
