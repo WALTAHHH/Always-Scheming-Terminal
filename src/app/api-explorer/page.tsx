@@ -79,12 +79,17 @@ export default function ApiExplorerPage() {
   const [showFullResponse, setShowFullResponse] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [copied, setCopied] = useState(false);
-
+  const DEMO_API_KEY = "ast_demo_7f3a2b1c4d5e6f7a8b9c0d1e2f3a4b5c";
 
   // Load API key from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("ast_api_explorer_key");
-    if (saved) setApiKey(saved);
+    if (saved) {
+      setApiKey(saved);
+    } else {
+      // Pre-seed with demo key so unauthenticated users can try all endpoints
+      setApiKey(DEMO_API_KEY);
+    }
   }, []);
 
   // Save API key to localStorage whenever it changes
@@ -101,25 +106,29 @@ export default function ApiExplorerPage() {
         path: "GET /api/v1/signals", 
         description: "Top investment signals (public)",
         url: "/api/v1/signals",
-        requiresAuth: false
+        requiresAuth: false,
+        requiresKey: false
       },
       { 
         path: "GET /api/v1/items?limit=10", 
         description: "Latest news items (requires API key)",
         url: "/api/v1/items?limit=10",
-        requiresAuth: true
+        requiresAuth: true,
+        requiresKey: true
       },
       { 
         path: "GET /api/v1/entities?limit=20", 
         description: "Entity directory (requires API key)",
         url: "/api/v1/entities?limit=20",
-        requiresAuth: true
+        requiresAuth: true,
+        requiresKey: true
       },
       { 
         path: "GET /api/v1/signals (deals)", 
         description: "Recent deals (client-side filtered)",
         url: "/api/v1/signals",
         requiresAuth: false,
+        requiresKey: false,
         isDeals: true
       },
     ];
@@ -138,7 +147,9 @@ export default function ApiExplorerPage() {
     setStatus(null);
     try {
       const headers: HeadersInit = {};
-      if (finalUrl !== "/api/v1/signals") {
+      const urlPath = finalUrl.split("?")[0];
+      const isPublicEndpoint = urlPath === "/api/v1/signals" || urlPath === "/api/v1/health";
+      if (!isPublicEndpoint) {
         if (!apiKey.trim()) {
           throw new Error("API key required for this endpoint");
         }
@@ -209,9 +220,19 @@ export default function ApiExplorerPage() {
         {/* API Key input */}
         <div className="border border-ast-border rounded-lg px-4 py-3 bg-ast-surface">
           <h2 className="text-ast-accent text-xs font-semibold tracking-wide uppercase mb-2">API Key</h2>
-          <p className="text-sm text-ast-muted mb-3">
-            Store your key locally — used for authenticated endpoints (except /api/v1/signals).
-          </p>
+          <div className="space-y-2 mb-3">
+            <p className="text-xs text-ast-muted">
+              A <span className="text-ast-text">demo key</span> is pre-loaded — it works on all endpoints with a{' '}
+              <span className="text-ast-gold">10 req/min</span> rate limit and read-only access to public data.
+            </p>
+            <p className="text-xs text-ast-muted">
+              Need programmatic access?{' '}
+              <a href="mailto:matt@always-scheming.com" className="text-ast-accent hover:underline">
+                Request an API key
+              </a>{' '}
+              for higher rate limits and full endpoint access.
+            </p>
+          </div>
           <div className="flex gap-3">
             <input
               type="password"
