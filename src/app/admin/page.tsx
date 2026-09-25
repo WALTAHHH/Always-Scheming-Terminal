@@ -740,6 +740,83 @@ function BarChart({ data, color, label }: BarChartProps) {
   );
 }
 
+function MultiLineChart({ data }: { data: { entity: string, data: { date: string, count: number }[] }[] }) {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-60 flex items-center justify-center">
+        <span className="text-ast-muted text-xs">No data available</span>
+      </div>
+    );
+  }
+
+  // Flatten all data points to get union of dates
+  const allDates = Array.from(new Set(
+    data.flatMap(series => series.data.map(d => d.date))
+  )).sort();
+  if (allDates.length === 0) {
+    return (
+      <div className="h-60 flex items-center justify-center">
+        <span className="text-ast-muted text-xs">No dates available</span>
+      </div>
+    );
+  }
+
+  // Global max count across all series
+  const globalMax = Math.max(...data.flatMap(series => series.data.map(d => d.count)), 1);
+
+  // Colors palette
+  const colors = ['var(--ast-accent)', 'var(--ast-gold)', 'var(--ast-pink)', '#9c88ff', '#00a8ff'];
+
+  // Normalize date to x position (0-100)
+  const dateToX = (date: string) => {
+    const index = allDates.indexOf(date);
+    return allDates.length === 1 ? 50 : (index / (allDates.length - 1)) * 100;
+  };
+
+  // Normalize count to y position (0-60) (inverted because SVG y=0 is top)
+  const countToY = (count: number) => {
+    return 60 - (count / globalMax) * 60;
+  };
+
+  return (
+    <div className="relative">
+      <svg
+        viewBox="0 0 100 60"
+        preserveAspectRatio="none"
+        className="w-full h-full"
+      >
+        {data.slice(0, 5).map((series, idx) => {
+          const points = series.data
+            .map(d => `${dateToX(d.date)},${countToY(d.count)}`)
+            .join(' ');
+          return (
+            <polyline
+              key={series.entity}
+              points={points}
+              fill="none"
+              stroke={colors[idx % colors.length]}
+              strokeWidth="1.5"
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
+      </svg>
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3 mt-2 justify-center">
+        {data.slice(0, 5).map((series, idx) => (
+          <div key={series.entity} className="flex items-center gap-1 text-[10px]">
+            <div
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: colors[idx % colors.length] }}
+            />
+            <span className="text-ast-muted truncate max-w-[80px]">{series.entity}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Entity dashboard
 function EntitiesDashboard() {
   const [entities, setEntities] = useState<any[]>([]);
@@ -806,6 +883,10 @@ function EntitiesDashboard() {
     .sort((a, b) => b.tag_count - a.tag_count)
     .slice(0, 10);
   const topFiveEntities = tagTimeSeries.slice(0, 5);
+  const entityBarData = topTenByTagCount.map(e => ({
+    date: e.canonical_name,
+    count: e.tag_count,
+  }));
 
   return (
     <div className="space-y-6">
@@ -941,8 +1022,11 @@ function PipelineDashboard() {
   const [copied, setCopied] = useState<string | null>(null);
   const [aliasForm, setAliasForm] = useState<{ tag: string; input: string; saving: boolean; err: string | null } | null>(null);
   const [aliasSuggestions, setAliasSuggestions] = useState<string[]>([]);
-  const [entityNames, setEntityNames] = useState<string[]>([]);
   const [aliasToast, setAliasToast] = useState<string | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+  const [entityNames, setEntityNames] = useState<string[]>([]);
+
+  useEffect(() => { setHighlightedIndex(-1); }, [aliasSuggestions]);
 
   const TEST_API_KEY = "ast_6c3732f0c3405ff36eeddcbc68af3f3e4593c9dd011f6419";
   const BASE_URL = "https://terminal.always-scheming.com";
@@ -1190,10 +1274,10 @@ function PipelineDashboard() {
 
         {/* Top unresolved */}
         {aliasToast && (
-            <div className="mb-2 p-2 rounded bg-ast-mint/10 border border-ast-mint/30 text-ast-mint text-xs">
-              {aliasToast}
-            </div>
-          )}
+          <div className="mb-2 p-2 rounded bg-ast-mint/10 border border-ast-mint/30 text-ast-mint text-xs">
+            {aliasToast}
+          </div>
+        )}
         {stats.entityResolution.topUnresolved.length > 0 && (
           <div className="border-t border-ast-border pt-3">
             <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-2">
@@ -1229,7 +1313,6 @@ function PipelineDashboard() {
                   </div>
                   {aliasForm?.tag === tag.value && (
                     <form
-                      className={`flex flex-col gap-1 pl-2${aliasForm.saving ? " opacity-60" : ""}`}
                       onSubmit={async (e) => {
                         e.preventDefault();
                         if (!aliasForm.input.trim()) return;
@@ -1245,7 +1328,6 @@ function PipelineDashboard() {
                           setAliasForm({ ...aliasForm, saving: false, err: data.error || "Failed" });
                         } else {
                           setAliasForm(null);
-                          // Optimistically remove from local state — no full reload
                           if (stats) {
                             setStats({
                               ...stats,
@@ -1259,6 +1341,7 @@ function PipelineDashboard() {
                           setTimeout(() => setAliasToast(null), 2500);
                         }
                       }}
+                      className="flex flex-col gap-1 pl-2"
                     >
                       <div className="text-xs text-ast-muted">Mapping: {aliasForm.tag} →</div>
                       <div className="relative flex items-center gap-1">
@@ -1269,12 +1352,33 @@ function PipelineDashboard() {
                           onChange={async (e) => {
                             const val = e.target.value;
                             setAliasForm({ ...aliasForm, input: val });
-                            if (val.length >= 1) {
+                            if (val.length >= 2) {
                               const r = await fetch(`/api/v1/entity-aliases?search=${encodeURIComponent(val)}`);
                               const d = await r.json();
                               setAliasSuggestions(d.results || []);
                             } else {
                               setAliasSuggestions([]);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (!aliasSuggestions.length) return;
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              setHighlightedIndex(i => (i + 1) % aliasSuggestions.length);
+                            } else if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              setHighlightedIndex(i => i <= 0 ? aliasSuggestions.length - 1 : i - 1);
+                            } else if (e.key === 'Tab' || (e.key === 'Enter' && highlightedIndex >= 0)) {
+                              e.preventDefault();
+                              const selected = aliasSuggestions[highlightedIndex];
+                              if (selected) {
+                                setAliasForm({ ...aliasForm, input: selected });
+                                setAliasSuggestions([]);
+                                setHighlightedIndex(-1);
+                              }
+                            } else if (e.key === 'Escape') {
+                              setAliasSuggestions([]);
+                              setHighlightedIndex(-1);
                             }
                           }}
                           placeholder="entity name…"
@@ -1285,16 +1389,11 @@ function PipelineDashboard() {
                           disabled={aliasForm.saving || !aliasForm.input.trim()}
                           className="px-2 py-0.5 rounded text-[10px] bg-ast-accent/10 text-ast-accent border border-ast-accent/30 hover:bg-ast-accent/20 disabled:opacity-40 transition-colors"
                         >
-                          {aliasForm.saving ? (
-                            <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                            </svg>
-                          ) : "save"}
+                          {aliasForm.saving ? "…" : "save"}
                         </button>
                         {aliasSuggestions.length > 0 && (
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-ast-surface border border-ast-border rounded shadow-lg z-50 max-h-40 overflow-y-auto">
-                            {aliasSuggestions.map((s) => (
+                          <div className="absolute top-full left-0 right-8 mt-0.5 bg-ast-surface border border-ast-border rounded shadow-lg z-10">
+                            {aliasSuggestions.map((s, index) => (
                               <button
                                 key={s}
                                 type="button"
@@ -1302,7 +1401,7 @@ function PipelineDashboard() {
                                   setAliasForm({ ...aliasForm, input: s });
                                   setAliasSuggestions([]);
                                 }}
-                                className="w-full text-left px-2 py-1 text-xs text-ast-text hover:bg-ast-bg transition-colors"
+                                className={`w-full text-left px-2 py-1 text-xs transition-colors ${index === highlightedIndex ? 'bg-ast-bg text-ast-text' : 'text-ast-text hover:bg-ast-bg'}`}
                               >
                                 {s}
                               </button>
