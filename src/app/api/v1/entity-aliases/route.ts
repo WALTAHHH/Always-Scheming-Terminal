@@ -132,13 +132,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  // Backfill existing content_tags rows that match this alias
-  await supabase
-    .from("content_tags")
-    .update({ entity_id: entity.id })
-    .eq("dimension", "company")
-    .eq("value", alias)
-    .is("entity_id", null);
+  // Backfill existing content_tags rows that match ANY alias for this entity
+  const { data: allAliases } = await supabase
+    .from("entity_aliases")
+    .select("alias")
+    .eq("entity_id", entity.id);
+
+  const allAliasStrings = (allAliases || []).map((a) => a.alias);
+
+  if (allAliasStrings.length > 0) {
+    await supabase
+      .from("content_tags")
+      .update({ entity_id: entity.id })
+      .eq("dimension", "company")
+      .in("value", allAliasStrings)
+      .is("entity_id", null);
+  }
 
   return NextResponse.json({ ok: true, alias, entity: entity.canonical_name });
 }
