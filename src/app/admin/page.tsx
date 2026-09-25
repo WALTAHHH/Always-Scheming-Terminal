@@ -909,42 +909,11 @@ function EntitiesDashboard() {
             Top Entities by Tag Count
           </div>
           <div className="h-60">
-            {/* Horizontal bar chart */}
-            <svg width="100%" height="100%" className="overflow-visible">
-              {topTenByTagCount.map((entity, i) => {
-                const maxCount = Math.max(...topTenByTagCount.map(e => e.tag_count), 1);
-                const barWidth = (entity.tag_count / maxCount) * 80;
-                const y = i * 25;
-                return (
-                  <g key={entity.id}>
-                    <text
-                      x="0"
-                      y={y + 15}
-                      className="text-[10px] fill-ast-text"
-                      textAnchor="start"
-                    >
-                      {entity.canonical_name}
-                    </text>
-                    <rect
-                      x="100"
-                      y={y}
-                      width={barWidth}
-                      height="15"
-                      fill="#00d4aa"
-                      rx="2"
-                    />
-                    <text
-                      x={110 + barWidth}
-                      y={y + 12}
-                      className="text-[10px] fill-ast-text"
-                      textAnchor="start"
-                    >
-                      {entity.tag_count}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
+            <BarChart
+              data={entityBarData}
+              color="var(--ast-accent)"
+              label="Top Entities by Tag Count"
+            />
           </div>
         </div>
 
@@ -954,8 +923,7 @@ function EntitiesDashboard() {
             Tag Mentions Over Time (Last 30 Days)
           </div>
           <div className="h-60">
-            {/* Simple line chart placeholder */}
-            <p className="text-ast-muted text-xs">Line chart: tagTimeSeries data available</p>
+            <MultiLineChart data={topFiveEntities} />
           </div>
         </div>
       </div>
