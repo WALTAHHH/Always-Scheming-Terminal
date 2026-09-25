@@ -132,6 +132,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
+  // Backfill existing content_tags rows that match this alias
+  await supabase
+    .from("content_tags")
+    .update({ entity_id: entity.id })
+    .eq("dimension", "company")
+    .eq("value", alias)
+    .is("entity_id", null);
+
   return NextResponse.json({ ok: true, alias, entity: entity.canonical_name });
 }
 

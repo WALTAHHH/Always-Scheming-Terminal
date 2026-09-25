@@ -942,6 +942,7 @@ function PipelineDashboard() {
   const [aliasForm, setAliasForm] = useState<{ tag: string; input: string; saving: boolean; err: string | null } | null>(null);
   const [aliasSuggestions, setAliasSuggestions] = useState<string[]>([]);
   const [entityNames, setEntityNames] = useState<string[]>([]);
+  const [aliasToast, setAliasToast] = useState<string | null>(null);
 
   const TEST_API_KEY = "ast_6c3732f0c3405ff36eeddcbc68af3f3e4593c9dd011f6419";
   const BASE_URL = "https://terminal.always-scheming.com";
@@ -1188,6 +1189,11 @@ function PipelineDashboard() {
         </div>
 
         {/* Top unresolved */}
+        {aliasToast && (
+            <div className="mb-2 p-2 rounded bg-ast-mint/10 border border-ast-mint/30 text-ast-mint text-xs">
+              {aliasToast}
+            </div>
+          )}
         {stats.entityResolution.topUnresolved.length > 0 && (
           <div className="border-t border-ast-border pt-3">
             <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-2">
@@ -1223,6 +1229,7 @@ function PipelineDashboard() {
                   </div>
                   {aliasForm?.tag === tag.value && (
                     <form
+                      className={`flex flex-col gap-1 pl-2${aliasForm.saving ? " opacity-60" : ""}`}
                       onSubmit={async (e) => {
                         e.preventDefault();
                         if (!aliasForm.input.trim()) return;
@@ -1238,10 +1245,20 @@ function PipelineDashboard() {
                           setAliasForm({ ...aliasForm, saving: false, err: data.error || "Failed" });
                         } else {
                           setAliasForm(null);
-                          fetchStats();
+                          // Optimistically remove from local state — no full reload
+                          if (stats) {
+                            setStats({
+                              ...stats,
+                              entityResolution: {
+                                ...stats.entityResolution,
+                                topUnresolved: stats.entityResolution.topUnresolved.filter(t => t.value !== aliasForm.tag),
+                              },
+                            });
+                          }
+                          setAliasToast(`✓ "${aliasForm.tag}" → "${aliasForm.input.trim()}" saved`);
+                          setTimeout(() => setAliasToast(null), 2500);
                         }
                       }}
-                      className="flex flex-col gap-1 pl-2"
                     >
                       <div className="text-xs text-ast-muted">Mapping: {aliasForm.tag} →</div>
                       <div className="relative flex items-center gap-1">
@@ -1252,7 +1269,7 @@ function PipelineDashboard() {
                           onChange={async (e) => {
                             const val = e.target.value;
                             setAliasForm({ ...aliasForm, input: val });
-                            if (val.length >= 2) {
+                            if (val.length >= 1) {
                               const r = await fetch(`/api/v1/entity-aliases?search=${encodeURIComponent(val)}`);
                               const d = await r.json();
                               setAliasSuggestions(d.results || []);
@@ -1268,10 +1285,15 @@ function PipelineDashboard() {
                           disabled={aliasForm.saving || !aliasForm.input.trim()}
                           className="px-2 py-0.5 rounded text-[10px] bg-ast-accent/10 text-ast-accent border border-ast-accent/30 hover:bg-ast-accent/20 disabled:opacity-40 transition-colors"
                         >
-                          {aliasForm.saving ? "…" : "save"}
+                          {aliasForm.saving ? (
+                            <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                            </svg>
+                          ) : "save"}
                         </button>
                         {aliasSuggestions.length > 0 && (
-                          <div className="absolute top-full left-0 right-8 mt-0.5 bg-ast-surface border border-ast-border rounded shadow-lg z-10">
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-ast-surface border border-ast-border rounded shadow-lg z-50 max-h-40 overflow-y-auto">
                             {aliasSuggestions.map((s) => (
                               <button
                                 key={s}
