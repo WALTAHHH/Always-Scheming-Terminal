@@ -284,6 +284,9 @@ export default function ApiExplorerPage() {
               <div key={endpoint.path} className="border border-ast-border bg-ast-surface rounded-lg p-3">
                 <div className="font-mono text-ast-accent text-xs mb-1">{endpoint.path}</div>
                 <div className="text-ast-muted text-xs mb-2">{endpoint.description}</div>
+                <span className={`text-[9px] px-1 py-0.5 rounded ${endpoint.requiresKey ? "bg-ast-gold/10 text-ast-gold border border-ast-gold/20" : "bg-ast-mint/10 text-ast-mint border border-ast-mint/20"}`}>
+                  {endpoint.requiresKey ? "API key" : "public"}
+                </span>
                 <button
                   onClick={() => endpoint.isDeals ? handleRecentDeals() : handlePreset(endpoint.url)}
                   disabled={loading}

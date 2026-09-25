@@ -1640,6 +1640,16 @@ export default function AdminPage() {
           >
             Ingestion Health
           </button>
+          <button
+            onClick={() => setTab("entities")}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              tab === "entities"
+                ? "border-ast-accent text-ast-accent"
+                : "border-transparent text-ast-muted hover:text-ast-text"
+            }`}
+          >
+            Entities
+          </button>
           <div className="ml-auto">
             <FetchAllButton onDone={() => { fetchSources(); fetchLogs(); }} />
           </div>
@@ -1706,6 +1716,8 @@ export default function AdminPage() {
           </div>
         ) : tab === "health" ? (
           <HealthDashboard sources={sources} logs={logs} onRefresh={() => { fetchSources(); fetchLogs(); }} />
+        ) : tab === "entities" ? (
+          <EntitiesDashboard />
         ) : (
           <PipelineDashboard />
         )}
