@@ -413,19 +413,21 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
           onClick={() => selectPanel('feed')}
           className={`flex-1 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
             activeTab === 'feed'
-              ? 'text-ast-text border-b-2 border-ast-accent bg-ast-surface'
+              ? 'text-ast-text border-b-2 border-ast-accent'
               : 'text-ast-muted hover:text-ast-text'
           }`}
         >
+          FEED
         </button>
         <button
           onClick={() => selectPanel('signal')}
           className={`flex-1 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
             activeTab === 'signal'
-              ? 'text-ast-text border-b-2 border-ast-accent bg-ast-surface'
+              ? 'text-ast-text border-b-2 border-ast-accent'
               : 'text-ast-muted hover:text-ast-text'
           }`}
         >
+          SIGNALS
         </button>
       </div>
 
