@@ -89,20 +89,62 @@ function Sparkline({ history, isPositive, height = 24 }: { history: StockHistory
   const max = Math.max(...prices);
   const range = max - min || 1;
 
-  const points = prices.map((price, i) => {
-    const x = (i / (prices.length - 1)) * 100;
-    const y = 5 + 90 - ((price - min) / range) * 90; // 5% padding top/bottom
-    return { x, y };
-  });
+  const points = history.map((h, i) => ({
+    x: (i / (history.length - 1)) * 100,
+    y: 5 + 90 - ((h.close - min) / range) * 90,
+    price: h.close,
+    date: h.date,
+  }));
 
   const pathD = `M ${points.map(p => `${p.x},${p.y}`).join(" L ")}`;
   const areaD = `${pathD} L 100,95 L 0,95 Z`;
   const color = isPositive ? "#00d4aa" : "#ff6b8a";
   const gradientId = `sparkGrad-${isPositive ? "pos" : "neg"}-${Math.random().toString(36).slice(2, 8)}`;
 
+  const [hoverX, setHoverX] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const xPct = (e.clientX - rect.left) / rect.width;
+    setHoverX(xPct);
+  };
+
+  const handleMouseLeave = () => {
+    setHoverX(null);
+  };
+
+  // Interpolate price at hover position
+  const hoverPoint = hoverX !== null ? (() => {
+    const x = hoverX * 100;
+    let leftIdx = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      if (points[i + 1].x >= x) { leftIdx = i; break; }
+      leftIdx = i;
+    }
+    const rightIdx = Math.min(leftIdx + 1, points.length - 1);
+    const left = points[leftIdx];
+    const right = points[rightIdx];
+    if (left.x === right.x) return left;
+    const t = (x - left.x) / (right.x - left.x);
+    return {
+      x,
+      y: left.y + t * (right.y - left.y),
+      price: left.price + t * (right.price - left.price),
+      date: left.date,
+    };
+  })() : null;
+
   return (
-    <div style={{ height }} className="w-full">
-      <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+    <div style={{ height }} className="w-full relative" ref={containerRef}>
+      <svg
+        viewBox="0 0 100 100"
+        className="w-full h-full"
+        preserveAspectRatio="none"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+      >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.25" />
@@ -110,14 +152,27 @@ function Sparkline({ history, isPositive, height = 24 }: { history: StockHistory
           </linearGradient>
         </defs>
         <path d={areaD} fill={`url(#${gradientId})`} />
-        <path 
-          d={pathD} 
-          fill="none" 
-          stroke={color} 
-          strokeWidth="2" 
-          vectorEffect="non-scaling-stroke" 
+        <path
+          d={pathD}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
         />
       </svg>
+      {hoverPoint && (
+        <div
+          className="bg-ast-surface border border-ast-border text-[10px] text-ast-text rounded px-2 py-1 pointer-events-none absolute z-10"
+          style={{
+            left: `${hoverX! * 100}%`,
+            top: `${hoverPoint.y}%`,
+            transform: 'translate(-50%, -120%)',
+          }}
+        >
+          <div className="font-medium">{formatCurrency(hoverPoint.price, "USD")}</div>
+          <div className="text-ast-muted">{hoverPoint.date}</div>
+        </div>
+      )}
     </div>
   );
 }
