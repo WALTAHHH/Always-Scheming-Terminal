@@ -964,11 +964,11 @@ function EntitiesDashboard() {
         </div>
 
         {/* Line chart: tag mentions over time (30 days, top 5 entities) */}
-        <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+        <div className="bg-ast-surface border border-ast-border rounded-lg p-4 flex flex-col">
           <div className="text-[10px] font-semibold text-ast-muted uppercase tracking-wider mb-2">
             Tag Mentions Over Time (Last 30 Days)
           </div>
-          <div className="h-60">
+          <div className="h-full min-h-[240px] flex-1">
             <MultiLineChart data={topFiveEntities} />
           </div>
         </div>
@@ -1667,6 +1667,16 @@ export default function AdminPage() {
             Pipeline
           </button>
           <button
+            onClick={() => setTab("entities")}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              tab === "entities"
+                ? "border-ast-accent text-ast-accent"
+                : "border-transparent text-ast-muted hover:text-ast-text"
+            }`}
+          >
+            Entities
+          </button>
+          <button
             onClick={() => setTab("sources")}
             className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
               tab === "sources"
@@ -1685,16 +1695,6 @@ export default function AdminPage() {
             }`}
           >
             Ingestion Health
-          </button>
-          <button
-            onClick={() => setTab("entities")}
-            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-              tab === "entities"
-                ? "border-ast-accent text-ast-accent"
-                : "border-transparent text-ast-muted hover:text-ast-text"
-            }`}
-          >
-            Entities
           </button>
           <div className="ml-auto">
             <FetchAllButton onDone={() => { fetchSources(); fetchLogs(); }} />
