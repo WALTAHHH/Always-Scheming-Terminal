@@ -861,6 +861,9 @@ function EntitiesDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [segmentFilter, setSegmentFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "private">("all");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -921,6 +924,34 @@ function EntitiesDashboard() {
     .slice(0, 10);
   const topFiveEntities = tagTimeSeries.slice(0, 5);
 
+  // Extract unique values for filters
+  const uniqueSegments = useMemo(() => {
+    const segments = entities.map(e => e.segment).filter(Boolean);
+    return [...new Set(segments)].sort();
+  }, [entities]);
+
+  const uniqueTypes = useMemo(() => {
+    const types = entities.map(e => e.entity_type).filter(Boolean);
+    return [...new Set(types)].sort();
+  }, [entities]);
+
+  // Filtered entities
+  const filteredEntities = useMemo(() => {
+    return entities.filter(entity => {
+      // Segment filter
+      if (segmentFilter && entity.segment !== segmentFilter) return false;
+      
+      // Type filter
+      if (typeFilter && entity.entity_type !== typeFilter) return false;
+      
+      // Visibility filter
+      if (visibilityFilter === "public" && !entity.is_public) return false;
+      if (visibilityFilter === "private" && entity.is_public) return false;
+      
+      return true;
+    });
+  }, [entities, segmentFilter, typeFilter, visibilityFilter]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -964,13 +995,59 @@ function EntitiesDashboard() {
         </div>
 
         {/* Line chart: tag mentions over time (30 days, top 5 entities) */}
-        <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+        <div className="bg-ast-surface border border-ast-border rounded-lg p-4 flex flex-col">
           <div className="text-[10px] font-semibold text-ast-muted uppercase tracking-wider mb-2">
             Tag Mentions Over Time (Last 30 Days)
           </div>
-          <div className="h-60">
+          <div className="h-full min-h-[240px] flex-1">
             <MultiLineChart data={topFiveEntities} />
           </div>
+        </div>
+      </div>
+
+      {/* Filter bar */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <select
+          value={segmentFilter}
+          onChange={(e) => setSegmentFilter(e.target.value)}
+          className="bg-ast-surface border border-ast-border text-xs text-ast-text rounded px-2 py-1 focus:outline-none focus:border-ast-accent"
+        >
+          <option value="">All Segments</option>
+          {uniqueSegments.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="bg-ast-surface border border-ast-border text-xs text-ast-text rounded px-2 py-1 focus:outline-none focus:border-ast-accent"
+        >
+          <option value="">All Types</option>
+          {uniqueTypes.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setVisibilityFilter("all")}
+            className={`px-2 py-1 text-xs rounded border ${visibilityFilter === "all" ? "bg-ast-accent/10 border-ast-accent text-ast-accent" : "bg-ast-surface border-ast-border text-ast-muted hover:text-ast-text"}`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setVisibilityFilter("public")}
+            className={`px-2 py-1 text-xs rounded border ${visibilityFilter === "public" ? "bg-ast-mint/10 border-ast-mint text-ast-mint" : "bg-ast-surface border-ast-border text-ast-muted hover:text-ast-text"}`}
+          >
+            Public
+          </button>
+          <button
+            onClick={() => setVisibilityFilter("private")}
+            className={`px-2 py-1 text-xs rounded border ${visibilityFilter === "private" ? "bg-ast-surface/50 border-ast-border text-ast-text" : "bg-ast-surface border-ast-border text-ast-muted hover:text-ast-text"}`}
+          >
+            Private
+          </button>
+        </div>
+        
+        <div className="text-xs text-ast-muted ml-auto">
+          Showing {filteredEntities.length} of {entities.length} entities
         </div>
       </div>
 
@@ -988,7 +1065,7 @@ function EntitiesDashboard() {
         </div>
 
         <div className="divide-y divide-ast-border/50">
-          {entities.map((entity) => (
+          {filteredEntities.map((entity) => (
             <div key={entity.id}>
               <div
                 className="px-3 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors cursor-pointer"
@@ -1667,6 +1744,16 @@ export default function AdminPage() {
             Pipeline
           </button>
           <button
+            onClick={() => setTab("entities")}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              tab === "entities"
+                ? "border-ast-accent text-ast-accent"
+                : "border-transparent text-ast-muted hover:text-ast-text"
+            }`}
+          >
+            Entities
+          </button>
+          <button
             onClick={() => setTab("sources")}
             className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
               tab === "sources"
@@ -1685,16 +1772,6 @@ export default function AdminPage() {
             }`}
           >
             Ingestion Health
-          </button>
-          <button
-            onClick={() => setTab("entities")}
-            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-              tab === "entities"
-                ? "border-ast-accent text-ast-accent"
-                : "border-transparent text-ast-muted hover:text-ast-text"
-            }`}
-          >
-            Entities
           </button>
           <div className="ml-auto">
             <FetchAllButton onDone={() => { fetchSources(); fetchLogs(); }} />
