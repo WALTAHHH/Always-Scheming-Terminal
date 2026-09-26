@@ -195,7 +195,6 @@ export default function ProfilePage() {
               </div>
               <div className="flex-1">
                 <div className="text-sm text-ast-muted mb-1">Avatar</div>
-                <div className="text-xs text-ast-muted">Initials only for now</div>
               </div>
             </div>
 
@@ -220,18 +219,37 @@ export default function ProfilePage() {
                     {saving ? "Saving..." : "Save"}
                   </button>
                 </div>
+                {displayName === email.split('@')[0] && (
+                  <div className="text-[10px] text-ast-muted mt-1">
+                    Auto-set from your email — feel free to update
+                  </div>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-ast-muted mb-2">
                   Email
                 </label>
-                <input
-                  type="text"
-                  value={email}
-                  readOnly
-                  className="w-full px-3 py-2 bg-ast-bg/50 border border-ast-border rounded text-ast-muted cursor-not-allowed"
-                />
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 px-3 py-2 bg-ast-bg/50 border border-ast-border rounded text-ast-muted flex items-center">
+                    {email}
+                    <span className="ml-2 text-[10px] text-ast-muted">(read-only)</span>
+                  </div>
+                  <svg
+                    className="w-5 h-5 text-ast-muted"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
+                  </svg>
+                </div>
               </div>
             </div>
           </section>
