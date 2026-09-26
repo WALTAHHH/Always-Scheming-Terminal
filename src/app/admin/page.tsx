@@ -926,12 +926,12 @@ function EntitiesDashboard() {
 
   // Extract unique values for filters
   const uniqueSegments = useMemo(() => {
-    const segments = entities.map(e => e.segment).filter(Boolean);
+    const segments = entities.map(e => e.segment).filter((v): v is string => typeof v === 'string' && v.length > 0);
     return [...new Set(segments)].sort();
   }, [entities]);
 
   const uniqueTypes = useMemo(() => {
-    const types = entities.map(e => e.entity_type).filter(Boolean);
+    const types = entities.map(e => e.entity_type).filter((v): v is string => typeof v === 'string' && v.length > 0);
     return [...new Set(types)].sort();
   }, [entities]);
 
