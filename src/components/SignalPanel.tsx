@@ -283,9 +283,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
           {/* DB Signals Section */}
           <div className="border-b border-ast-border">
             <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
-              <span className="text-ast-accent text-xs font-semibold tracking-wide">
-                SIGNALS
-              </span>
+              
             </div>
             <div className="px-4 py-3 space-y-3">
               {signals.length === 0 ? (
