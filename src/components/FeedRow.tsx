@@ -226,7 +226,7 @@ export function FeedRow({ item, isRelated = false }: FeedRowProps) {
               e.stopPropagation();
               setExpanded(!expanded);
             }}
-            className="text-[10px] text-ast-muted hover:text-ast-accent transition-colors"
+            className="text-[10px] text-ast-muted hover:text-ast-accent transition-all duration-150"
           >
             {expanded ? "▾ Collapse" : "▸ Preview"}
           </button>
