@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-
+import { createServerClient } from '@supabase/ssr';
 const ADMIN_SECRET = process.env.ADMIN_SECRET;
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   // Only protect /admin routes
   if (request.nextUrl.pathname.startsWith('/admin')) {
     // Check for admin cookie
@@ -30,10 +30,20 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/', request.url));
     }
   }
-  
+
+  if (request.nextUrl.pathname === '/') {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll: () => request.cookies.getAll(), setAll: () => {} } }
+    )
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return NextResponse.redirect(new URL('/auth/login', request.url))
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: '/admin/:path*',
+  matcher: ['/admin/:path*', '/'],
 };
