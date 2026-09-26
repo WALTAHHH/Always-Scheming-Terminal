@@ -417,7 +417,6 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
               : 'text-ast-muted hover:text-ast-text'
           }`}
         >
-          FEED
         </button>
         <button
           onClick={() => selectPanel('signal')}
@@ -427,7 +426,6 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
               : 'text-ast-muted hover:text-ast-text'
           }`}
         >
-          SIGNAL
         </button>
       </div>
 
