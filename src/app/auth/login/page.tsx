@@ -243,6 +243,9 @@ export default function LoginPage() {
                 isSignUp ? "Create Account →" : "Sign In →"
               )}
             </button>
+          {isSignUp && (
+            <p className="text-xs text-ast-muted mt-2 text-center">AST is in private beta. If you have an invite, sign up above.</p>
+          )}
           </form>
         </div>
 
