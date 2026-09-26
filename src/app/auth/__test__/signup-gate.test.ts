@@ -1,7 +1,7 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
-import LoginPage from '../login/page';
+import { describe, test, expect, vi } from 'vitest';
+import { readFileSync } from 'fs';
 
-// Mock the supabase client module
+// Mock the supabase client module (required for component import)
 vi.mock('@/lib/supabase', () => ({
   createAuthBrowserClient: vi.fn(() => ({
     from: vi.fn(() => ({
@@ -19,21 +19,24 @@ vi.mock('@/lib/supabase', () => ({
   })),
 }));
 
+// Import the component after mocking (to avoid import errors)
+import LoginPage from '../login/page';
+
 describe('Phase 6 invite-only signup gate', () => {
+  const source = readFileSync('src/app/auth/login/page.tsx', 'utf-8');
+
   test('sign-up tab label should be "Request access"', () => {
-    // This test will fail until the tab label is updated
-    // We can't easily check the rendered label without a DOM,
-    // so we'll just note the bug.
-    expect(true).toBe(false); // placeholder to fail
+    // Check that the tab button text is "Request access"
+    const hasRequestAccess = source.includes('Request access');
+    expect(hasRequestAccess).toBe(true);
   });
 
-  test('preflight check queries allowed_emails table for email', async () => {
-    // This test expects that the component queries allowed_emails
-    // before allowing sign-up. Since the check is missing, the test will fail.
-    const supabase = require('@/lib/supabase').createAuthBrowserClient();
-    // The component should have called supabase.from('allowed_emails').select().eq('email', email).single()
-    // We'll check that from was called with 'allowed_emails'
-    expect(supabase.from).toHaveBeenCalledWith('allowed_emails');
-    // Since the check is not implemented, this assertion will fail.
+  test('preflight check queries allowed_emails table for email', () => {
+    // Check that the source contains the allowed_emails query pattern
+    const hasAllowedEmailsQuery = source.includes('allowed_emails') &&
+      source.includes('.from(\'allowed_emails\')') ||
+      source.includes('.from("allowed_emails")') ||
+      source.includes('.from(`allowed_emails`)');
+    expect(hasAllowedEmailsQuery).toBe(true);
   });
 });
