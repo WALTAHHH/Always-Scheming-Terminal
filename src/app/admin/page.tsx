@@ -31,7 +31,7 @@ interface IngestionLogRow {
   duration_ms: number;
 }
 
-type Tab = "sources" | "health" | "pipeline" | "entities";
+type Tab = "sources" | "health" | "pipeline" | "entities" | "invites";
 type SortField = "name" | "type" | "articles" | "last_fetch" | "latest_article" | "status" | "errors";
 type SortDir = "asc" | "desc";
 
@@ -1111,6 +1111,171 @@ function EntitiesDashboard() {
   );
 }
 
+function InvitesDashboard() {
+  const [invites, setInvites] = useState<{email: string; created_at: string}[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [newEmail, setNewEmail] = useState('');
+
+  const fetchInvites = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/invites');
+      if (res.status === 404) {
+        // API not yet implemented, treat as empty list
+        setInvites([]);
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setInvites(data.invites || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch invites');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchInvites();
+  }, [fetchInvites]);
+
+  const handleAdd = async () => {
+    if (!newEmail.trim()) return;
+    try {
+      const res = await fetch('/api/admin/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: newEmail.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      setNewEmail('');
+      fetchInvites();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add invite');
+    }
+  };
+
+  const handleDelete = async (email: string) => {
+    if (!confirm(`Remove ${email} from allowlist?`)) return;
+    try {
+      const res = await fetch(`/api/admin/invites?email=${encodeURIComponent(email)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      fetchInvites();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete invite');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-ast-muted text-sm">Loading invites...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-ast-surface border border-ast-border rounded-lg p-6 text-center">
+        <div className="text-ast-pink text-sm mb-2">Failed to load invites</div>
+        <div className="text-ast-muted text-xs mb-4">{error}</div>
+        <button
+          onClick={fetchInvites}
+          className="px-4 py-2 rounded bg-ast-accent/10 border border-ast-accent/30 text-ast-accent text-xs hover:bg-ast-accent/20 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ast-text">
+          {invites.length} Invites
+        </h2>
+        <button
+          onClick={fetchInvites}
+          className="px-3 py-1.5 rounded bg-ast-accent/10 border border-ast-accent/30 text-ast-accent text-xs hover:bg-ast-accent/20 transition-colors"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* Add Email Form */}
+      <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+        <h3 className="text-xs uppercase tracking-wider text-ast-muted font-semibold mb-3">
+          Add Email
+        </h3>
+        <div className="flex items-center gap-2">
+          <input
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="user@example.com"
+            className="flex-1 bg-ast-bg border border-ast-border rounded px-3 py-1.5 text-xs text-ast-text placeholder:text-ast-muted focus:border-ast-accent focus:outline-none"
+          />
+          <button
+            onClick={handleAdd}
+            className="px-4 py-1.5 text-xs bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/80 transition-colors"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-ast-surface border border-ast-border rounded-lg overflow-hidden">
+        <div className="bg-ast-surface px-3 py-2 border-b border-ast-border flex items-center gap-3">
+          <div className="w-48 font-semibold text-xs text-ast-muted">Email</div>
+          <div className="w-32 font-semibold text-xs text-ast-muted">Added</div>
+          <div className="flex-1"></div>
+          <div className="w-20 font-semibold text-xs text-ast-muted">Actions</div>
+        </div>
+        <div className="divide-y divide-ast-border/50">
+          {invites.length === 0 ? (
+            <div className="px-3 py-4 text-center text-ast-muted text-sm">
+              No invites yet. Add an email above.
+            </div>
+          ) : (
+            invites.map((invite) => (
+              <div key={invite.email} className="px-3 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors">
+                <div className="w-48 text-xs text-ast-text truncate">{invite.email}</div>
+                <div className="w-32 text-xs text-ast-muted">
+                  {invite.created_at ? new Date(invite.created_at).toLocaleDateString() : '—'}
+                </div>
+                <div className="flex-1"></div>
+                <div className="w-20">
+                  <button
+                    onClick={() => handleDelete(invite.email)}
+                    className="px-2 py-1 text-[10px] rounded border border-ast-border text-ast-muted hover:border-ast-pink hover:text-ast-pink transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PipelineDashboard() {
   const [stats, setStats] = useState<PipelineStats | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -1761,6 +1926,16 @@ export default function AdminPage() {
             Entities
           </button>
           <button
+            onClick={() => setTab("invites")}
+            className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+              tab === "invites"
+                ? "border-ast-accent text-ast-accent"
+                : "border-transparent text-ast-muted hover:text-ast-text"
+            }`}
+          >
+            Invites
+          </button>
+          <button
             onClick={() => setTab("sources")}
             className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
               tab === "sources"
@@ -1848,6 +2023,8 @@ export default function AdminPage() {
           <HealthDashboard sources={sources} logs={logs} onRefresh={() => { fetchSources(); fetchLogs(); }} />
         ) : tab === "entities" ? (
           <EntitiesDashboard />
+        ) : tab === "invites" ? (
+          <InvitesDashboard />
         ) : (
           <PipelineDashboard />
         )}
