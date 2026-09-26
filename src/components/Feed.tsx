@@ -377,8 +377,8 @@ export function Feed({ items, sources, hasMore, loadingMore, loadMoreError, onLo
             {totalArticles} articles → {totalStories} stories
           </span>
           {multiSourceCount > 0 && (
-            <span className="text-ast-gold hidden sm:inline">
-              {multiSourceCount} multi-source
+            <span className="text-ast-gold hidden sm:inline" title="Multiple sources covered this story">
+              {multiSourceCount} clustered
             </span>
           )}
           <div className="flex-1" />
