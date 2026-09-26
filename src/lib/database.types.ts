@@ -378,6 +378,24 @@ export type Database = {
         }
         Relationships: []
       }
+      allowed_emails: {
+        Row: {
+          id: string
+          email: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          email: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          email?: string
+          created_at?: string | null
+        }
+        Relationships: []
+      }
       signals: {
         Row: {
           id: string
