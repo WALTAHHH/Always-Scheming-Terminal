@@ -60,6 +60,7 @@ function FilterSection({
       >
         <span className="flex items-center gap-2">
           <span className="uppercase tracking-widest text-[10px] font-semibold">{label}</span>
+          <span className="text-[10px] text-ast-muted">({options.length})</span>
           {selected.length > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-ast-accent/20 text-ast-accent text-[10px] font-medium">
               {selected.length}
@@ -216,7 +217,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
                       onClick={clearAll}
                       className="text-[10px] text-ast-pink hover:text-ast-pink/80 transition-colors"
                     >
-                      Clear all
+                      × Clear All
                     </button>
                   )}
                   <button
