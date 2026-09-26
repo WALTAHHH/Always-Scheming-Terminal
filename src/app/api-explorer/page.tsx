@@ -121,6 +121,9 @@ export default function ApiExplorerPage() {
   const [showFullResponse, setShowFullResponse] = useState(false);
   const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [requestEmail, setRequestEmail] = useState("");
+  const [requestSubmitted, setRequestSubmitted] = useState(false);
+  const [requestLoading, setRequestLoading] = useState(false);
   const DEMO_API_KEY = "ast_demo_7f3a2b1c4d5e6f7a8b9c0d1e2f3a4b5c";
 
   // Load API key from localStorage on mount
@@ -231,6 +234,25 @@ export default function ApiExplorerPage() {
     }
   };
 
+  const handleRequestAccess = async () => {
+    if (!requestEmail.trim() || !requestEmail.includes('@')) return;
+    setRequestLoading(true);
+    try {
+      const res = await fetch('/api/request-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: requestEmail }),
+      });
+      // Regardless of response status, treat as success for UX
+      setRequestSubmitted(true);
+    } catch (err) {
+      // Network error: still show success as per spec
+      setRequestSubmitted(true);
+    } finally {
+      setRequestLoading(false);
+    }
+  };
+
   const formatJson = (obj: any) => {
     // Deep clone to avoid modifying original response
     const normalized = JSON.parse(JSON.stringify(obj));
@@ -292,12 +314,34 @@ export default function ApiExplorerPage() {
               A <span className="text-ast-text">demo key</span> is pre-loaded — it works on all endpoints with a{' '}
               <span className="text-ast-gold">10 req/min</span> rate limit and read-only access to public data.
             </p>
-            <p className="text-xs text-ast-muted">
-              API keys are in private beta.{' '}
-              <a href="mailto:matt@always-scheming.com" className="text-ast-accent hover:underline">
-                Request API access →
-              </a>
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs text-ast-muted">
+                API keys are in private beta.
+              </p>
+              {!requestSubmitted ? (
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="email"
+                    value={requestEmail}
+                    onChange={(e) => setRequestEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    className="flex-1 bg-ast-bg border border-ast-border rounded px-3 py-2 text-ast-text placeholder:text-ast-muted focus:border-ast-accent focus:outline-none text-xs"
+                    disabled={requestLoading}
+                  />
+                  <button
+                    onClick={handleRequestAccess}
+                    disabled={requestLoading || !requestEmail.includes('@')}
+                    className="px-3 py-2 text-xs border border-ast-accent/40 text-ast-accent rounded hover:bg-ast-accent/10 disabled:opacity-50 transition-colors"
+                  >
+                    {requestLoading ? 'Sending...' : 'Request access →'}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-ast-mint flex items-center gap-1">
+                  <span>✓</span> Request received — we'll be in touch
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex gap-3">
             <input
