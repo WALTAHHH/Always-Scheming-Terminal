@@ -974,8 +974,8 @@ function EntitiesDashboard() {
           </div>
           <div className="space-y-2">
             {topTenByTagCount.map((entity) => {
-              const maxCount = Math.max(...topTenByTagCount.map(e => e.tag_count), 1);
-              const pct = Math.max((entity.tag_count / maxCount) * 100, 1);
+              const maxCount = Math.max(...topTenByTagCount.map(e => Number(e.tag_count) || 0), 1);
+              const pct = Math.max(((Number(entity.tag_count) || 0) / maxCount) * 100, 1);
               return (
                 <div key={entity.id} className="space-y-0.5">
                   <div className="flex items-center justify-between">
@@ -1065,8 +1065,8 @@ function EntitiesDashboard() {
         </div>
 
         <div className="divide-y divide-ast-border/50">
-          {filteredEntities.map((entity) => (
-            <div key={entity.id}>
+          {filteredEntities.map((entity, index) => (
+            <div key={entity.id ?? index}>
               <div
                 className="px-3 py-2.5 flex items-center gap-3 hover:bg-ast-surface/30 transition-colors cursor-pointer"
                 onClick={() => setExpandedRow(expandedRow === entity.id ? null : entity.id)}
