@@ -56,10 +56,10 @@ function renderJson(json: string): React.ReactNode[] {
     for (let i = 0; i < typedTokens.length; i++) {
       const token = typedTokens[i];
       spans.push(
-        <span key={i} className={colorClass(token)}>
-          {token.value}
-        </span>
-      );
+              <span key={i} className={colorClassForToken(token)}>
+                {token.value}
+              </span>
+            );
     }
     return spans;
   } catch (err) {

@@ -24,7 +24,7 @@ export function CompanyTag({ name, className = "" }: CompanyTagProps) {
           e.stopPropagation();
           openCompanyDrawer(name);
         }}
-        className={`text-[9px] px-1 py-0.5 bg-ast-border/50 text-ast-muted rounded hover:bg-ast-accent/20 hover:text-ast-accent transition-colors cursor-pointer ${className}`}
+        className={`text-[10px] px-1 py-0.5 bg-ast-surface text-ast-text/70 rounded border border-ast-border hover:bg-ast-accent/20 hover:text-ast-accent transition-colors cursor-pointer ${className}`}
         title={`View ${name} coverage`}
       >
         {name}
@@ -34,7 +34,7 @@ export function CompanyTag({ name, className = "" }: CompanyTagProps) {
 
   // Entity not in DB — still show as plain tag (no 📈 icon — that was public-only)
   return (
-    <span className={`text-[9px] px-1 py-0.5 bg-ast-border/50 text-ast-muted rounded ${className}`}>
+    <span className={`text-[10px] px-1 py-0.5 bg-ast-surface text-ast-text/70 rounded border border-ast-border ${className}`}>
       {name}
     </span>
   );
