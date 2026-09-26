@@ -642,7 +642,14 @@ function ExtractSignalsButton({ onDone }: { onDone: () => void }) {
         disabled={running}
         className="px-3 py-1.5 text-xs font-medium rounded border border-ast-gold/60 text-ast-gold hover:bg-ast-gold/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
       >
-        {running ? "⟳ Extracting..." : "⚡ Run Extraction"}
+        {running ? (
+          <>
+            <span className="inline-block w-3 h-3 border-2 border-ast-gold/30 border-t-ast-gold rounded-full animate-spin" />
+            Extracting…
+          </>
+        ) : (
+          "⚡ Run Extraction"
+        )}
       </button>
       {result && (
         <div className={`text-[10px] mt-1 ${result.ok ? "text-ast-mint" : "text-ast-pink"}`}>

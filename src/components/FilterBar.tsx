@@ -307,7 +307,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
               onClick={() => setDrawerOpen((o) => !o)}
               className={`absolute top-1/2 -translate-y-1/2 left-72 flex flex-col items-center justify-center gap-1.5
                 w-6 py-4 rounded-r border-y border-r border-ast-border bg-ast-surface shadow-md
-                transition-colors hover:bg-ast-surface/80
+                transition-colors hover:bg-ast-surface/80 sm:flex hidden
                 ${hasActiveFilters ? "border-l-2 border-l-ast-accent" : "border-l border-l-ast-border"}`}
               title="Toggle filters"
             >
@@ -330,7 +330,7 @@ export function FilterBar({ sources, tagCounts, onFilterChange }: FilterBarProps
               onClick={() => setDrawerOpen(true)}
               className={`fixed top-1/2 -translate-y-1/2 left-0 z-[9985] flex flex-col items-center justify-center gap-1.5
                 w-6 py-4 rounded-r border-y border-r border-ast-border bg-ast-surface shadow-md
-                transition-colors hover:bg-ast-surface/80
+                transition-colors hover:bg-ast-surface/80 sm:flex hidden
                 ${hasActiveFilters ? "border-l-2 border-l-ast-accent" : "border-l border-l-ast-border"}`}
               title="Open filters"
             >

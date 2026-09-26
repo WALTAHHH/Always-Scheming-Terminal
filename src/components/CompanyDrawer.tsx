@@ -359,7 +359,7 @@ function InteractiveChart({
             top: `${(hoverData.y / height) * 100}%`,
             transform: 'translate(-50%, -50%)',
             backgroundColor: color,
-            boxShadow: '0 0 0 2px #fff',
+            boxShadow: '0 0 0 2px var(--ast-text)',
           }}
         />
       )}
