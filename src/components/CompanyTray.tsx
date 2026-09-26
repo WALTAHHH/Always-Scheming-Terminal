@@ -328,7 +328,7 @@ function InteractiveChart({
           <line 
             x1={hoverPoint.x} y1={padding.top} 
             x2={hoverPoint.x} y2={padding.top + chartHeightPct} 
-            stroke="#ffffff" 
+            stroke="var(--ast-text)" 
             strokeWidth="1" 
             vectorEffect="non-scaling-stroke"
             opacity="0.4"
@@ -345,7 +345,7 @@ function InteractiveChart({
             top: `${hoverPoint.y}%`,
             transform: 'translate(-50%, -50%)',
             backgroundColor: color,
-            boxShadow: '0 0 0 2px #fff',
+            boxShadow: '0 0 0 2px var(--ast-text)',
           }}
         />
       )}

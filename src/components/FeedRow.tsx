@@ -46,7 +46,7 @@ function TagChips({ tags }: { tags: Record<string, string[]> | null }) {
   const overflow = allTags.length - MAX_TAGS;
 
   return (
-    <div className="flex gap-1 mt-1.5 flex-wrap">
+    <div className="flex gap-1 mt-1.5 flex-wrap overflow-hidden">
       {visible.map((tag, i) => {
         if (tag.dimension === "company") {
           return (
