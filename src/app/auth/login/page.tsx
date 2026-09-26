@@ -37,6 +37,18 @@ export default function LoginPage() {
           setLoading(false);
           return;
         }
+        // Preflight: check allowed_emails table
+        const { data: allowed } = await supabase
+          .from('allowed_emails')
+          .select('email')
+          .eq('email', email.trim().toLowerCase())
+          .single();
+
+        if (!allowed) {
+          setError('This email is not on the beta invite list. Request access at matt@always-scheming.com');
+          setLoading(false);
+          return;
+        }
         const { error: signUpError } = await supabase.auth.signUp({ email, password });
         if (signUpError) throw signUpError;
         setSuccess("Check your email to confirm your account.");
@@ -119,7 +131,7 @@ export default function LoginPage() {
                   : "text-ast-muted hover:text-ast-text"
               }`}
             >
-              Sign Up
+              Request access
             </button>
           </div>
 
