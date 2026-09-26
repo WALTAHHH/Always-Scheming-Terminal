@@ -34,18 +34,60 @@ function determineTokenTypes(tokens: { type: string; value: string }[]) {
   return typedTokens;
 }
 
-function colorClass(token: { type: string; value: string }): string {
+function colorClassForLine(line: string): string {
+  const trimmed = line.trim();
+  
+  // Check for key (line contains ": " with quotes before colon)
+  // Matches patterns like:  "key": 
+  if (/\"([^\"]+)\":/.test(trimmed)) {
+    return 'text-ast-text';
+  }
+  
+  // Check for string value (starts with " but not followed by ":)
+  if (trimmed.startsWith('"') && !trimmed.includes('":')) {
+    return 'text-ast-accent';
+  }
+  
+  // Check for number
+  if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)) {
+    return 'text-ast-mint';
+  }
+  
+  // Check for boolean
+  if (trimmed === 'true' || trimmed === 'false') {
+    return 'text-ast-mint';
+  }
+  
+  // Check for null
+  if (trimmed === 'null') {
+    return 'text-ast-muted';
+  }
+  
+  // Default (punctuation, brackets, whitespace)
+  return 'text-ast-muted';
+}
+
+function colorClassForToken(token: { type: string; value: string }): string {
   switch (token.type) {
-    case "key": return "text-ast-accent";
-    case "string": return "text-ast-mint";
-    case "number": return "text-ast-gold";
+    case "key": return "text-ast-text";
+    case "string": return "text-ast-accent";
+    case "number": return "text-ast-mint";
     case "keyword":
       if (token.value === "true") return "text-ast-mint";
-      if (token.value === "false") return "text-ast-pink";
+      if (token.value === "false") return "text-ast-mint";
       return "text-ast-muted"; // null
     case "punct": return "text-ast-muted";
-    default: return "text-ast-text";
+    default: return "text-ast-muted";
   }
+}
+
+function renderJsonLines(lines: string[]): React.ReactNode[] {
+  return lines.map((line, idx) => (
+    <span key={idx} className={colorClassForLine(line)}>
+      {line}
+      {idx !== lines.length - 1 ? '\n' : ''}
+    </span>
+  ));
 }
 
 function renderJson(json: string): React.ReactNode[] {
@@ -189,7 +231,30 @@ export default function ApiExplorerPage() {
     }
   };
 
-  const formatJson = (obj: any) => JSON.stringify(obj, null, 2);
+  const formatJson = (obj: any) => {
+    // Deep clone to avoid modifying original response
+    const normalized = JSON.parse(JSON.stringify(obj));
+    
+    // Recursively normalize string fields that may contain newlines
+    const normalizeStrings = (data: any): any => {
+      if (Array.isArray(data)) {
+        return data.map(normalizeStrings);
+      } else if (data && typeof data === 'object') {
+        const result: any = {};
+        for (const [key, value] of Object.entries(data)) {
+          result[key] = normalizeStrings(value);
+        }
+        return result;
+      } else if (typeof data === 'string') {
+        // Replace newlines with spaces for display but keep original in data
+        return data.replace(/\n/g, ' ');
+      }
+      return data;
+    };
+    
+    const cleaned = normalizeStrings(normalized);
+    return JSON.stringify(cleaned, null, 2);
+  };
 
   const responseLines = response ? formatJson(response).split("\n") : [];
   const displayLines = showFullResponse ? responseLines : responseLines.slice(0, 200);
@@ -202,13 +267,15 @@ export default function ApiExplorerPage() {
       <header className="border-b border-ast-border sticky top-0 z-50 bg-ast-bg/95 backdrop-blur-sm">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-ast-muted hover:text-ast-text transition-colors text-xs">
+            <Link href="/" className="text-ast-muted hover:text-ast-accent transition-colors text-xs">
               ← Terminal
             </Link>
             <span className="text-ast-border">|</span>
-            <div>
-              <h1 className="text-ast-text text-sm font-semibold tracking-wide">API EXPLORER</h1>
-              <p className="text-ast-muted text-xs">Live queries against /api/v1</p>
+            <div className="flex items-center gap-2">
+              <span className="text-ast-accent text-lg">⚙</span>
+              <h1 className="font-semibold text-lg tracking-tight">
+                <span className="text-ast-text">API Explorer</span>
+              </h1>
             </div>
           </div>
           <ThemeToggle />
@@ -226,11 +293,10 @@ export default function ApiExplorerPage() {
               <span className="text-ast-gold">10 req/min</span> rate limit and read-only access to public data.
             </p>
             <p className="text-xs text-ast-muted">
-              Need programmatic access?{' '}
+              API keys are in private beta.{' '}
               <a href="mailto:matt@always-scheming.com" className="text-ast-accent hover:underline">
-                Request an API key
-              </a>{' '}
-              for higher rate limits and full endpoint access.
+                Request API access →
+              </a>
             </p>
           </div>
           <div className="flex gap-3">
@@ -412,7 +478,7 @@ export default function ApiExplorerPage() {
               <div className="text-ast-muted italic">No response yet — click a preset to fetch data.</div>
             ) : (
               <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-ast-bg border border-ast-border rounded p-3 overflow-x-auto max-h-[600px] overflow-y-auto">
-                {renderJson(truncatedJson)}
+                {renderJsonLines(displayLines)}
               </pre>
             )}
           </div>
