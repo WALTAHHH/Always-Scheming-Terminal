@@ -246,16 +246,6 @@ function InteractiveChart({
   return (
     <div 
       className="h-80 w-full relative select-none cursor-crosshair"
-      onMouseMove={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const xPos = ((e.clientX - rect.left) / rect.width) * width;
-        setHoverX(xPos);
-        setActiveMarker(null);
-        const interpolated = interpolateAtX(xPos);
-        if (interpolated && onHover) {
-          onHover(interpolated.price, interpolated.date);
-        }
-      }}
       onMouseLeave={handleMouseLeave}
     >
       {/* Loading overlay - subtle, doesn't hide chart */}
@@ -269,6 +259,8 @@ function InteractiveChart({
         viewBox={`0 0 ${width} ${height}`}
         className={`w-full h-full pointer-events-none transition-opacity duration-200 ${isLoading ? 'opacity-50' : ''}`}
         preserveAspectRatio="none"
+        onMouseMove={handleMouseMove}
+        onTouchMove={handleTouchMove}
       >
         {/* Gradient definition */}
         <defs>
@@ -599,18 +591,20 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
 
               {/* Chart section */}
               <div className="px-5 py-4 border-b border-ast-border">
-                <InteractiveChart 
-                  history={history} 
-                  isPositive={isPositive}
-                  currency={quote?.currency || "USD"}
-                  previousClose={quote?.previousClose}
-                  newsItems={relatedItems}
-                  isLoading={loading || pendingRange !== null}
-                  onHover={(price, date) => {
-                    setHoverPrice(price);
-                    setHoverDate(date);
-                  }}
-                />
+                <div className="max-h-48">
+                  <InteractiveChart 
+                    history={history} 
+                    isPositive={isPositive}
+                    currency={quote?.currency || "USD"}
+                    previousClose={quote?.previousClose}
+                    newsItems={relatedItems}
+                    isLoading={loading || pendingRange !== null}
+                    onHover={(price, date) => {
+                      setHoverPrice(price);
+                      setHoverDate(date);
+                    }}
+                  />
+                </div>
                 
                 {/* Range selector - minimal text style */}
                 <div className="flex justify-end gap-1 mt-3 text-xs">
@@ -629,6 +623,13 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
                     </button>
                   ))}
                 </div>
+                
+                {/* Scroll hint */}
+                {relatedItems.length > 0 && (
+                  <div className="text-[10px] text-ast-muted text-center mt-2">
+                    ↓ Recent Coverage
+                  </div>
+                )}
               </div>
 
               {/* Links */}
