@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [resetPasswordMessage, setResetPasswordMessage] = useState<{type: 'error' | 'success', text: string} | null>(null);
   const router = useRouter();
   const supabase = createAuthBrowserClient();
 
@@ -49,6 +50,21 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setResetPasswordMessage(null);
+    if (!email.trim()) {
+      setResetPasswordMessage({type: 'error', text: 'Enter your email above first.'});
+      return;
+    }
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      setResetPasswordMessage({type: 'success', text: 'Password reset email sent — check your inbox.'});
+    } catch (err: unknown) {
+      setResetPasswordMessage({type: 'error', text: err instanceof Error ? err.message : 'Failed to send reset email'});
     }
   };
 
@@ -159,6 +175,17 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
+              {!isSignUp && (
+                <div className="text-right mt-1">
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    className="text-xs text-ast-muted hover:text-ast-accent font-mono transition-colors"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
             </div>
 
             {isSignUp && (
@@ -192,6 +219,13 @@ export default function LoginPage() {
               <div className="flex items-start gap-2 px-3 py-2 bg-ast-mint/10 border border-ast-mint/30 rounded text-xs text-ast-mint font-mono">
                 <span className="mt-0.5 flex-shrink-0">✓</span>
                 <span>{success}</span>
+              </div>
+            )}
+
+            {resetPasswordMessage && (
+              <div className={`flex items-start gap-2 px-3 py-2 ${resetPasswordMessage.type === 'success' ? 'bg-ast-mint/10 border border-ast-mint/30 text-ast-mint' : 'bg-ast-pink/10 border border-ast-pink/30 text-ast-pink'} rounded text-xs font-mono`}>
+                <span className="mt-0.5 flex-shrink-0">{resetPasswordMessage.type === 'success' ? '✓' : '✕'}</span>
+                <span>{resetPasswordMessage.text}</span>
               </div>
             )}
 
