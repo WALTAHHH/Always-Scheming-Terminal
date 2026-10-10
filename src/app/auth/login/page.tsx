@@ -211,7 +211,7 @@ export default function LoginPage() {
                   onChange={(e) => setInviteCode(e.target.value)}
                   required
                   autoComplete="off"
-                  placeholder="XXXXXXXX"
+                  placeholder="Enter invite code"
                   className="w-full px-3 py-2 bg-ast-bg border border-ast-border rounded text-sm text-ast-text font-mono placeholder:text-ast-muted/40 focus:outline-none focus:border-ast-accent focus:ring-1 focus:ring-ast-accent/30 transition-colors tracking-widest"
                 />
                 <p className="text-[10px] text-ast-muted font-mono mt-1.5">
@@ -252,7 +252,7 @@ export default function LoginPage() {
                   {isSignUp ? "Creating account..." : "Signing in..."}
                 </span>
               ) : (
-                isSignUp ? "Create Account →" : "Sign In →"
+                isSignUp ? "Request access →" : "Sign In →"
               )}
             </button>
           {isSignUp && (
