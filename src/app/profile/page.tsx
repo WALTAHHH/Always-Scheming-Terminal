@@ -7,26 +7,14 @@ import { Profile, UserPreferences } from "@/lib/database.types";
 
 // 9 segments from company-list-v1.md
 const SEGMENTS = [
-  "Platform Holders & Big Tech",
-  "Major Western Publishers",
-  "Major Asian Publishers",
-  "Mobile-First / F2P Specialists",
-  "PC/Console Studios & Indies",
-  "Mid-Market / European Publishers",
-  "Infrastructure / Middleware / Services",
-  "Investment / Holding / Corporate",
-];
-
-// Available themes from tagger.ts
-const AVAILABLE_THEMES = [
-  "ai",
-  "ugc",
-  "live-services",
-  "cloud-gaming",
-  "vr-ar",
-  "blockchain",
-  "esports",
-  "indie",
+  { name: 'Platform Holders & Big Tech', description: 'Microsoft (Xbox), Sony (PlayStation), Nintendo, Apple, Google, Meta, Valve, Epic, Roblox' },
+  { name: 'Major Western Publishers', description: 'EA, Take-Two, Ubisoft, Embracer, CD Projekt, Devolver' },
+  { name: 'Major Asian Publishers', description: 'Tencent, NetEase, Nexon, Krafton, Bandai Namco, Capcom, Square Enix, Sega, miHoYo, Sea Limited' },
+  { name: 'Mobile-First / F2P Specialists', description: 'Supercell, AppLovin, Scopely, Dream Games, Niantic, Voodoo' },
+  { name: 'PC/Console Studios & Indies', description: 'Larian, Annapurna, Riot, FromSoftware, Activision Blizzard, Bethesda, Bungie' },
+  { name: 'Mid-Market / European Publishers', description: 'Paradox, Keywords Studios, Team17, Warner Bros Games, Frontier, Embracer labels' },
+  { name: 'Infrastructure / Middleware / Services', description: 'Unity, Discord, Xsolla, Overwolf, ironSource, Twitch' },
+  { name: 'Investment / Holding / Corporate', description: 'Savvy Games Group, Kadokawa, tencent holding stakes, private equity' },
 ];
 
 export default function ProfilePage() {
@@ -44,6 +32,7 @@ export default function ProfilePage() {
   const [interests, setInterests] = useState<string[]>([]);
   const [segments, setSegments] = useState<string[]>([]);
   const [interestInput, setInterestInput] = useState("");
+  const [availableThemes, setAvailableThemes] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -65,6 +54,13 @@ export default function ProfilePage() {
           setDisplayName(data.profile.display_name || "");
           setInterests(data.preferences.interests || []);
           setSegments(data.preferences.segments || []);
+        }
+
+        // Fetch available themes
+        const themesResponse = await fetch("/api/tags/themes");
+        if (themesResponse.ok) {
+          const themesData = await themesResponse.json();
+          setAvailableThemes(themesData.themes || []);
         }
       } catch (err) {
         console.error("Failed to fetch profile", err);
@@ -101,14 +97,13 @@ export default function ProfilePage() {
     }
   };
 
-  const handleAddInterest = async (value?: string) => {
-    const interestValue = value || interestInput.trim();
-    if (!interestValue || interests.includes(interestValue)) {
+  const handleAddInterest = async () => {
+    if (!interestInput.trim() || interests.includes(interestInput.trim())) {
       setInterestInput("");
       return;
     }
 
-    const newInterests = [...interests, interestValue];
+    const newInterests = [...interests, interestInput.trim()];
     setInterests(newInterests);
     setInterestInput("");
 
@@ -139,10 +134,10 @@ export default function ProfilePage() {
     }
   };
 
-  const handleToggleSegment = async (segment: string) => {
-    const newSegments = segments.includes(segment)
-      ? segments.filter((s) => s !== segment)
-      : [...segments, segment];
+  const handleToggleSegment = async (segmentName: string) => {
+    const newSegments = segments.includes(segmentName)
+      ? segments.filter((s) => s !== segmentName)
+      : [...segments, segmentName];
     
     setSegments(newSegments);
 
@@ -174,7 +169,7 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-ast-bg">
       <div className="max-w-3xl mx-auto px-4 py-8">
         <button
-          onClick={() => router.push('/')}
+          onClick={() => router.push("/")}
           className="inline-flex items-center gap-2 px-3 py-1.5 mb-6 rounded border border-ast-border text-sm text-ast-text hover:border-ast-accent hover:text-ast-accent transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -195,6 +190,7 @@ export default function ProfilePage() {
               </div>
               <div className="flex-1">
                 <div className="text-sm text-ast-muted mb-1">Avatar</div>
+                <div className="text-xs text-ast-muted">Initials only for now</div>
               </div>
             </div>
 
@@ -219,37 +215,18 @@ export default function ProfilePage() {
                     {saving ? "Saving..." : "Save"}
                   </button>
                 </div>
-                {displayName === email.split('@')[0] && (
-                  <div className="text-[10px] text-ast-muted mt-1">
-                    Auto-set from your email — feel free to update
-                  </div>
-                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-ast-muted mb-2">
                   Email
                 </label>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 px-3 py-2 bg-ast-bg/50 border border-ast-border rounded text-ast-muted flex items-center">
-                    {email}
-                    <span className="ml-2 text-[10px] text-ast-muted">(read-only)</span>
-                  </div>
-                  <svg
-                    className="w-5 h-5 text-ast-muted"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                    />
-                  </svg>
-                </div>
+                <input
+                  type="text"
+                  value={email}
+                  readOnly
+                  className="w-full px-3 py-2 bg-ast-bg/50 border border-ast-border rounded text-ast-muted cursor-not-allowed"
+                />
               </div>
             </div>
           </section>
@@ -261,46 +238,27 @@ export default function ProfilePage() {
               Topics you care about (e.g., mobile, M&A, PC gaming)
             </p>
 
-            <div className="space-y-3 mb-3">
-              <select
-                onChange={(e) => {
-                  if (e.target.value) {
-                    handleAddInterest(e.target.value);
-                    e.target.value = ""; // Reset select
-                  }
-                }}
-                className="w-full bg-ast-bg border border-ast-border rounded px-3 py-1.5 text-sm text-ast-text focus:border-ast-accent focus:outline-none"
-              >
-                <option value="">Select a topic...</option>
-                {AVAILABLE_THEMES.map((theme) => (
-                  <option key={theme} value={theme}>
-                    {theme}
-                  </option>
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={interestInput}
+                onChange={(e) => setInterestInput(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleAddInterest()}
+                placeholder="Add an interest"
+                list="theme-suggestions"
+                className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-ast-text focus:outline-none focus:ring-2 focus:ring-ast-accent"
+              />
+              <datalist id="theme-suggestions">
+                {availableThemes.map((theme) => (
+                  <option key={theme} value={theme} />
                 ))}
-              </select>
-
-              <div>
-                <label className="block text-xs text-ast-muted mb-1.5">Or add custom:</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={interestInput}
-                    onChange={(e) => setInterestInput(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && handleAddInterest()}
-                    placeholder="Add an interest"
-                    className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-ast-text focus:outline-none focus:ring-2 focus:ring-ast-accent"
-                  />
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleAddInterest();
-                    }}
-                    className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/90"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
+              </datalist>
+              <button
+                onClick={handleAddInterest}
+                className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/90"
+              >
+                Add
+              </button>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -334,16 +292,19 @@ export default function ProfilePage() {
             <div className="space-y-2">
               {SEGMENTS.map((segment) => (
                 <label
-                  key={segment}
+                  key={segment.name}
                   className="flex items-center gap-3 p-2 hover:bg-ast-bg/50 rounded cursor-pointer"
                 >
                   <input
                     type="checkbox"
-                    checked={segments.includes(segment)}
-                    onChange={() => handleToggleSegment(segment)}
+                    checked={segments.includes(segment.name)}
+                    onChange={() => handleToggleSegment(segment.name)}
                     className="w-4 h-4 rounded border-ast-border text-ast-accent focus:ring-ast-accent"
                   />
-                  <span className="text-sm text-ast-text">{segment}</span>
+                  <div className="flex-1">
+                    <div className="text-sm text-ast-text">{segment.name}</div>
+                    <div className="text-xs text-ast-muted">{segment.description}</div>
+                  </div>
                 </label>
               ))}
             </div>
