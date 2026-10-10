@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createAuthServerClient } from "@/lib/supabase-server";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 
@@ -13,24 +13,14 @@ function getServiceRoleClient() {
 }
 
 function validateEmail(email: string): boolean {
-  const re = /^[\\w.%+-]+@[\\w.-]+\\.[A-Za-z]{2,}$/;
+  const re = /^[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}$/;
   return re.test(email);
 }
 
 export async function GET(req: NextRequest) {
-  // Auth check via session
-  const supabase = await createAuthServerClient();
+  const auth = await requireAdmin();
+  if (auth instanceof NextResponse) return auth;
 
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
-  if (sessionError || !session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Use service role client for queries
   const serviceClient = getServiceRoleClient();
 
   try {
@@ -44,29 +34,20 @@ export async function GET(req: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({ emails: emails || [] });
+    return NextResponse.json({ invites: emails || [] });
   } catch (error) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error);
     console.error("GET /api/admin/invites error:", msg, error);
     return NextResponse.json(
-      { error: "Failed to fetch allowed emails", detail: msg },
+      { error: "Failed to fetch allowed emails" },
       { status: 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
-  // Auth check via session
-  const supabase = await createAuthServerClient();
-
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
-  if (sessionError || !session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin();
+  if (auth instanceof NextResponse) return auth;
 
   try {
     const body = await req.json();
@@ -86,10 +67,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use service role client for insert
     const serviceClient = getServiceRoleClient();
 
-    // Check for duplicate
     const { data: existing, error: checkError } = await serviceClient
       .from("allowed_emails")
       .select("id")
@@ -108,7 +87,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Insert new email
     const { data: newRow, error: insertError } = await serviceClient
       .from("allowed_emails")
       .insert({ email: email.trim() })
@@ -125,24 +103,15 @@ export async function POST(req: NextRequest) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error);
     console.error("POST /api/admin/invites error:", msg, error);
     return NextResponse.json(
-      { error: "Failed to add email to allowlist", detail: msg },
+      { error: "Failed to add email to allowlist" },
       { status: 500 }
     );
   }
 }
 
 export async function DELETE(req: NextRequest) {
-  // Auth check via session
-  const supabase = await createAuthServerClient();
-
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
-  if (sessionError || !session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const auth = await requireAdmin();
+  if (auth instanceof NextResponse) return auth;
 
   const url = new URL(req.url);
   const email = url.searchParams.get("email");
@@ -154,7 +123,6 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
-  // Use service role client for delete
   const serviceClient = getServiceRoleClient();
 
   try {
@@ -182,7 +150,7 @@ export async function DELETE(req: NextRequest) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error);
     console.error("DELETE /api/admin/invites error:", msg, error);
     return NextResponse.json(
-      { error: "Failed to delete email from allowlist", detail: msg },
+      { error: "Failed to delete email from allowlist" },
       { status: 500 }
     );
   }
