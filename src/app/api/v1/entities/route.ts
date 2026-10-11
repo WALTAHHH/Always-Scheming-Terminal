@@ -12,14 +12,16 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   
   const alias = searchParams.get('alias');
+  const isPublic = searchParams.get('public') === 'true';
   // Skip auth for internal alias lookups (same-origin calls from CompanyDrawer)
-  if (!alias) {
+  // Skip auth for public ticker requests (only returns public entities with tickers)
+  if (!alias && !isPublic) {
     const auth = await requireApiKey(request);
     if (auth instanceof NextResponse) return auth;
   }
 
   const entityType = searchParams.get("entity_type");
-  const limit = parseInt(searchParams.get("limit") || "100", 10);
+  const limit = isPublic ? 500 : parseInt(searchParams.get("limit") || "100", 10);
   const cursor = searchParams.get("cursor");
 
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
@@ -64,6 +66,7 @@ export async function GET(request: Request) {
 
   if (cursor) query = query.gt("canonical_name", cursor);
   if (entityType) query = query.eq("entity_type", entityType);
+  if (isPublic) query = query.eq("is_public", true).not("ticker", "is", null);
 
   const { data, error } = await query;
 
