@@ -1116,6 +1116,7 @@ function InvitesDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const fetchInvites = useCallback(async () => {
     setLoading(true);
@@ -1145,6 +1146,8 @@ function InvitesDashboard() {
 
   const handleAdd = async () => {
     if (!newEmail.trim()) return;
+    setToast(null);
+    setError(null);
     try {
       const res = await fetch('/api/admin/invites', {
         method: 'POST',
@@ -1157,6 +1160,8 @@ function InvitesDashboard() {
       }
       setNewEmail('');
       fetchInvites();
+      setToast({ ok: true, msg: `Invite sent to ${newEmail.trim()}` });
+      setTimeout(() => setToast(null), 6000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add invite');
     }
@@ -1235,6 +1240,17 @@ function InvitesDashboard() {
           >
             Add
           </button>
+          {toast && (
+            <span
+              className={`text-xs px-2 py-1 rounded border ${
+                toast.ok
+                  ? "bg-ast-mint/10 border-ast-mint/30 text-ast-mint"
+                  : "bg-ast-pink/10 border-ast-pink/30 text-ast-pink"
+              }`}
+            >
+              {toast.msg}
+            </span>
+          )}
         </div>
       </div>
 
