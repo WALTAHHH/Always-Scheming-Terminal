@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { openCompanyDrawer } from "./CompanyDrawer";
+import styles from "./TickerBar.module.css";
 
-const TICKERS = ["RBLX", "MSFT", "TTWO", "COIN", "NVDA", "SONY"] as const;
-type Ticker = (typeof TICKERS)[number];
+type Ticker = string;
 
 interface StockData {
   ticker: Ticker;
@@ -13,16 +14,47 @@ interface StockData {
   error: boolean;
 }
 
+interface Entity {
+  canonical_name: string;
+  ticker: string;
+}
+
 export function TickerBar() {
-  const [stocks, setStocks] = useState<StockData[]>(() =>
-    TICKERS.map((ticker) => ({
-      ticker,
-      price: null,
-      changePercent: null,
-      loading: true,
-      error: false,
-    }))
-  );
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [stocks, setStocks] = useState<StockData[]>([]);
+  const [scrollEnabled, setScrollEnabled] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("ticker-scroll-enabled");
+      return saved !== null ? saved === "true" : true;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("ticker-scroll-enabled", scrollEnabled.toString());
+  }, [scrollEnabled]);
+
+  useEffect(() => {
+    const fetchEntities = async () => {
+      try {
+        const res = await fetch('/api/v1/entities?public=true');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const entities = data.data || [];
+        setEntities(entities);
+        setStocks(entities.map((entity: Entity) => ({
+          ticker: entity.ticker,
+          price: null,
+          changePercent: null,
+          loading: true,
+          error: false,
+        })));
+      } catch (error) {
+        console.error('Failed to fetch entities:', error);
+      }
+    };
+    fetchEntities();
+  }, []);
 
   const fetchStock = async (ticker: Ticker): Promise<Pick<StockData, "price" | "changePercent">> => {
     try {
@@ -41,7 +73,7 @@ export function TickerBar() {
   };
 
   const fetchAll = async () => {
-    const results = await Promise.allSettled(TICKERS.map((ticker) => fetchStock(ticker)));
+    const results = await Promise.allSettled(stocks.map((stock) => fetchStock(stock.ticker)));
     setStocks((prev) =>
       prev.map((stock, idx) => {
         const result = results[idx];
