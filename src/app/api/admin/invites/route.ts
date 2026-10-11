@@ -98,6 +98,17 @@ export async function POST(req: NextRequest) {
       throw insertError;
     }
 
+    // Send invite email via Supabase Auth
+    try {
+      await serviceClient.auth.admin.inviteUserByEmail(email.trim(), {
+        redirectTo: 'https://terminal.always-scheming.com/auth/login',
+      });
+      console.log(`Invite sent to ${email}`);
+    } catch (error) {
+      console.error('Failed to send invite email:', error);
+      // Do not fail the request; allowlist addition succeeded
+    }
+
     return NextResponse.json(newRow, { status: 201 });
   } catch (error) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error);
