@@ -34,7 +34,24 @@ export async function GET(req: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({ invites: emails || [] });
+    // Fetch all auth users to derive status
+    const { data: { users }, error: usersError } = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
+    if (usersError) {
+      console.error("Failed to fetch auth users:", usersError);
+      // fallback to empty map
+    }
+    const userMap = new Map((users || []).map(u => [u.email, u]));
+
+    const enriched = (emails || []).map(row => {
+      const user = userMap.get(row.email);
+      let status: "activated" | "invited" | "pending" = "pending";
+      if (user) {
+        status = user.confirmed_at ? "activated" : "invited";
+      }
+      return { ...row, status };
+    });
+
+    return NextResponse.json({ invites: enriched });
   } catch (error) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error);
     console.error("GET /api/admin/invites error:", msg, error);

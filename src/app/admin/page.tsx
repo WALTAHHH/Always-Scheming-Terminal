@@ -1112,7 +1112,7 @@ function EntitiesDashboard() {
 }
 
 function InvitesDashboard() {
-  const [invites, setInvites] = useState<{email: string; created_at: string}[]>([]);
+  const [invites, setInvites] = useState<{email: string; created_at: string; status?: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
@@ -1180,6 +1180,25 @@ function InvitesDashboard() {
       fetchInvites();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete invite');
+    }
+  };
+
+  const handleResend = async (email: string) => {
+    setToast(null);
+    try {
+      const res = await fetch('/api/admin/invites/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      setToast({ ok: true, msg: `Invite resent to ${email}` });
+      setTimeout(() => setToast(null), 6000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resend invite');
     }
   };
 
@@ -1259,8 +1278,9 @@ function InvitesDashboard() {
         <div className="bg-ast-surface px-3 py-2 border-b border-ast-border flex items-center gap-3">
           <div className="w-48 font-semibold text-xs text-ast-muted">Email</div>
           <div className="w-32 font-semibold text-xs text-ast-muted">Added</div>
+          <div className="w-24 font-semibold text-xs text-ast-muted">Status</div>
           <div className="flex-1"></div>
-          <div className="w-20 font-semibold text-xs text-ast-muted">Actions</div>
+          <div className="w-32 font-semibold text-xs text-ast-muted">Actions</div>
         </div>
         <div className="divide-y divide-ast-border/50">
           {invites.length === 0 ? (
@@ -1274,8 +1294,27 @@ function InvitesDashboard() {
                 <div className="w-32 text-xs text-ast-muted">
                   {invite.created_at ? new Date(invite.created_at).toLocaleDateString() : '—'}
                 </div>
+                <div className="w-24">
+                  {invite.status && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${
+                      invite.status === "activated"
+                        ? "text-ast-mint border-ast-mint/30 bg-ast-mint/10"
+                        : invite.status === "invited"
+                        ? "text-ast-accent border-ast-accent/30 bg-ast-accent/10"
+                        : "text-ast-muted border-ast-border bg-transparent"
+                    }`}>
+                      {invite.status === "activated" ? "Activated" : invite.status === "invited" ? "Invited" : "Pending"}
+                    </span>
+                  )}
+                </div>
                 <div className="flex-1"></div>
-                <div className="w-20">
+                <div className="w-32 flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleResend(invite.email)}
+                    className="px-2 py-1 text-[10px] rounded border border-ast-border text-ast-muted hover:border-ast-accent hover:text-ast-accent transition-colors"
+                  >
+                    Resend
+                  </button>
                   <button
                     onClick={() => handleDelete(invite.email)}
                     className="px-2 py-1 text-[10px] rounded border border-ast-border text-ast-muted hover:border-ast-pink hover:text-ast-pink transition-colors"
