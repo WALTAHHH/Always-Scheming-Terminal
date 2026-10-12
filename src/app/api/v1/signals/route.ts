@@ -13,10 +13,14 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
   const minScore = parseFloat(searchParams.get("min_score") || "0.3");
+  const signalType = searchParams.get("signal_type") || null;
+  const company = searchParams.get("company") || null;
+  const since = searchParams.get("since") || null;
+  const until = searchParams.get("until") || null;
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
   // Single query with JOINs
-  const { data: signalsData, error: signalsError } = await supabase
+  let query = supabase
     .from("signals")
     .select(`
       id, signal_type, summary, investment_relevance_score, created_at,
@@ -25,7 +29,13 @@ export async function GET(request: Request) {
         content_tags (value, dimension, entity_id)
       )
     `)
-    .gte("investment_relevance_score", minScore)
+    .gte("investment_relevance_score", minScore);
+
+  if (signalType) query = query.eq("signal_type", signalType);
+  if (since) query = query.gte("content.published_at", since);
+  if (until) query = query.lte("content.published_at", until);
+
+  const { data: signalsData, error: signalsError } = await query
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -55,9 +65,25 @@ export async function GET(request: Request) {
     };
   });
 
+  let filtered = signalsWithDetailsInternal;
+
+  if (company) {
+    filtered = filtered.filter(s =>
+      s.companies.some((c: any) => c.toLowerCase().includes(company.toLowerCase()))
+    );
+  }
+
+  if (since) {
+    filtered = filtered.filter(s => s.published_at && new Date(s.published_at) >= new Date(since));
+  }
+
+  if (until) {
+    filtered = filtered.filter(s => s.published_at && new Date(s.published_at) <= new Date(until));
+  }
+
   // Map content_id → signal (keep highest score per content)
   const signalByContentId = new Map<string, typeof signalsWithDetailsInternal[0]>();
-  for (const signal of signalsWithDetailsInternal) {
+  for (const signal of filtered) {
     const existing = signalByContentId.get(signal.content_id);
     if (!existing || signal.investment_relevance_score > existing.investment_relevance_score) {
       signalByContentId.set(signal.content_id, signal);

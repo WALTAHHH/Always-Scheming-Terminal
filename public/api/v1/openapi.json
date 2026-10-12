@@ -72,6 +72,44 @@
               "format": "float",
               "default": 0.3
             }
+          },
+          {
+            "name": "signal_type",
+            "in": "query",
+            "description": "Filter by signal type (e.g. fundraising, layoffs, acquisition, product_launch, earnings, partnership)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "company",
+            "in": "query",
+            "description": "Filter to signals mentioning this company name (case-insensitive substring match)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Return signals published on or after this ISO 8601 date (e.g. 2026-10-01)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "description": "Return signals published on or before this ISO 8601 date (e.g. 2026-10-31)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
           }
         ],
         "responses": {
