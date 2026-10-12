@@ -1,3 +1,37 @@
+# Always Scheming Terminal (AST) – Discoverability File
+
+## Description
+Always Scheming Terminal (AST) is a gaming‑industry intelligence platform delivering signals, briefs, and entity tracking for investors and analysts.
+
+## Pages
+-Welcome page – `/` – landing with ticker and feed
+-Login – `/login` – authentication portal
+-API explorer – `/api-explorer` – interactive API documentation and testing
+
+## API Endpoints
+### v1 REST API
+- GET `/api/v1/entities` – retrieve gaming industry entities with optional filtering by alias, entity_type, and pagination
+- GET `/api/v1/signals` – retrieve investment signals with deduplication and clustering
+- GET `/api/v1/sources` – list active news sources
+- GET `/api/v1/items` – retrieve news articles with filtering by source, signal type, date range, and pagination
+- GET `/api/v1/openapi.json` – serve OpenAPI specification
+- GET `/api/v1/entity-aliases` – retrieve alias-to-canonical mapping; POST – admin-only creation of new alias
+- GET `/api/v1/health` – health check endpoint
+- POST `/api/v1/brief` – generate a brief answering a query using RAG over gaming industry news
+
+All endpoints except `/api/v1/health` and public alias lookups require an API key (Bearer token).
+
+## MCP (Model Context Protocol)
+- Endpoint: `/api/mcp` (streamable‑http, requires API key)
+- Discovery: `/.well-known/mcp.json` – lists available tools (`ast_get_signals`, `ast_get_items`, `ast_get_entities`, `ast_brief`)
+
+## Data
+-Live news items (articles) with titles, bodies, sources, publishing dates
+-Investment signals (M&A, fundraising, earnings, partnerships) extracted from articles via LLM
+-Gaming industry entities (companies, exchanges, tickers, segments) with canonical names and aliases
+-Briefs synthesized via RAG (Gemini 2.5 Flash Lite) answering natural‑language queries
+
+## LLM Usage
 # LLM Usage Disclosure
 Application: Always Scheming Terminal (AST)
 Purpose: Gaming‑industry intelligence signals and briefs
