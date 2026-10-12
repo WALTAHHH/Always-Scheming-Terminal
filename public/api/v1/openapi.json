@@ -327,6 +327,7 @@
     "/items": {
       "get": {
         "summary": "List content items",
+        "operationId": "list_items",
         "security": [
           {
             "apiKey": []
@@ -451,6 +452,7 @@
     "/entity-aliases": {
       "get": {
         "summary": "Get alias map or search entities",
+        "operationId": "get_entity_aliases",
         "parameters": [
           {
             "name": "search",
@@ -516,6 +518,7 @@
       },
       "post": {
         "summary": "Create a new entity alias (admin)",
+        "operationId": "create_entity_alias",
         "security": [
           {
             "apiKey": []
