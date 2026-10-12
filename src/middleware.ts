@@ -9,6 +9,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Skip discovery paths (robots.txt, llms.txt, .well-known/mcp.json, openapi.json)
+  const discoveryPaths = ['/robots.txt', '/llms.txt', '/.well-known/mcp.json', '/openapi.json'];
+  if (discoveryPaths.includes(pathname)) {
+    return NextResponse.next();
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });
