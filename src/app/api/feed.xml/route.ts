@@ -20,7 +20,7 @@ export async function GET() {
 
   const { data, error } = (await supabase
     .from("content")
-    .select("*, sources!inner(name, url, source_type, active)")
+    .select("*, sources!inner(name, url, source_type, active), signals(summary, signal_type, investment_relevance_score)")
     .eq("sources.active" as string, true)
     .order("published_at", { ascending: false, nullsFirst: false })
     .limit(50)) as unknown as { data: FeedItem[] | null; error: { message: string } | null };
@@ -41,8 +41,16 @@ export async function GET() {
       const sourceName = source?.name ?? "Unknown";
       const title = item.title ? escapeXml(item.title) : "Untitled";
       const link = item.url ? escapeXml(item.url) : "";
-      const description = item.body
-        ? escapeXml(truncate(item.body, 500))
+      const signalData = Array.isArray(item.signals) ? item.signals[0] : item.signals;
+      const descriptionText = item.body
+        ? truncate(item.body, 500)
+        : signalData?.summary
+        ? signalData.summary
+        : "";
+      const description = descriptionText ? escapeXml(descriptionText) : "";
+      const categoryTags = signalData
+        ? `
+      <category>${escapeXml(signalData.signal_type)}</category>`
         : "";
       const pubDate = item.published_at
         ? new Date(item.published_at).toUTCString()
