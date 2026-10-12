@@ -498,11 +498,11 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
   return (
     <div className="fixed inset-0 z-[9999]">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute inset-y-0 right-0 w-full sm:w-[92vw] sm:max-w-6xl bg-ast-bg border-l border-ast-border flex flex-col shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-labelledby="drawer-title" className="absolute inset-y-0 right-0 w-full sm:w-[92vw] sm:max-w-6xl bg-ast-bg border-l border-ast-border flex flex-col shadow-2xl">
         {/* Header */}
         <div className="px-5 py-4 border-b border-ast-border flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-ast-text">{companyData?.canonical_name || companyName}</h2>
+            <h2 id="drawer-title" className="text-lg font-semibold text-ast-text">{companyData?.canonical_name || companyName}</h2>
             {companyData?.ticker && !companyData?.parent_id && (
               <span className="text-ast-accent text-sm">{companyData.ticker} · {companyData.exchange}</span>
             )}
@@ -510,10 +510,10 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
               <span className="text-ast-muted text-sm">via parent · {companyData.ticker}</span>
             )}
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded border border-ast-border text-ast-muted hover:text-ast-text flex items-center justify-center">✕</button>
+          <button onClick={onClose} autoFocus aria-label="Close drawer" className="w-8 h-8 rounded border border-ast-border text-ast-muted hover:text-ast-text flex items-center justify-center">✕</button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto relative">
           {!companyData || !companyData.ticker ? (
             <div className="p-5 space-y-3">
               {companyData?.segment && (
@@ -677,6 +677,7 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
               </div>
             )}
           </div>
+          <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-ast-bg to-transparent pointer-events-none" />
         </div>
       </div>
     </div>
