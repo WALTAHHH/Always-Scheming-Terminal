@@ -643,6 +643,8 @@ export type Item = Content
 export type ItemTag = ContentTag
 
 // Extended content row with joined source — used throughout the feed UI
+// Extended content row with joined source — used throughout the feed UI
 export type FeedItem = Content & {
   sources: Pick<Source, "name" | "url" | "source_type"> | null
+  signals?: Pick<Signal, "summary" | "signal_type" | "investment_relevance_score">[] | null
 }

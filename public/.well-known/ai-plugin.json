@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Always Scheming Terminal",
+  "name_for_model": "always_scheming_terminal",
+  "description_for_human": "Gaming investment intelligence — real-time signals on M&A, fundraising, layoffs, and product launches across 200+ gaming companies.",
+  "description_for_model": "Use this to get gaming industry investment signals. Returns structured data on M&A, fundraising, layoffs, earnings, and product launches for gaming companies. Each signal has a type, investment relevance score (0-1), and tagged companies. Public signals available without auth; full item/entity data requires API key.",
+  "auth": {
+    "type": "api_key",
+    "authorization_type": "bearer"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://terminal.always-scheming.com/openapi.json"
+  },
+  "logo_url": "https://terminal.always-scheming.com/favicon.ico",
+  "contact_email": "hello@always-scheming.com",
+  "legal_info_url": "https://terminal.always-scheming.com"
+}
