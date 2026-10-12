@@ -43,7 +43,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "health_check"
       }
     },
     "/signals": {
@@ -148,7 +149,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "list_signals"
       }
     },
     "/entities": {
@@ -264,7 +266,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "list_entities"
       }
     },
     "/sources": {
@@ -321,7 +324,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "list_sources"
       }
     },
     "/items": {
@@ -445,7 +449,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "list_items"
       }
     },
     "/entity-aliases": {
@@ -512,7 +517,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "get_entity_aliases"
       },
       "post": {
         "summary": "Create a new entity alias (admin)",
@@ -619,6 +625,33 @@
                 }
               }
             }
+          }
+        },
+        "operationId": "create_entity_alias"
+      }
+    },
+    "/signals/{id}": {
+      "get": {
+        "operationId": "get_signal",
+        "summary": "Get a signal by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Signal UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signal object"
+          },
+          "404": {
+            "description": "Signal not found"
           }
         }
       }
