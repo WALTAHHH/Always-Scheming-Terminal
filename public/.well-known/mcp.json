@@ -7,7 +7,8 @@
       "capabilities": ["tools"],
       "auth": {
         "type": "api_key",
-        "header": "x-api-key"
+        "header": "Authorization",
+        "scheme": "Bearer"
       },
       "tools": ["ast_get_signals", "ast_get_items", "ast_get_entities", "ast_brief"]
     }
