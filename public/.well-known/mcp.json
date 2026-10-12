@@ -1,0 +1,15 @@
+{
+  "mcp_version": "2025-11-25",
+  "endpoints": [
+    {
+      "url": "/api/mcp",
+      "transport": "streamable-http",
+      "capabilities": ["tools"],
+      "auth": {
+        "type": "api_key",
+        "header": "x-api-key"
+      },
+      "tools": ["ast_get_signals", "ast_get_items", "ast_get_entities", "ast_brief"]
+    }
+  ]
+}

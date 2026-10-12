@@ -1,0 +1,11 @@
+# LLM Usage Disclosure
+Application: Always Scheming Terminal (AST)
+Purpose: Gaming‑industry intelligence signals and briefs
+LLM Use Cases:
+- Generating synthesized intelligence briefs via RAG
+- Extracting investment signals (M&A, fundraising, earnings, etc.) from news articles
+- Answering natural‑language queries about gaming‑industry news
+Model: Gemini 2.5 Flash Lite (Google AI API)
+Data Sent: Queries and retrieved article content only; no personally identifiable information.
+Data Retention: No persistent storage of LLM interactions beyond audit logs.
+Contact: See /api/v1/openapi.json for API documentation.
