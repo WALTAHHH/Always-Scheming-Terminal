@@ -81,7 +81,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-ast-bg flex items-center justify-center p-4">
+    <main className="min-h-screen bg-ast-bg flex items-center justify-center p-4">
       {/* Subtle grid background */}
       <div
         className="fixed inset-0 pointer-events-none"
@@ -106,7 +106,7 @@ export default function LoginPage() {
             Gaming industry intelligence
           </p>
         </div>
-
+        <h1 className="sr-only">Always Scheming Terminal Login</h1>
         {/* Card */}
         <div className="bg-ast-surface border border-ast-border rounded-lg overflow-hidden">
           {/* Tab strip */}
@@ -138,11 +138,12 @@ export default function LoginPage() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             <div>
-              <label className="block text-[10px] font-mono text-ast-muted uppercase tracking-wider mb-1.5">
+              <label htmlFor="email-input" className="block text-[10px] font-mono text-ast-muted uppercase tracking-wider mb-1.5">
                 Email
               </label>
               <input
                 type="email"
+                id="email-input"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -153,12 +154,13 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-[10px] font-mono text-ast-muted uppercase tracking-wider mb-1.5">
+              <label htmlFor="password-input" className="block text-[10px] font-mono text-ast-muted uppercase tracking-wider mb-1.5">
                 Password
               </label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
+                  id="password-input"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -202,11 +204,12 @@ export default function LoginPage() {
 
             {isSignUp && (
               <div>
-                <label className="block text-[10px] font-mono text-ast-muted uppercase tracking-wider mb-1.5">
+                <label htmlFor="invite-code-input" className="block text-[10px] font-mono text-ast-muted uppercase tracking-wider mb-1.5">
                   Invite Code
                 </label>
                 <input
                   type="text"
+                  id="invite-code-input"
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
                   required
@@ -266,6 +269,6 @@ export default function LoginPage() {
           Private beta · Invite only
         </p>
       </div>
-    </div>
+    </main>
   );
 }
