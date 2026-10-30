@@ -351,6 +351,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                 })
               )}
 
+
             </div>
           </div>
   
