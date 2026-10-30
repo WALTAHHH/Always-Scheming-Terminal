@@ -20,13 +20,13 @@ const supabase = createClient(
 
 /**
  * Convert an embedding array to the string representation expected by the
- * Supabase vector(768) column.
+ * Supabase vector(1536) column.
  *
  * The vector column expects a PostgreSQL vector literal, which is a string
  * containing a comma-separated list of numbers inside square brackets, e.g.
  * '[0.1,0.2,-0.3]'. This matches the format used in the migration
- * `ALTER TABLE content ADD COLUMN embedding vector(768)` and the RPC call
- * `match_content(query_embedding vector(768), ...)` where the embedding is
+ * `ALTER TABLE content ADD COLUMN embedding vector(1536)` and the RPC call
+ * `match_content(query_embedding vector(1536), ...)` where the embedding is
  * cast as a string (see brief route).
  */
 function embeddingToVectorString(embedding: number[]): string {
