@@ -49,7 +49,7 @@ export default async function Home() {
   const [{ items, hasMore }, sources] = await Promise.all([getItems(), getSources()]);
 
   return (
-    <main className="min-h-screen">
+    <main className="flex h-[100dvh] flex-col">
       <Header />
       {items.length === 0 ? (
         <div className="text-center py-20">

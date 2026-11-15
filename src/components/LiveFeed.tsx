@@ -395,7 +395,11 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     return (
       <>
         <NewItemsBanner count={newCount} onClick={loadNewItems} />
-        <div className="h-[calc(100vh-6rem)]">
+        {/* Fill all remaining height below the header; no fixed 100vh offset
+            (mobile header is 48px, not 6rem) so the list reaches the bottom edge.
+            Safe-area inset is owned here so the bottom bar extends to the screen
+            edge on devices with a home indicator — no dead strip. */}
+        <div className="flex-1 min-h-0 bg-ast-surface pb-[env(safe-area-inset-bottom)]">
           <MobileSwipeView panels={mobilePanels} initialIndex={1} />
         </div>
         <CompanyDrawerPortal />
