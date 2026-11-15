@@ -43,3 +43,44 @@ describe('Profile utility functions', () => {
     // We'll accept that behavior
   })
 })
+
+describe('Profile segments save trigger (issue #112)', () => {
+  const filePath = path.resolve(__dirname, 'page.tsx')
+  const content = fs.readFileSync(filePath, 'utf-8')
+
+  test('an explicit "Save preferences" button exists for segments', () => {
+    expect(content).toContain('Save preferences')
+    expect(content).toContain('onClick={handleSaveSegments}')
+  })
+
+  test('save button is disabled until the selection is dirty', () => {
+    expect(content).toContain('const segmentsDirty')
+    expect(content).toContain('disabled={!segmentsDirty')
+  })
+
+  test('shows saved and error feedback for the segment save', () => {
+    expect(content).toContain('✓ Saved')
+    expect(content).toContain('Failed to save — try again')
+  })
+
+  test('toggling a segment no longer autosaves silently', () => {
+    const start = content.indexOf('const handleToggleSegment')
+    const end = content.indexOf('const segmentsDirty')
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const toggleBody = content.slice(start, end)
+    expect(toggleBody).not.toContain('fetch(')
+  })
+
+  test('saving segments PATCHes the preferences API and reports status', () => {
+    const start = content.indexOf('const handleSaveSegments')
+    const end = content.indexOf('const getInitials')
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const saveBody = content.slice(start, end)
+    expect(saveBody).toContain('"/api/user/preferences"')
+    expect(saveBody).toContain('method: "PATCH"')
+    expect(saveBody).toContain('setSegmentStatus("saved")')
+    expect(saveBody).toContain('setSegmentStatus("error")')
+  })
+})
