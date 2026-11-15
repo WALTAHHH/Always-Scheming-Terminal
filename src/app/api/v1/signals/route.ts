@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { clusterItems } from "@/lib/cluster";
+import { sortSignalsByEventDate } from "@/lib/signals";
 import type { FeedItem } from "@/lib/database.types";
 
 export const runtime = "nodejs";
@@ -127,8 +128,14 @@ export async function GET(request: Request) {
     );
   }).filter(Boolean);
 
-  // Strip internal content_id field from final response
-  const signalsWithDetails = deduped.map(({ content_id, ...rest }) => rest);
+  // Strip internal content_id field from final response, then order newest-first
+  // by EVENT date (published_at). The clustering step above returns rows roughly
+  // in published_at order, but the per-cluster pick (highest score) can carry a
+  // different published_at than the cluster lead — so sort the final list
+  // explicitly to guarantee a monotonic display. Score is only a tiebreak.
+  const signalsWithDetails = sortSignalsByEventDate(
+    deduped.map(({ content_id, ...rest }) => rest)
+  );
 
   return NextResponse.json({
     signals: signalsWithDetails,
