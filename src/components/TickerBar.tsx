@@ -121,7 +121,8 @@ export function TickerBar() {
         {stocks.map((stock, idx) => (
           <div
             key={stock.ticker}
-            className="flex items-center h-full px-3 border-r border-ast-border/40 last:border-r-0"
+            title={`${stock.ticker} · ${stock.loading ? "loading" : formatPrice(stock.price)} · ${stock.loading ? "" : formatChangePercent(stock.changePercent)}`.trim()}
+            className="flex items-center h-full px-3 border-r border-ast-border/40 last:border-r-0 flex-shrink-0 whitespace-nowrap cursor-default"
           >
             <div className="flex items-center gap-1.5">
               <span className="text-ast-text font-bold text-[10px] tracking-tight">

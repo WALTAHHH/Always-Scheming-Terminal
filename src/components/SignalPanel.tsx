@@ -333,8 +333,11 @@ export function SignalPanel({ items }: SignalPanelProps) {
                                 </div>
                               </div>
                             </div>
-                            {signal.created_at && (
-                              <TimeAgo date={signal.created_at} className="text-ast-muted text-[10px]" />
+                            {(signal.published_at || signal.created_at) && (
+                              <TimeAgo
+                                date={signal.published_at || signal.created_at}
+                                className="text-ast-muted text-[10px]"
+                              />
                             )}
                             {signal.companies.length > 0 && (
                               <div className="flex gap-1">
@@ -393,8 +396,11 @@ export function SignalPanel({ items }: SignalPanelProps) {
                           {deal.companies.length > 0 && (
                             <span className="text-ast-muted text-[10px]">{deal.companies.slice(0, 2).join(", ")}</span>
                           )}
-                          {deal.created_at && (
-                            <TimeAgo date={deal.created_at} className="text-ast-muted text-[10px]" />
+                          {(deal.published_at || deal.created_at) && (
+                            <TimeAgo
+                              date={deal.published_at || deal.created_at}
+                              className="text-ast-muted text-[10px]"
+                            />
                           )}
                         </div>
                       </div>
