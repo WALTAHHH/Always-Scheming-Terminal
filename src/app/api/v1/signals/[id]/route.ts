@@ -9,8 +9,9 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const supabase = createClient<Database>(supabaseUrl, supabaseKey);
   const { data, error } = await supabase
     .from("signals")
@@ -21,7 +22,7 @@ export async function GET(
         content_tags (value, dimension, entity_id)
       )
     `)
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (error || !data) {
