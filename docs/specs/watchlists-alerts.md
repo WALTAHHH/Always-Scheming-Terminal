@@ -365,16 +365,21 @@ Each card ≤ 3 file edits. Dependencies via kanban `parents`. Tests are owned b
 | **W8** | Email digest (Resend) + cron tail send | coder | W3, W4 | `src/lib/email.ts`, `src/lib/alerts.ts`, `src/app/api/admin/extract-signals/route.ts` |
 | **Q1** | Tests: watchlist API + fan-out dedup | qa | W2, W3 | `src/lib/alerts.test.ts`, `src/app/api/v1/watchlist/route.test.ts` |
 | **Q2** | Tests: alerts read API + threshold logic | qa | W4, W7 | `src/app/api/v1/alerts/route.test.ts`, `src/lib/alerts.test.ts` |
-| **Q3** | Tests: UI star toggle + Watchlist filter (Vitest + RTL) | qa | W5, W6 | `src/components/CompanyDrawer.test.tsx`, `src/components/SignalPanel.test.tsx` |
+| **Q3** | Tests: UI star toggle + Watchlist filter (Vitest source-assertions) | qa | W5, W6 | `src/components/CompanyDrawer.test.ts`, `src/components/SignalPanel.test.ts` |
 | **Q4** | Tests: digest send pass (mock Resend) | qa | W8 | `src/lib/email.test.ts` |
 
 Notes:
 - W1 is the only migration; it must be applied out-of-band by Matt (spec is draft-only).
 - W3 and W8 both touch `extract-signals/route.ts` **and** `src/lib/alerts.ts` — serialize
   them (W8 `parents: [W3]`) to avoid a merge hotspot. Flagged below.
-- Vitest is configured (`vitest.config.ts`); existing suites live as colocated
-  `*.test.ts` / `*.test.tsx` (e.g. `src/lib/importance.test.ts`,
-  `src/components/CompanyDrawer.test.ts`).
+- Vitest is configured (`vitest.config.ts`, `environment: 'node'`); there is **no
+  jsdom/happy-dom and no `@testing-library/*`** in `package.json`, so component tests
+  cannot `render()` today. Existing suites follow two patterns: (a) assert against the
+  component **source** via `readFileSync` + regex (`src/components/CompanyDrawer.test.ts`,
+  `src/components/FilterBar.test.tsx`, `src/components/TickerBar.test.ts`), or (b) server-
+  render with `renderToString` from `react-dom/server` under `/// @vitest-environment node`
+  (`src/components/LiveFeed.test.tsx`). QA cards Q1–Q4 follow these patterns; adding RTL +
+  jsdom is a **separate decision** (new dev-deps), not assumed by v1. → **Open question Q9.**
 
 **Hotspot:** `src/app/api/admin/extract-signals/route.ts` — touched by W3 and W8.
 **Hotspot:** `src/lib/alerts.ts` — created by W3, extended by W8.
@@ -408,6 +413,10 @@ Notes:
   restrict email to a hand-invited beta with a signed-off disclaimer?
 - **Q8 — Breaking vs digest.** `notification_prefs.breaking` exists but is unused. Defer
   instant/"breaking" alerts to v1.1? (Digest-only in v1 was assumed here.)
+- **Q9 — Component test tooling.** The repo has no jsdom/happy-dom or `@testing-library/*`
+  (see §6 note), so UI tests today are source-assertions or `renderToString`. Do we add
+  RTL + jsdom as dev-deps (better star-toggle/filter coverage, new toolchain), or keep the
+  existing source-assertion pattern for v1?
 
 ---
 
