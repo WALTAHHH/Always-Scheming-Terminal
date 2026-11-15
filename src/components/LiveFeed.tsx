@@ -411,20 +411,22 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       <div className="hidden sm:flex h-9 border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm">
         <button
           onClick={() => selectPanel('feed')}
+          aria-pressed={activeTab === 'feed'}
           className={`flex-1 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
             activeTab === 'feed'
-              ? 'text-ast-text border-b-2 border-ast-accent'
-              : 'text-ast-muted hover:text-ast-text'
+              ? 'bg-ast-accent/15 text-ast-accent border-b-2 border-ast-accent'
+              : 'text-ast-muted hover:text-ast-text hover:bg-ast-surface/50'
           }`}
         >
           FEED
         </button>
         <button
           onClick={() => selectPanel('signal')}
+          aria-pressed={activeTab === 'signal'}
           className={`flex-1 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
             activeTab === 'signal'
-              ? 'text-ast-text border-b-2 border-ast-accent'
-              : 'text-ast-muted hover:text-ast-text'
+              ? 'bg-ast-accent/15 text-ast-accent border-b-2 border-ast-accent'
+              : 'text-ast-muted hover:text-ast-text hover:bg-ast-surface/50'
           }`}
         >
           SIGNALS

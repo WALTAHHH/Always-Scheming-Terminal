@@ -386,10 +386,11 @@ export function Feed({ items, sources, hasMore, loadingMore, loadMoreError, onLo
           <div className="flex items-center border border-ast-border rounded overflow-hidden flex-shrink-0">
             <button
               onClick={() => setSortMode("importance")}
-              className={`px-2 sm:px-2.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
+              aria-pressed={sortMode === "importance"}
+              className={`px-2 sm:px-2.5 py-1 text-[10px] tracking-wide transition-colors ${
                 sortMode === "importance"
-                  ? "bg-ast-gold/15 text-ast-gold"
-                  : "text-ast-muted hover:text-ast-text"
+                  ? "bg-ast-gold/25 text-ast-gold font-bold"
+                  : "text-ast-muted font-semibold hover:text-ast-text hover:bg-ast-surface/50"
               }`}
             >
               SIGNAL
@@ -397,10 +398,11 @@ export function Feed({ items, sources, hasMore, loadingMore, loadMoreError, onLo
             <div className="w-px h-4 bg-ast-border" />
             <button
               onClick={() => setSortMode("recent")}
-              className={`px-2 sm:px-2.5 py-1 text-[10px] font-semibold tracking-wide transition-colors ${
+              aria-pressed={sortMode === "recent"}
+              className={`px-2 sm:px-2.5 py-1 text-[10px] tracking-wide transition-colors ${
                 sortMode === "recent"
-                  ? "bg-ast-accent/15 text-ast-accent"
-                  : "text-ast-muted hover:text-ast-text"
+                  ? "bg-ast-accent/25 text-ast-accent font-bold"
+                  : "text-ast-muted font-semibold hover:text-ast-text hover:bg-ast-surface/50"
               }`}
             >
               LATEST

@@ -196,8 +196,12 @@ export function FeedRow({ item, isRelated = false }: FeedRowProps) {
             <TagChips tags={item.tags as Record<string, string[]> | null} />
           </div>
 
-          {/* External link indicator — desktop only */}
-          <div className="hidden sm:block flex-shrink-0 text-ast-muted opacity-0 group-hover:opacity-100 transition-opacity pt-1">
+          {/* External link indicator — always visible (muted), accents on hover */}
+          <div
+            className="flex-shrink-0 text-ast-muted/40 group-hover:text-ast-accent transition-colors pt-1"
+            aria-hidden="true"
+            title="Opens in a new tab"
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="14"
