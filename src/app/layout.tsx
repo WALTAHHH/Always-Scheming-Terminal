@@ -58,7 +58,7 @@ export default function RootLayout({
           href="/api/feed.xml"
         />
       </head>
-      <body className="bg-ast-bg text-ast-text font-mono antialiased min-h-screen">
+      <body className="bg-ast-bg text-ast-text font-mono antialiased min-h-[100dvh]">
         <ThemeProvider>
           <PostHogProvider>
             <KeyboardNav />
