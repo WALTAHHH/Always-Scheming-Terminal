@@ -56,7 +56,7 @@ export function TickerBar() {
     fetchEntities();
   }, []);
 
-  const fetchStock = async (ticker: Ticker): Promise<Pick<StockData, "price" | "changePercent">> => {
+  const fetchStock = useCallback(async (ticker: Ticker): Promise<Pick<StockData, "price" | "changePercent">> => {
     try {
       const res = await fetch(`/api/stock/${ticker}?range=1d`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -70,14 +70,14 @@ export function TickerBar() {
       console.error(`Failed to fetch ${ticker}:`, error);
       return { price: null, changePercent: null };
     }
-  };
+  }, []);
 
-  const fetchAll = async () => {
-    const results = await Promise.allSettled(stocks.map((stock) => fetchStock(stock.ticker)));
+  const fetchAll = useCallback(async () => {
+    const results = await Promise.allSettled(entities.map((entity) => fetchStock(entity.ticker)));
     setStocks((prev) =>
       prev.map((stock, idx) => {
         const result = results[idx];
-        if (result.status === "fulfilled") {
+        if (result && result.status === "fulfilled") {
           const { price, changePercent } = result.value;
           return {
             ...stock,
@@ -95,13 +95,14 @@ export function TickerBar() {
         }
       })
     );
-  };
+  }, [entities, fetchStock]);
 
   useEffect(() => {
+    if (entities.length === 0) return;
     fetchAll();
     const interval = setInterval(fetchAll, 5 * 60 * 1000); // 5 minutes
     return () => clearInterval(interval);
-  }, []);
+  }, [entities, fetchAll]);
 
   const formatPrice = (price: number | null) => {
     if (price === null) return "–";
@@ -116,13 +117,23 @@ export function TickerBar() {
   };
 
   return (
-    <div className="hidden sm:flex items-center h-6 bg-ast-surface/60 border-b border-ast-border/40 font-mono">
-      <div className="flex items-center h-full overflow-x-auto scrollbar-none">
-        {stocks.map((stock, idx) => (
+    <div className="hidden sm:flex items-center h-6 bg-ast-surface/60 border-b border-ast-border/40 font-mono overflow-hidden">
+      <div
+        className={`flex items-center h-full whitespace-nowrap ${
+          scrollEnabled ? styles["animate-ticker-scroll"] : ""
+        }`}
+        style={{ width: "max-content" }}
+      >
+        {/* Render twice for seamless loop */}
+        {[...stocks, ...stocks].map((stock, idx) => (
           <div
-            key={stock.ticker}
+            key={`${stock.ticker}-${idx}`}
             title={`${stock.ticker} · ${stock.loading ? "loading" : formatPrice(stock.price)} · ${stock.loading ? "" : formatChangePercent(stock.changePercent)}`.trim()}
-            className="flex items-center h-full px-3 border-r border-ast-border/40 last:border-r-0 flex-shrink-0 whitespace-nowrap cursor-default"
+            className="inline-flex items-center h-full px-3 border-r border-ast-border/40 cursor-pointer hover:bg-ast-surface"
+            onClick={() => {
+              const entity = entities[idx % entities.length];
+              if (entity) openCompanyDrawer(entity.canonical_name);
+            }}
           >
             <div className="flex items-center gap-1.5">
               <span className="text-ast-text font-bold text-[10px] tracking-tight">
