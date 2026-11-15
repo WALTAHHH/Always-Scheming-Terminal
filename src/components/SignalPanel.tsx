@@ -311,11 +311,14 @@ export function SignalPanel({ items }: SignalPanelProps) {
                           </p>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <div className="relative inline-flex group/tip">
-                              <span className={`${scoreColor} text-[10px]`}>
+                              <span
+                                className={`${scoreColor} text-[10px] cursor-help`}
+                                title="Signal confidence: 0–1 scale. Higher = stronger evidence of a market-moving event."
+                              >
                                 ● {signal.investment_relevance_score.toFixed(2)}
                               </span>
                               <div className="absolute left-0 top-full mt-1 hidden group-hover/tip:block z-50">
-                                <div className="px-3 py-2 rounded text-[10px] min-w-[180px] border border-ast-border bg-ast-surface shadow-lg text-ast-text">
+                                <div className="px-3 py-2 rounded text-[10px] min-w-[210px] border border-ast-border bg-ast-surface shadow-lg text-ast-text">
                                   <div className="flex flex-col gap-1">
                                     <div className="flex items-baseline justify-between">
                                       <span className="text-ast-muted">Relevance</span>
@@ -330,12 +333,16 @@ export function SignalPanel({ items }: SignalPanelProps) {
                                       </span>
                                     </div>
                                   </div>
+                                  <div className="mt-1.5 pt-1.5 border-t border-ast-border/50 text-ast-muted leading-snug">
+                                    Signal confidence: 0–1 scale. Higher = stronger evidence of a market-moving event.
+                                  </div>
                                 </div>
                               </div>
                             </div>
                             {(signal.published_at || signal.created_at) && (
                               <TimeAgo
                                 date={signal.published_at || signal.created_at}
+                                relativeOnly
                                 className="text-ast-muted text-[10px]"
                               />
                             )}
@@ -399,6 +406,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                           {(deal.published_at || deal.created_at) && (
                             <TimeAgo
                               date={deal.published_at || deal.created_at}
+                              relativeOnly
                               className="text-ast-muted text-[10px]"
                             />
                           )}
