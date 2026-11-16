@@ -21,6 +21,9 @@ import {
   buildDigestUnsubHeaders,
   getDigestFooterAddress,
   getSiteUrl,
+  renderDigestSubject,
+  renderDigestHtml,
+  renderDigestText,
 } from './email';
 
 // Mock email module to isolate digest tests
@@ -205,15 +208,31 @@ describe('fanOutAlerts', () => {
       expect(isDigestDue(last.toISOString(), now)).toBe(false);
     });
 
-    it('isDigestEnabled returns false when watchlist_email === false', () => {
+    // Opt-in semantics: only an explicit `watchlist_email === true` enables the
+    // digest. Missing key (pre-migration rows), `false`, a missing blob, and the
+    // legacy `digest` key all mean disabled.
+    it('isDigestEnabled is opt-in: missing key → disabled', () => {
+      expect(isDigestEnabled({})).toBe(false);
+      expect(isDigestEnabled({ breaking: true, digest: true })).toBe(false);
+      expect(isDigestEnabled(null)).toBe(false);
+      expect(isDigestEnabled(undefined)).toBe(false);
+      expect(isDigestEnabled("nope")).toBe(false);
+    });
+
+    it('isDigestEnabled returns false for watchlist_email === false', () => {
       expect(isDigestEnabled({ watchlist_email: false })).toBe(false);
       expect(isDigestEnabled({ watchlist_email: false, digest: true })).toBe(false);
     });
 
-    it('isDigestEnabled returns true when watchlist_email missing or true', () => {
-      expect(isDigestEnabled({})).toBe(true);
+    it('isDigestEnabled returns true only for watchlist_email === true', () => {
       expect(isDigestEnabled({ watchlist_email: true })).toBe(true);
-      expect(isDigestEnabled({ digest: false })).toBe(true);
+      expect(isDigestEnabled({ watchlist_email: true, digest: false })).toBe(true);
+    });
+
+    it('isDigestEnabled ignores non-boolean / legacy values', () => {
+      expect(isDigestEnabled({ watchlist_email: "true" })).toBe(false);
+      expect(isDigestEnabled({ watchlist_email: "yes" })).toBe(false);
+      expect(isDigestEnabled({ watchlist_email: 1 })).toBe(false);
     });
   });
 
@@ -268,6 +287,9 @@ describe('fanOutAlerts', () => {
       }));
       mockGetDigestFooterAddress.mockReturnValue('123 Main St');
       mockGetSiteUrl.mockReturnValue('https://terminal.always-scheming.com');
+      vi.mocked(renderDigestSubject).mockReturnValue('Your weekly watchlist digest');
+      vi.mocked(renderDigestHtml).mockReturnValue('<html>digest</html>');
+      vi.mocked(renderDigestText).mockReturnValue('digest');
     });
 
     it('skips when not Monday UTC', async () => {
@@ -311,6 +333,128 @@ describe('fanOutAlerts', () => {
       expect(result.usersConsidered).toBe(0);
       expect(result.sent).toBe(0);
       expect(result.alertsEmailed).toBe(0);
+    });
+
+    // ── opt-in gate, end to end through the send pass ────────────────────────
+    // A user with one pending alert but no explicit `watchlist_email: true`
+    // must NOT be emailed (acceptance criterion: no new mail to non-opted-in
+    // users). Covers the pre-migration blob (key missing) and explicit false.
+    const pendingAlert = {
+      id: "a1",
+      user_id: "u1",
+      signal_id: "s1",
+      entity_id: "e1",
+      signal_type: "earnings",
+      score: 0.9,
+      created_at: "2026-11-15T00:00:00Z",
+    };
+
+    function digestClient(
+      prefs: { user_id: string; notification_prefs: unknown }[],
+    ) {
+      const updates: { table: string; payload: Record<string, unknown> }[] = [];
+      const chain = (table: string): any => {
+        const c: any = {
+          select: () => c,
+          is: () => c,
+          gte: () => c,
+          order: () => c,
+          in: () => c,
+          eq: () => c,
+          update: (payload: Record<string, unknown>) => {
+            updates.push({ table, payload });
+            return c;
+          },
+          then: (resolve: any) =>
+            Promise.resolve({
+              data:
+                table === "alert_events"
+                  ? [pendingAlert]
+                  : table === "user_preferences"
+                    ? prefs
+                    : table === "signals"
+                      ? [{ id: "s1", summary: "x", content_id: "c1" }]
+                      : table === "content"
+                        ? [{ id: "c1", url: "https://example.com/a" }]
+                        : [],
+              error: null,
+            }).then(resolve),
+        };
+        return c;
+      };
+      return {
+        updates,
+        client: {
+          from: (table: string) => chain(table),
+          auth: {
+            admin: {
+              getUserById: async () => ({
+                data: { user: { email: "u1@example.com" } },
+                error: null,
+              }),
+            },
+          },
+        },
+      };
+    }
+
+    const digestPrefsRow = (
+      notification_prefs: unknown,
+      overrides: Record<string, unknown> = {},
+    ) => ({
+      user_id: "u1",
+      notification_prefs,
+      last_digest_sent_at: null as string | null,
+      digest_unsub_token: "a".repeat(64),
+      ...overrides,
+    });
+
+    it('does NOT email a legacy user whose prefs lack watchlist_email (opt-in)', async () => {
+      const { client } = digestClient([digestPrefsRow({ breaking: true, digest: true })]);
+      const result = await sendWeeklyDigests({
+        supabase: client,
+        now: new Date("2026-11-16T12:00:00Z"), // Monday
+      });
+      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(result.sent).toBe(0);
+      expect(result.failed).toBe(0);
+      expect(result.alertsEmailed).toBe(0);
+    });
+
+    it('does NOT email a user who explicitly disabled watchlist_email', async () => {
+      const { client } = digestClient([
+        digestPrefsRow({ watchlist_email: false, digest: true }),
+      ]);
+      const result = await sendWeeklyDigests({
+        supabase: client,
+        now: new Date("2026-11-16T12:00:00Z"),
+      });
+      expect(mockSendEmail).not.toHaveBeenCalled();
+      expect(result.sent).toBe(0);
+    });
+
+    it('emails a user who explicitly opted in with watchlist_email: true', async () => {
+      const { client, updates } = digestClient([
+        digestPrefsRow({ watchlist_email: true }),
+      ]);
+      const result = await sendWeeklyDigests({
+        supabase: client,
+        now: new Date("2026-11-16T12:00:00Z"),
+      });
+      expect(mockSendEmail).toHaveBeenCalledTimes(1);
+      expect(result.sent).toBe(1);
+      expect(result.alertsEmailed).toBe(1);
+      // Ledger stamped + cadence recorded only after the successful send.
+      expect(
+        updates.some(
+          (u) => u.table === "alert_events" && "email_sent_at" in u.payload,
+        ),
+      ).toBe(true);
+      expect(
+        updates.some(
+          (u) => u.table === "user_preferences" && "last_digest_sent_at" in u.payload,
+        ),
+      ).toBe(true);
     });
 
 

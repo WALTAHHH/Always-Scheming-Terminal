@@ -92,17 +92,16 @@ export default function ProfilePage() {
           setSegments(data.preferences.segments || []);
           setSavedSegments(data.preferences.segments || []);
 
-          // Hydrate notification preferences (spec §5.5). watchlist_email is the
-          // canonical weekly-digest gate (see fan-out lib + unsubscribe route);
-          // `digest` is mirrored by the toggle so both names stay in sync.
+          // Hydrate notification preferences (spec §5.5). `watchlist_email` is
+          // the single canonical weekly-digest gate — opt-in, so only an
+          // explicit `true` shows the toggle ON (matching `isDigestEnabled`).
+          // The legacy `digest` key is ignored.
           const blob = (data.preferences?.notification_prefs ?? {}) as Record<
             string,
             unknown
           >;
           setNotificationPrefs(blob);
-          setDigestEnabled(
-            blob.watchlist_email === true || blob.digest === true
-          );
+          setDigestEnabled(blob.watchlist_email === true);
           setMinScore(
             typeof data.preferences?.watchlist_min_score === "number"
               ? data.preferences.watchlist_min_score
@@ -286,22 +285,17 @@ export default function ProfilePage() {
     }
   };
 
-  // Weekly digest on/off. Writes watchlist_email (canonical gate, read by the
-  // fan-out + unsubscribe routes) and mirrors `digest`; digest_frequency keeps
-  // the typed column coherent ('weekly' when on, 'off' when off).
+  // Weekly digest on/off. `watchlist_email` is the single canonical gate read
+  // by the fan-out + unsubscribe routes; the legacy `digest` key is dropped
+  // from the blob so the UI and the backend can never disagree again.
   const handleToggleDigest = async () => {
     const next = !digestEnabled;
-    const nextBlob = {
-      ...notificationPrefs,
-      watchlist_email: next,
-      digest: next,
-    };
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { digest: _legacyDigest, ...rest } = notificationPrefs;
+    const nextBlob = { ...rest, watchlist_email: next };
     setDigestEnabled(next);
     setNotificationPrefs(nextBlob);
-    await saveNotificationPrefs({
-      notification_prefs: nextBlob,
-      digest_frequency: next ? "weekly" : "off",
-    });
+    await saveNotificationPrefs({ notification_prefs: nextBlob });
   };
 
   const handleMinScoreChange = async (value: number) => {
