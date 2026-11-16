@@ -35,6 +35,15 @@ describe('SignalPanel Watchlist filter (spec §5.2, §5.4)', () => {
     );
   });
 
+
+  it('chip buttons have aria-pressed attribute for a11y', () => {
+
+
+    expect(signalPanel).toContain('aria-pressed={active}');
+
+
+  });
+
   it('keeps the watchlist chip from collapsing the feed to news-only', () => {
     expect(signalPanel).toMatch(
       /sourceFilter === "all" \|\| sourceFilter === "watchlist"/
@@ -62,5 +71,9 @@ describe('Header unread badge (spec §5.3, §5.4)', () => {
 
   it('renders the alerts empty state', () => {
     expect(header).toContain('No unread alerts.');
+  });
+  it('badge button has appropriate aria-label and aria-expanded for a11y', () => {
+    expect(header).toContain('aria-label={unread > 0 ? `Alerts, ${unread} unread` : "Alerts"}');
+    expect(header).toContain('aria-expanded={alertsOpen}');
   });
 });
