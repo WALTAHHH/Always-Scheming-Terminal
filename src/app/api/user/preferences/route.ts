@@ -88,6 +88,7 @@ export async function PATCH(req: NextRequest) {
     segments,
     notification_prefs,
     digest_frequency,
+    watchlist_min_score,
     theme,
   } = body;
 
@@ -117,6 +118,15 @@ export async function PATCH(req: NextRequest) {
     prefsUpdate.notification_prefs = notification_prefs;
   if (digest_frequency !== undefined)
     prefsUpdate.digest_frequency = digest_frequency;
+  // Watchlist alert threshold (spec §5.5 / §2.3). Typed numeric column gating
+  // which followed-entity signals (signals.investment_relevance_score) qualify
+  // for the weekly digest + in-app badge. Clamp to [0,1]; ignore non-numbers.
+  if (watchlist_min_score !== undefined) {
+    const n = Number(watchlist_min_score);
+    if (Number.isFinite(n)) {
+      prefsUpdate.watchlist_min_score = Math.min(1, Math.max(0, n));
+    }
+  }
   if (theme !== undefined) prefsUpdate.theme = theme;
 
   // Only update preferences if there are changes beyond updated_at
