@@ -34,7 +34,7 @@
  * token shape produced here (64 lowercase hex chars) matches W9's validator.
  */
 
-import { createHmac, randomBytes } from "crypto";
+import { createHash, createHmac, randomBytes } from "crypto";
 
 /** Resend's send endpoint. */
 export const RESEND_API_URL = "https://api.resend.com/emails";
@@ -126,6 +126,24 @@ export function buildDigestUnsubHeaders(
 
 // ── transport ─────────────────────────────────────────────────────────────
 
+/**
+ * Redact an email address for logging: replace the local part with a
+ * deterministic 8-hex-char SHA-256 prefix of the full address and keep the
+ * domain, e.g. `3f2a9c1e@example.com`.
+ *
+ * Deterministic so the same recipient maps to the same token across log lines
+ * (recipients stay distinguishable for debugging) while the raw address — PII
+ * visible in Vercel logs — never gets written. Inputs without a usable domain
+ * (no `@`, or a trailing `@`) fall back to the bare hash prefix.
+ */
+export function redactEmail(email: string): string {
+  const value = typeof email === "string" ? email.trim() : "";
+  const hash = createHash("sha256").update(value).digest("hex").slice(0, 8);
+  const at = value.lastIndexOf("@");
+  if (at <= 0 || at === value.length - 1) return hash;
+  return `${hash}@${value.slice(at + 1).toLowerCase()}`;
+}
+
 export interface SendEmailInput {
   to: string;
   subject: string;
@@ -163,7 +181,7 @@ export async function sendEmail(
   const config = opts.config !== undefined ? opts.config : getEmailConfig();
   if (!config) {
     console.warn(
-      `[email] Resend not configured (RESEND_API_KEY/DIGEST_FROM unset) — skipping send to ${input.to}`,
+      `[email] Resend not configured (RESEND_API_KEY/DIGEST_FROM unset) — skipping send to ${redactEmail(input.to)}`,
     );
     return { ok: false, skipped: true };
   }
@@ -189,7 +207,7 @@ export async function sendEmail(
 
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      console.error(`[email] Resend rejected send to ${input.to}: ${res.status} ${detail}`);
+      console.error(`[email] Resend rejected send to ${redactEmail(input.to)}: ${res.status} ${detail}`);
       return { ok: false, error: `resend_${res.status}` };
     }
 
@@ -197,7 +215,7 @@ export async function sendEmail(
     return { ok: true, id: data?.id };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[email] Resend send to ${input.to} threw:`, message);
+    console.error(`[email] Resend send to ${redactEmail(input.to)} threw:`, message);
     return { ok: false, error: message };
   }
 }

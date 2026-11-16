@@ -7,6 +7,7 @@ import {
   generateDigestUnsubToken,
   buildDigestUnsubUrl,
   buildDigestUnsubHeaders,
+  redactEmail,
   sendEmail,
   renderDigestSubject,
   renderDigestText,
@@ -17,10 +18,12 @@ import {
 } from './email';
 import { createHmac, randomBytes } from 'crypto';
 
-vi.mock('crypto', () => ({
-  createHmac: vi.fn(),
-  randomBytes: vi.fn(),
-}));
+// Keep the real `createHash` (used by `redactEmail` to produce a deterministic
+// SHA-256 token); only stub the sources of randomness/HMAC used elsewhere.
+vi.mock('crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('crypto')>();
+  return { ...actual, createHmac: vi.fn(), randomBytes: vi.fn() };
+});
 
 const mockCreateHmac = vi.mocked(createHmac);
 const mockRandomBytes = vi.mocked(randomBytes);
@@ -126,6 +129,33 @@ describe('unsubscribe token helpers', () => {
   });
 });
 
+describe('redactEmail', () => {
+  it('replaces the local part with a deterministic 8-hex sha256 prefix and keeps the domain', () => {
+    const out = redactEmail('alice@example.com');
+    expect(out).toMatch(/^[0-9a-f]{8}@example\.com$/);
+    // deterministic across calls
+    expect(redactEmail('alice@example.com')).toBe(out);
+  });
+
+  it('stays distinguishable between recipients and domains', () => {
+    expect(redactEmail('alice@example.com')).not.toBe(redactEmail('bob@example.com'));
+    expect(redactEmail('alice@example.com')).not.toBe(redactEmail('alice@other.com'));
+  });
+
+  it('never leaks the local part and lowercases the domain', () => {
+    const out = redactEmail('Alice.Smith@Example.COM');
+    expect(out).not.toContain('alice');
+    expect(out).not.toContain('smith');
+    expect(out).toMatch(/^[0-9a-f]{8}@example\.com$/);
+  });
+
+  it('falls back to the bare hash for malformed addresses', () => {
+    expect(redactEmail('not-an-email')).toMatch(/^[0-9a-f]{8}$/);
+    expect(redactEmail('trailing@')).toMatch(/^[0-9a-f]{8}$/);
+    expect(redactEmail('')).toMatch(/^[0-9a-f]{8}$/);
+  });
+});
+
 describe('sendEmail', () => {
   const mockFetch = vi.fn();
   const originalFetch = global.fetch;
@@ -197,6 +227,43 @@ describe('sendEmail', () => {
     mockFetch.mockRejectedValueOnce(new Error('Network error'));
     const result = await sendEmail({ to: 'test@example.com', subject: 'Test', html: '<p>Hi</p>' });
     expect(result).toEqual({ ok: false, error: 'Network error' });
+  });
+
+  it('redacts the recipient in console.warn when Resend is not configured', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    delete process.env.RESEND_API_KEY;
+    await sendEmail({ to: 'secret.user@example.com', subject: 'Test', html: '<p>Hi</p>' });
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = String(warn.mock.calls[0][0]);
+    expect(logged).not.toContain('secret.user@example.com');
+    expect(logged).toContain(redactEmail('secret.user@example.com'));
+    warn.mockRestore();
+  });
+
+  it('redacts the recipient in console.error when Resend rejects the send', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: vi.fn().mockResolvedValue('boom'),
+    });
+    await sendEmail({ to: 'secret.user@example.com', subject: 'Test', html: '<p>Hi</p>' });
+    expect(error).toHaveBeenCalledTimes(1);
+    const logged = String(error.mock.calls[0][0]);
+    expect(logged).not.toContain('secret.user@example.com');
+    expect(logged).toContain(redactEmail('secret.user@example.com'));
+    error.mockRestore();
+  });
+
+  it('redacts the recipient in console.error when the send throws', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+    await sendEmail({ to: 'secret.user@example.com', subject: 'Test', html: '<p>Hi</p>' });
+    expect(error).toHaveBeenCalledTimes(1);
+    const logged = String(error.mock.calls[0][0]);
+    expect(logged).not.toContain('secret.user@example.com');
+    expect(logged).toContain(redactEmail('secret.user@example.com'));
+    error.mockRestore();
   });
 
   it('uses injected config and fetch', async () => {
