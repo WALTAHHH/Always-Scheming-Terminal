@@ -150,12 +150,26 @@ function ScoreBreakdownPanel({
   );
 }
 
-type SourceFilter = "all" | "analysis" | "news";
+type SourceFilter = "all" | "analysis" | "news" | "watchlist";
+
+const FILTER_CHIPS: { value: SourceFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "analysis", label: "Analysis" },
+  { value: "news", label: "News" },
+  { value: "watchlist", label: "★ Watchlist" },
+];
+
+/** Shape of the subset of GET /api/v1/watchlist this component needs. */
+interface WatchlistApiEntry {
+  entity?: { canonical_name?: string | null; ticker?: string | null } | null;
+}
 
 export function SignalPanel({ items }: SignalPanelProps) {
   const [expandedStory] = useState<string | null>(null); // kept for future use
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [signals, setSignals] = useState<DbSignal[]>([]);
+  // Lowercased canonical names + tickers of the companies the user watches.
+  const [watchedNames, setWatchedNames] = useState<Set<string>>(new Set());
   
   // Fetch DB signals
   useEffect(() => {
@@ -164,10 +178,47 @@ export function SignalPanel({ items }: SignalPanelProps) {
       .then((data) => setSignals(data.signals || []))
       .catch(() => setSignals([]));
   }, []);
+
+  // Fetch the user's watchlist so the "Watchlist" chip can match company names.
+  // Degrades silently to an empty set for signed-out users / API failures.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/watchlist", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const names = new Set<string>();
+        const entries: WatchlistApiEntry[] = Array.isArray(data?.data) ? data.data : [];
+        for (const entry of entries) {
+          const name = entry?.entity?.canonical_name;
+          const ticker = entry?.entity?.ticker;
+          if (name) names.add(name.toLowerCase());
+          if (ticker) names.add(ticker.toLowerCase());
+        }
+        setWatchedNames(names);
+      })
+      .catch(() => {
+        if (!cancelled) setWatchedNames(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Signals after the active chip filter. "Watchlist" keeps only signals whose
+  // companies array intersects the watched canonical names/tickers.
+  const visibleSignals = useMemo(() => {
+    if (sourceFilter !== "watchlist") return signals;
+    return signals.filter((signal) =>
+      (signal.companies || []).some((company) =>
+        watchedNames.has(company.toLowerCase())
+      )
+    );
+  }, [signals, sourceFilter, watchedNames]);
   
   // Filter items by source type
   const filteredItems = useMemo(() => {
-    if (sourceFilter === "all") return items;
+    if (sourceFilter === "all" || sourceFilter === "watchlist") return items;
     const analysisTypes = new Set(["newsletter", "analysis", "blog"]);
     return items.filter((item) => {
       const sourceType = item.sources?.source_type || "news";
@@ -258,10 +309,10 @@ export function SignalPanel({ items }: SignalPanelProps) {
 
   // Compute deals from signals table (fundraising, acquisition, earnings)
   const dealSignals = useMemo(() => {
-    return signals.filter((s) =>
+    return visibleSignals.filter((s) =>
       ["fundraising", "acquisition", "earnings"].includes(s.signal_type)
     );
-  }, [signals]);
+  }, [visibleSignals]);
 
   // Stats
   const stats = useMemo(() => {
@@ -282,14 +333,38 @@ export function SignalPanel({ items }: SignalPanelProps) {
         <div className="max-w-5xl mx-auto w-full">
           {/* DB Signals Section */}
           <div className="border-b border-ast-border">
-            <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
-              
+            <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50 flex items-center gap-1.5 flex-wrap">
+              <span className="text-ast-accent text-xs font-semibold tracking-wide mr-1">
+                ⚡ SIGNALS
+              </span>
+              {FILTER_CHIPS.map(({ value, label }) => {
+                const active = sourceFilter === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setSourceFilter(value)}
+                    aria-pressed={active}
+                    className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                      active
+                        ? "bg-ast-accent/20 border-ast-accent/40 text-ast-accent"
+                        : "border-ast-border text-ast-muted hover:text-ast-text hover:border-ast-accent/40"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
             <div className="px-4 py-3 space-y-3">
-              {signals.length === 0 ? (
-                <p className="text-ast-muted text-xs">No signals extracted yet</p>
+              {visibleSignals.length === 0 ? (
+                <p className="text-ast-muted text-xs">
+                  {sourceFilter === "watchlist"
+                    ? "No signals for the companies you watch yet. Watch more companies to widen the net."
+                    : "No signals extracted yet"}
+                </p>
               ) : (
-                signals.map((signal) => {
+                visibleSignals.map((signal) => {
                   const badge = getSignalBadge(signal.signal_type);
                   const scoreColor = signal.investment_relevance_score >= 0.8 
                     ? "text-ast-mint" 
