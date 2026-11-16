@@ -300,6 +300,10 @@ export async function fanOutAlerts(
 //   3. `alert_events.email_sent_at` is stamped only *after* a successful send,
 //      and the digest only contains rows where it is still NULL — so a re-run
 //      (or a same-day second invocation) finds nothing left to send.
+//   4. The pass is capped at DEFAULT_DIGEST_MAX_USERS users, taken in `user_id`
+//      ascending order, so the cron tail can't run past `maxDuration`. Users
+//      past the cap are simply served on the next Monday (nothing is stamped
+//      for them, so no digest is lost).
 //
 // Digest content = unsent `alert_events` from the past DIGEST_LOOKBACK_DAYS (7)
 // days, grouped by entity. Every digest carries the one-click unsubscribe link
@@ -311,6 +315,16 @@ export async function fanOutAlerts(
 export const DIGEST_MIN_INTERVAL_DAYS = 6;
 /** How far back the digest looks for unsent alerts. */
 export const DIGEST_LOOKBACK_DAYS = 7;
+/**
+ * Maximum number of users one digest pass will process. The digest rides on
+ * the tail of the extract-signals cron (which already spends most of its
+ * `maxDuration=300` on LLM work), so an unbounded sequential loop over every
+ * user with pending alerts risks timing out mid-pass and silently starving
+ * later users until the following Monday. Capping bounds the tail; the users
+ * left over are simply picked up on the next eligible Monday (their
+ * `alert_events.email_sent_at` stays NULL, so nothing is lost).
+ */
+export const DEFAULT_DIGEST_MAX_USERS = 200;
 
 /** `true` when `now` is a Monday in UTC — the single allowed digest weekday. */
 export function isMondayUtc(now: Date): boolean {
@@ -382,6 +396,8 @@ export interface WeeklyDigestResult {
   failed: number;
   /** `alert_events` rows stamped `email_sent_at` in this pass. */
   alertsEmailed: number;
+  /** Users deferred to the next Monday because the per-pass cap was hit. */
+  skippedByCap: number;
 }
 
 export interface SendWeeklyDigestsOptions {
@@ -395,6 +411,14 @@ export interface SendWeeklyDigestsOptions {
   footerAddress?: string;
   /** Override the public origin used for links (defaults to `NEXT_PUBLIC_SITE_URL`). */
   siteUrl?: string;
+  /**
+   * Maximum users to process this pass (defaults to
+   * {@link DEFAULT_DIGEST_MAX_USERS}). Coerced to a non-negative integer:
+   * fractional values are floored, and `0` (or a negative / non-finite
+   * value) means an uncapped pass. Users beyond the cap are deferred to the
+   * next Monday.
+   */
+  maxUsers?: number;
 }
 
 /**
@@ -429,6 +453,11 @@ export function buildDigestAlerts(
 /**
  * Weekly digest send pass. See the block comment above for the gates.
  *
+ * Bounded: at most {@link DEFAULT_DIGEST_MAX_USERS} users are processed per
+ * pass (override with `opts.maxUsers`; `0` = uncapped), taken in `user_id`
+ * ascending order so a capped run always serves the same users first. Anyone
+ * beyond the cap keeps their unsent alerts and is served next Monday.
+ *
  * Degrades gracefully: returns `{ skipped: "unconfigured" }` (after a log line)
  * when `RESEND_API_KEY`/`DIGEST_FROM` are unset and `{ skipped: "no_client" }`
  * when Supabase service credentials are missing. Neither stamps any state, so
@@ -443,6 +472,7 @@ export async function sendWeeklyDigests(
     sent: 0,
     failed: 0,
     alertsEmailed: 0,
+    skippedByCap: 0,
   };
 
   const now = opts.now ?? new Date();
@@ -493,13 +523,41 @@ export async function sendWeeklyDigests(
     if (list) list.push(row);
     else byUser.set(row.user_id, [row]);
   }
-  const userIds = Array.from(byUser.keys());
+  // Deterministic order: `user_id` ascending. A capped pass therefore always
+  // processes the same users in the same order, so a partial run never
+  // reshuffles who gets the digest.
+  const userIds = Array.from(byUser.keys()).sort();
+
+  // Cap the pass. Users beyond the cap keep their unsent alerts (nothing is
+  // stamped for them) and are picked up on the next eligible Monday.
+  //
+  // `maxUsers` is coerced to a non-negative integer: fractional values are
+  // floored (a cap of `0.5` would otherwise become an empty `slice(0, 0)`
+  // and silently mail nobody), and negative values are treated as `0`
+  // (uncapped). Non-finite values (`NaN`, `Infinity`) also mean uncapped.
+  const requestedMaxUsers = opts.maxUsers ?? DEFAULT_DIGEST_MAX_USERS;
+  const maxUsers = Number.isFinite(requestedMaxUsers)
+    ? Math.max(0, Math.floor(requestedMaxUsers))
+    : requestedMaxUsers;
+  if (Number.isFinite(requestedMaxUsers) && !Number.isInteger(requestedMaxUsers)) {
+    console.warn(
+      `[alerts] digest: maxUsers=${requestedMaxUsers} is not a non-negative integer; coercing to ${maxUsers}`,
+    );
+  }
+  const capped = Number.isFinite(maxUsers) && maxUsers > 0;
+  const processUsers = capped ? userIds.slice(0, maxUsers) : userIds;
+  const skippedByCap = userIds.length - processUsers.length;
+  if (skippedByCap > 0) {
+    console.warn(
+      `[alerts] digest: stopping early — processing ${processUsers.length} of ${userIds.length} users this pass (cap=${maxUsers}); ${skippedByCap} deferred to the next Monday`,
+    );
+  }
 
   // 2. Per-user digest preferences (cadence + token + channel toggle).
   const { data: prefData, error: prefError } = await supabase
     .from("user_preferences")
     .select("user_id, notification_prefs, last_digest_sent_at, digest_unsub_token")
-    .in("user_id", userIds);
+    .in("user_id", processUsers);
 
   if (prefError) {
     console.error("[alerts] digest user_preferences lookup failed:", prefError.message);
@@ -510,7 +568,10 @@ export async function sendWeeklyDigests(
   );
 
   // 3. Bulk-resolve display data for everything the digest will render.
-  const alertRows = pending;
+  // Only the processed users' alerts are resolved — the capped-out tail is
+  // left untouched (its `.in()` lists would otherwise grow without bound).
+  const processSet = new Set(processUsers);
+  const alertRows = pending.filter((a) => processSet.has(a.user_id));
   const entityIds = Array.from(
     new Set(alertRows.map((a) => a.entity_id).filter((id): id is string => !!id)),
   );
@@ -552,12 +613,13 @@ export async function sendWeeklyDigests(
   let footerWarningLogged = false;
 
   const result: WeeklyDigestResult = { ...empty };
+  result.usersConsidered = userIds.length;
+  result.skippedByCap = skippedByCap;
   let newAlertsEmailed = 0;
 
-  for (const userId of userIds) {
+  for (const userId of processUsers) {
     const alerts = byUser.get(userId) ?? [];
     if (alerts.length === 0) continue;
-    result.usersConsidered += 1;
 
     const pref = prefByUser.get(userId);
     // No prefs row → can't record cadence or the unsub token; skip rather than
@@ -668,9 +730,9 @@ export async function sendWeeklyDigests(
 
   result.alertsEmailed = newAlertsEmailed;
 
-  if (result.sent > 0 || result.failed > 0) {
+  if (result.usersConsidered > 0) {
     console.log(
-      `[alerts] weekly digest pass: ${result.sent} sent, ${result.failed} failed, ${result.alertsEmailed} alerts emailed`,
+      `[alerts] weekly digest pass: ${result.usersConsidered} users considered, ${result.sent} sent, ${result.failed} failed, ${result.skippedByCap} skipped by cap, ${result.alertsEmailed} alerts emailed`,
     );
   }
 

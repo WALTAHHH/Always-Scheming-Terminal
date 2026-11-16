@@ -3,6 +3,7 @@ import {
   buildAlertCandidates,
   fanOutAlerts,
   DEFAULT_WATCHLIST_MIN_SCORE,
+  DEFAULT_DIGEST_MAX_USERS,
   isMondayUtc,
   isDigestDue,
   isDigestEnabled,
@@ -575,7 +576,7 @@ describe('fanOutAlerts', () => {
     const prefsOne = [
       {
         user_id: 'u1',
-        notification_prefs: {},
+        notification_prefs: { watchlist_email: true },
         last_digest_sent_at: null,
         digest_unsub_token: 'a'.repeat(64),
       },
@@ -692,7 +693,7 @@ describe('sendWeeklyDigests — token persist failure', () => {
   };
   const prefRow = {
     user_id: 'user-token-fail',
-    notification_prefs: {},
+    notification_prefs: { watchlist_email: true },
     last_digest_sent_at: null,
     digest_unsub_token: null, // forces token generation + persist
   };
@@ -823,5 +824,385 @@ describe('sendWeeklyDigests — token persist failure', () => {
       (u) => 'email_sent_at' in u.payload || 'last_digest_sent_at' in u.payload,
     );
     expect(stamped).toHaveLength(2);
+  });
+});
+
+// ── user cap (card t_4e277fa2) ──────────────────────────────────────────────
+//
+// `sendWeeklyDigests` must bound how many users it processes per pass so the
+// digest tail of the extract-signals cron can't run past `maxDuration`. These
+// tests use a small hand-rolled fake Supabase (the generic mock above swallows
+// every query into `undefined`) so the pending-alert set is actually seen.
+
+function fakeDigestSupabase(opts: {
+  pending: {
+    id: string;
+    user_id: string;
+    signal_id: string;
+    entity_id: string | null;
+    signal_type: string;
+    score: number;
+    created_at: string | null;
+  }[];
+  prefs: {
+    user_id: string;
+    notification_prefs: unknown;
+    last_digest_sent_at: string | null;
+    digest_unsub_token: string | null;
+  }[];
+  entities?: { id: string; canonical_name: string }[];
+  signals?: { id: string; summary: string; content_id: string }[];
+  content?: { id: string; url: string }[];
+}) {
+  const recorded = {
+    prefSelectUserIds: [] as string[][],
+    alertStamps: [] as string[][],
+    cadenceUpdates: [] as string[],
+    tokenUpdates: [] as string[],
+  };
+
+  // Minimal PostgREST-style thenable: every chain method returns itself and
+  // awaiting resolves to `result`.
+  const chain = (
+    result: { data: unknown; error: unknown },
+    onIn?: (col: string, vals: string[]) => void,
+    onUpdate?: (vals: Record<string, unknown>) => void,
+  ) => {
+    const c: Record<string, unknown> = {};
+    const ret = () => c;
+    for (const m of ['select', 'is', 'gte', 'lte', 'order', 'eq', 'not', 'limit']) {
+      c[m] = ret;
+    }
+    c.in = (col: string, vals: string[]) => {
+      onIn?.(col, vals);
+      return c;
+    };
+    c.update = (vals: Record<string, unknown>) => {
+      onUpdate?.(vals);
+      return c;
+    };
+    c.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+      Promise.resolve(result).then(res, rej);
+    return c;
+  };
+
+  const client = {
+    from(table: string) {
+      switch (table) {
+        case 'alert_events':
+          return {
+            select: () => chain({ data: opts.pending, error: null }),
+            update: () =>
+              chain({ data: null, error: null }, (col, ids) => {
+                if (col === 'id') recorded.alertStamps.push(ids);
+              }),
+          };
+        case 'user_preferences':
+          return {
+            select: () =>
+              chain({ data: opts.prefs, error: null }, (col, ids) => {
+                if (col === 'user_id') recorded.prefSelectUserIds.push(ids);
+              }),
+            update: (vals: Record<string, unknown>) => {
+              if ('last_digest_sent_at' in vals) {
+                recorded.cadenceUpdates.push(vals.last_digest_sent_at as string);
+              }
+              if ('digest_unsub_token' in vals) {
+                recorded.tokenUpdates.push(vals.digest_unsub_token as string);
+              }
+              return chain({ data: null, error: null });
+            },
+          };
+        case 'entities':
+          return { select: () => chain({ data: opts.entities ?? [], error: null }) };
+        case 'signals':
+          return { select: () => chain({ data: opts.signals ?? [], error: null }) };
+        case 'content':
+          return { select: () => chain({ data: opts.content ?? [], error: null }) };
+        default:
+          return { select: () => chain({ data: [], error: null }) };
+      }
+    },
+    auth: {
+      admin: {
+        getUserById: vi.fn(async (id: string) => ({
+          data: { user: { email: `${id}@example.com` } },
+          error: null,
+        })),
+      },
+    },
+  };
+
+  return { client: client as never, recorded };
+}
+
+const MONDAY = new Date('2026-11-16T12:00:00Z');
+const CREATED_AT = '2026-11-15T12:00:00Z';
+
+function pendingFor(userId: string) {
+  return {
+    id: `alert-${userId}`,
+    user_id: userId,
+    signal_id: 'sig1',
+    entity_id: 'ent1',
+    signal_type: 'earnings',
+    score: 0.9,
+    created_at: CREATED_AT,
+  };
+}
+
+function prefsFor(userId: string) {
+  return {
+    user_id: userId,
+    notification_prefs: { watchlist_email: true },
+    last_digest_sent_at: null,
+    digest_unsub_token: `tok-${userId}`,
+  };
+}
+
+const DIGEST_LOOKUPS = {
+  entities: [{ id: 'ent1', canonical_name: 'Acme Corp' }],
+  signals: [{ id: 'sig1', summary: 'Acme beat earnings', content_id: 'cont1' }],
+  content: [{ id: 'cont1', url: 'https://example.com/a' }],
+};
+
+describe('sendWeeklyDigests — per-pass user cap', () => {
+  const mockGetDigestFooterAddress = vi.mocked(getDigestFooterAddress);
+  const mockGetSiteUrl = vi.mocked(getSiteUrl);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetDigestFooterAddress.mockReturnValue('123 Main St');
+    mockGetSiteUrl.mockReturnValue('https://terminal.always-scheming.com');
+  });
+
+  it('defaults the cap to DEFAULT_DIGEST_MAX_USERS (200)', () => {
+    expect(DEFAULT_DIGEST_MAX_USERS).toBe(200);
+  });
+
+  it('processes at most maxUsers users, deterministically in user_id order', async () => {
+    const users = ['u3', 'u1', 'u5', 'u2', 'u4']; // deliberately shuffled
+    const { client, recorded } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+      maxUsers: 2,
+    });
+
+    // 5 users considered, only 2 processed, 3 deferred.
+    expect(result.skipped).toBe(null);
+    expect(result.usersConsidered).toBe(5);
+    expect(result.sent).toBe(2);
+    expect(result.failed).toBe(0);
+    expect(result.alertsEmailed).toBe(2);
+    expect(result.skippedByCap).toBe(3);
+
+    // Deterministic: the two lowest user_ids win, regardless of input order.
+    const recipients = send.mock.calls.map((c) => (c[0] as { to: string }).to);
+    expect(recipients).toEqual(['u1@example.com', 'u2@example.com']);
+
+    // The prefs lookup is bounded to the processed users too.
+    expect(recorded.prefSelectUserIds[0]).toEqual(['u1', 'u2']);
+    // Only the processed users' alerts get stamped / get a cadence update.
+    expect(recorded.alertStamps.flat().sort()).toEqual(['alert-u1', 'alert-u2']);
+    expect(recorded.cadenceUpdates).toHaveLength(2);
+
+    // Criterion 1 + 4: "stopping early" log line with considered/sent/skipped.
+    const warnMsg = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warnMsg).toContain('stopping early');
+    expect(warnMsg).toContain('2 of 5');
+    const logMsg = log.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logMsg).toContain('5 users considered');
+    expect(logMsg).toContain('2 sent');
+    expect(logMsg).toContain('3 skipped by cap');
+
+    warn.mockRestore();
+    log.mockRestore();
+  });
+
+  it('uses the default cap of 200 when maxUsers is omitted', async () => {
+    const users = Array.from({ length: 205 }, (_, i) => `u${String(i).padStart(3, '0')}`);
+    const { client, recorded } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+    });
+
+    expect(result.usersConsidered).toBe(205);
+    expect(result.sent).toBe(200);
+    expect(result.skippedByCap).toBe(5);
+    expect(result.alertsEmailed).toBe(200);
+    expect(send).toHaveBeenCalledTimes(200);
+    // The first 200 by user_id ascending.
+    expect(recorded.prefSelectUserIds[0]).toHaveLength(200);
+    expect(recorded.prefSelectUserIds[0][0]).toBe('u000');
+    expect(recorded.prefSelectUserIds[0][199]).toBe('u199');
+
+    warn.mockRestore();
+    log.mockRestore();
+  });
+
+  it('processes every user when maxUsers is 0 (uncapped)', async () => {
+    const users = ['u1', 'u2', 'u3'];
+    const { client } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+      maxUsers: 0,
+    });
+
+    expect(result.usersConsidered).toBe(3);
+    expect(result.sent).toBe(3);
+    expect(result.skippedByCap).toBe(0);
+    expect(send).toHaveBeenCalledTimes(3);
+
+    log.mockRestore();
+  });
+
+  it('does not defer anyone (skippedByCap 0) when the set is under the cap', async () => {
+    const users = ['u1', 'u2'];
+    const { client } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+      maxUsers: 10,
+    });
+
+    expect(result.usersConsidered).toBe(2);
+    expect(result.sent).toBe(2);
+    expect(result.skippedByCap).toBe(0);
+
+    log.mockRestore();
+  });
+
+  // ── non-integer / out-of-range maxUsers (review feedback) ──────────────────
+  // `slice(0, 0.5)` coerces to `slice(0, 0)` in JS, which would mail nobody at
+  // all. The cap must be floored to an integer first, never used raw.
+
+  it('floors a fractional maxUsers instead of silently processing zero users', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+    const { client } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+      maxUsers: 2.7,
+    });
+
+    // 2.7 -> 2, not 0 and not 3.
+    expect(result.usersConsidered).toBe(5);
+    expect(result.sent).toBe(2);
+    expect(result.skippedByCap).toBe(3);
+    expect(send).toHaveBeenCalledTimes(2);
+
+    const warnMsg = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warnMsg).toContain('2.7');
+    expect(warnMsg).toContain('coercing to 2');
+    expect(warnMsg).toContain('stopping early');
+
+    warn.mockRestore();
+    log.mockRestore();
+  });
+
+  it('treats a fractional maxUsers below 1 as uncapped (floors to 0), mailing everyone', async () => {
+    const users = ['u1', 'u2', 'u3'];
+    const { client } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+      maxUsers: 0.5,
+    });
+
+    // Must not be the old `slice(0, 0)` -> zero-recipient behaviour.
+    expect(result.usersConsidered).toBe(3);
+    expect(result.sent).toBe(3);
+    expect(result.skippedByCap).toBe(0);
+    expect(send).toHaveBeenCalledTimes(3);
+
+    warn.mockRestore();
+    log.mockRestore();
+  });
+
+  it.each([
+    ['negative', -5],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
+  ])('treats a %s maxUsers as uncapped', async (_label, maxUsers) => {
+    const users = ['u1', 'u2', 'u3'];
+    const { client } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+      maxUsers,
+    });
+
+    expect(result.usersConsidered).toBe(3);
+    expect(result.sent).toBe(3);
+    expect(result.skippedByCap).toBe(0);
+    expect(send).toHaveBeenCalledTimes(3);
+
+    warn.mockRestore();
+    log.mockRestore();
   });
 });
