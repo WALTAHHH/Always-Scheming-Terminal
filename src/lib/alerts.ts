@@ -334,17 +334,21 @@ export function isDigestDue(
 }
 
 /**
- * Email-channel gate. `notification_prefs.watchlist_email === false` is the
- * opt-out (the one-click unsubscribe route writes exactly this); any other
- * value — `true`, a missing key, or a missing prefs blob — counts as enabled
- * so the digest is on by default and only the explicit toggle/unsubscribe
- * turns it off.
+ * Email-channel gate — **opt-in**. The digest is sent only when the user has
+ * explicitly enabled it, i.e. `notification_prefs.watchlist_email === true`.
+ *
+ * Missing key (every pre-migration blob), a missing prefs object, an explicit
+ * `false`, or any other value counts as **disabled**. This is the same rule the
+ * profile UI toggle uses and the value the one-click unsubscribe route writes
+ * (`watchlist_email: false`), so no user is ever emailed without opting in.
+ *
+ * The legacy `digest` key is deliberately ignored: it is a vestige superseded
+ * by `watchlist_email` and must never be able to turn the digest on.
  */
 export function isDigestEnabled(prefs: unknown): boolean {
-  if (!prefs || typeof prefs !== "object") return true;
+  if (!prefs || typeof prefs !== "object") return false;
   const p = prefs as Record<string, unknown>;
-  if (!("watchlist_email" in p)) return true;
-  return p.watchlist_email !== false;
+  return p.watchlist_email === true;
 }
 
 /** `alert_events` row shape read by the digest pass. */
@@ -550,7 +554,9 @@ export async function sendWeeklyDigests(
     // No prefs row → can't record cadence or the unsub token; skip rather than
     // risk mailing the same person on every cron tick.
     if (!pref) continue;
-    // Channel opt-out (one-click unsubscribe writes watchlist_email=false).
+    // Channel opt-in gate: `watchlist_email === true` is the only enabling
+    // value (see `isDigestEnabled`); a missing key — every pre-migration row —
+    // and the one-click unsubscribe's `false` both mean "do not email".
     if (!isDigestEnabled(pref.notification_prefs)) continue;
     // Cadence: at most one digest every DIGEST_MIN_INTERVAL_DAYS days.
     if (!isDigestDue(pref.last_digest_sent_at, now)) continue;
