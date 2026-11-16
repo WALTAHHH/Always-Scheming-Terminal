@@ -661,4 +661,101 @@ describe('sendWeeklyDigests — per-pass user cap', () => {
 
     log.mockRestore();
   });
+
+  // ── non-integer / out-of-range maxUsers (review feedback) ──────────────────
+  // `slice(0, 0.5)` coerces to `slice(0, 0)` in JS, which would mail nobody at
+  // all. The cap must be floored to an integer first, never used raw.
+
+  it('floors a fractional maxUsers instead of silently processing zero users', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+    const { client } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+      maxUsers: 2.7,
+    });
+
+    // 2.7 -> 2, not 0 and not 3.
+    expect(result.usersConsidered).toBe(5);
+    expect(result.sent).toBe(2);
+    expect(result.skippedByCap).toBe(3);
+    expect(send).toHaveBeenCalledTimes(2);
+
+    const warnMsg = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warnMsg).toContain('2.7');
+    expect(warnMsg).toContain('coercing to 2');
+    expect(warnMsg).toContain('stopping early');
+
+    warn.mockRestore();
+    log.mockRestore();
+  });
+
+  it('treats a fractional maxUsers below 1 as uncapped (floors to 0), mailing everyone', async () => {
+    const users = ['u1', 'u2', 'u3'];
+    const { client } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+      maxUsers: 0.5,
+    });
+
+    // Must not be the old `slice(0, 0)` -> zero-recipient behaviour.
+    expect(result.usersConsidered).toBe(3);
+    expect(result.sent).toBe(3);
+    expect(result.skippedByCap).toBe(0);
+    expect(send).toHaveBeenCalledTimes(3);
+
+    warn.mockRestore();
+    log.mockRestore();
+  });
+
+  it.each([
+    ['negative', -5],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
+  ])('treats a %s maxUsers as uncapped', async (_label, maxUsers) => {
+    const users = ['u1', 'u2', 'u3'];
+    const { client } = fakeDigestSupabase({
+      pending: users.map(pendingFor),
+      prefs: users.map(prefsFor),
+      ...DIGEST_LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client,
+      now: MONDAY,
+      sendEmailImpl: send as never,
+      maxUsers,
+    });
+
+    expect(result.usersConsidered).toBe(3);
+    expect(result.sent).toBe(3);
+    expect(result.skippedByCap).toBe(0);
+    expect(send).toHaveBeenCalledTimes(3);
+
+    warn.mockRestore();
+    log.mockRestore();
+  });
 });

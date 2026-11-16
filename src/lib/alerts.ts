@@ -409,8 +409,10 @@ export interface SendWeeklyDigestsOptions {
   siteUrl?: string;
   /**
    * Maximum users to process this pass (defaults to
-   * {@link DEFAULT_DIGEST_MAX_USERS}). Pass `0` (or any non-positive value)
-   * for an uncapped pass. Users beyond the cap are deferred to the next Monday.
+   * {@link DEFAULT_DIGEST_MAX_USERS}). Coerced to a non-negative integer:
+   * fractional values are floored, and `0` (or a negative / non-finite
+   * value) means an uncapped pass. Users beyond the cap are deferred to the
+   * next Monday.
    */
   maxUsers?: number;
 }
@@ -524,7 +526,20 @@ export async function sendWeeklyDigests(
 
   // Cap the pass. Users beyond the cap keep their unsent alerts (nothing is
   // stamped for them) and are picked up on the next eligible Monday.
-  const maxUsers = opts.maxUsers ?? DEFAULT_DIGEST_MAX_USERS;
+  //
+  // `maxUsers` is coerced to a non-negative integer: fractional values are
+  // floored (a cap of `0.5` would otherwise become an empty `slice(0, 0)`
+  // and silently mail nobody), and negative values are treated as `0`
+  // (uncapped). Non-finite values (`NaN`, `Infinity`) also mean uncapped.
+  const requestedMaxUsers = opts.maxUsers ?? DEFAULT_DIGEST_MAX_USERS;
+  const maxUsers = Number.isFinite(requestedMaxUsers)
+    ? Math.max(0, Math.floor(requestedMaxUsers))
+    : requestedMaxUsers;
+  if (Number.isFinite(requestedMaxUsers) && !Number.isInteger(requestedMaxUsers)) {
+    console.warn(
+      `[alerts] digest: maxUsers=${requestedMaxUsers} is not a non-negative integer; coercing to ${maxUsers}`,
+    );
+  }
   const capped = Number.isFinite(maxUsers) && maxUsers > 0;
   const processUsers = capped ? userIds.slice(0, maxUsers) : userIds;
   const skippedByCap = userIds.length - processUsers.length;
