@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
+import { fanOutAlerts } from "@/lib/alerts";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -230,6 +231,8 @@ export async function POST(req: NextRequest) {
   });
 
   const results: { id: string; title: string; status: string; detail?: string }[] = [];
+  // Ids of signals actually inserted this run — the alert fan-out input.
+  const insertedSignalIds: string[] = [];
 
   for (const item of eligible) {
     const tags = (item.tags as Record<string, string[]>) || {};
@@ -296,18 +299,23 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const { error: insertError } = await supabase.from("signals").insert({
-      content_id: item.id,
-      signal_type: signal.signal_type,
-      summary: signal.summary,
-      investment_relevance_score: signal.investment_relevance_score,
-      raw_llm_output: signal as any,
-      model_used: "gemini-2.5-flash-lite",
-    });
+    const { data: insertedSignal, error: insertError } = await supabase
+      .from("signals")
+      .insert({
+        content_id: item.id,
+        signal_type: signal.signal_type,
+        summary: signal.summary,
+        investment_relevance_score: signal.investment_relevance_score,
+        raw_llm_output: signal as any,
+        model_used: "gemini-2.5-flash-lite",
+      })
+      .select("id");
 
     if (insertError) {
       results.push({ id: item.id, title: item.title.slice(0, 60), status: "insert_error", detail: insertError.message });
     } else {
+      const newId = insertedSignal?.[0]?.id;
+      if (newId) insertedSignalIds.push(newId);
       results.push({ id: item.id, title: item.title.slice(0, 60), status: "ok", detail: `${signal.signal_type} (${signal.investment_relevance_score.toFixed(2)})` });
     }
 
