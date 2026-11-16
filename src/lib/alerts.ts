@@ -301,6 +301,20 @@ export async function fanOutAlerts(
 //      and the digest only contains rows where it is still NULL — so a re-run
 //      (or a same-day second invocation) finds nothing left to send.
 //
+//   4. **Atomic claim (at-most-once).** Before touching a user's alerts the pass
+//      flips `user_preferences.last_digest_sent_at → now()` with a single
+//      compare-and-swap `UPDATE … WHERE user_id = $1 AND last_digest_sent_at IS
+//      [NOT DISTINCT FROM] <observed> RETURNING user_id`. Postgres serializes
+//      concurrent updates on the row, so when two overlapping runs (the cron's
+//      self-chaining invocations) both observed a stale/`NULL` cadence stamp
+//      exactly one of them matches and gets a row back; the loser gets zero rows
+//      and skips. That is what prevents the duplicate-send race the earlier
+//      "stamp after send" ordering allowed. The claim is released (restored to
+//      the observed value) only when nothing was delivered, so genuine send
+//      failures stay retryable; a send that succeeded but whose subsequent
+//      `email_sent_at` stamp failed keeps the claim held, so the user is not
+//      emailed twice on the same Monday.
+//
 // Digest content = unsent `alert_events` from the past DIGEST_LOOKBACK_DAYS (7)
 // days, grouped by entity. Every digest carries the one-click unsubscribe link
 // (W9 route `/unsubscribe?token=…`) and the physical-address footer line from
@@ -420,6 +434,81 @@ export function buildDigestAlerts(
     });
   }
   return out;
+}
+
+/** Outcome of an atomic digest-window claim attempt. */
+export type DigestClaim = "claimed" | "taken" | "error";
+
+/**
+ * Atomically claim one user's digest window (at-most-once guarantee, HIGH #2).
+ *
+ * Issues a single compare-and-swap `UPDATE` that flips
+ * `last_digest_sent_at → nowIso` only while the row still holds the value this
+ * pass observed. Postgres runs the UPDATE as one statement and locks the row,
+ * so when two overlapping invocations both read a stale/`NULL` cadence stamp,
+ * one update matches (returns a row → `"claimed"`) and the other, re-evaluated
+ * against the now-updated tuple, matches nothing (`"taken"`). Exactly one
+ * caller therefore proceeds to send for that user.
+ *
+ * `observedLastSentAt` must be the `last_digest_sent_at` value read in this pass
+ * (before any other run could have changed it); a `null` observed value claims
+ * via `IS NULL`.
+ */
+export async function claimDigestWindow(
+  supabase: AlertsClient,
+  userId: string,
+  observedLastSentAt: string | null,
+  nowIso: string,
+): Promise<DigestClaim> {
+  try {
+    let query = supabase
+      .from("user_preferences")
+      .update({ last_digest_sent_at: nowIso })
+      .eq("user_id", userId);
+    query = observedLastSentAt == null
+      ? query.is("last_digest_sent_at", null)
+      : query.eq("last_digest_sent_at", observedLastSentAt);
+
+    const { data, error } = await query.select("user_id");
+    if (error) {
+      console.error(`[alerts] digest claim failed for ${userId}:`, error.message);
+      return "error";
+    }
+    return (data?.length ?? 0) > 0 ? "claimed" : "taken";
+  } catch (err) {
+    console.error("[alerts] digest claim threw:", err);
+    return "error";
+  }
+}
+
+/**
+ * Hand a claimed digest window back so a later run can retry it. Only restores
+ * the observed value while the row still holds *our* claim timestamp, so it can
+ * never stomp a newer claim won by a concurrent run. Used solely on paths where
+ * nothing was delivered (no recipient address / failed send); a delivered send
+ * keeps its claim.
+ */
+export async function releaseDigestClaim(
+  supabase: AlertsClient,
+  userId: string,
+  observedLastSentAt: string | null,
+  claimedAtIso: string,
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from("user_preferences")
+      .update({ last_digest_sent_at: observedLastSentAt })
+      .eq("user_id", userId)
+      .eq("last_digest_sent_at", claimedAtIso);
+    if (error) {
+      console.error(
+        `[alerts] digest claim release failed for ${userId}:`,
+        error.message,
+      );
+    }
+  } catch (err) {
+    console.error("[alerts] digest claim release threw:", err);
+  }
 }
 
 /**
@@ -552,8 +641,24 @@ export async function sendWeeklyDigests(
     if (!pref) continue;
     // Channel opt-out (one-click unsubscribe writes watchlist_email=false).
     if (!isDigestEnabled(pref.notification_prefs)) continue;
-    // Cadence: at most one digest every DIGEST_MIN_INTERVAL_DAYS days.
+    // Cheap cadence pre-filter. The authoritative gate is the atomic claim
+    // below, which also serializes overlapping runs on the same user.
     if (!isDigestDue(pref.last_digest_sent_at, now)) continue;
+
+    // Atomic claim (HIGH #2): at most one run may send this user's digest.
+    // A concurrent run that read the same (stale) cadence stamp loses the
+    // compare-and-swap and bows out here.
+    const claim = await claimDigestWindow(
+      supabase,
+      userId,
+      pref.last_digest_sent_at,
+      nowIso,
+    );
+    if (claim === "taken") continue;
+    if (claim === "error") {
+      result.failed += 1;
+      continue;
+    }
 
     // Recipient address comes from auth (service role only).
     let email: string | undefined;
@@ -568,6 +673,8 @@ export async function sendWeeklyDigests(
     }
     if (!email) {
       console.warn(`[alerts] digest skipped for ${userId}: no email address`);
+      // Nothing delivered — hand the window back so a later run can retry.
+      await releaseDigestClaim(supabase, userId, pref.last_digest_sent_at, nowIso);
       continue;
     }
 
@@ -602,10 +709,15 @@ export async function sendWeeklyDigests(
 
     if (!sendResult.ok) {
       result.failed += 1;
+      // No message was delivered — release the claim so a later run retries it.
+      await releaseDigestClaim(supabase, userId, pref.last_digest_sent_at, nowIso);
       continue;
     }
 
-    // Stamp the ledger only after the send succeeded (idempotency on retries).
+    // Stamp the alert ledger only after the send succeeded. The cadence stamp
+    // was already written by the atomic claim *before* the send, so a failure
+    // here keeps the claim held and the user is never emailed twice on the same
+    // Monday (at-most-once is the correct bias for a digest).
     const ids = alerts.map((a) => a.id);
     const { error: markError } = await supabase
       .from("alert_events")
@@ -613,22 +725,11 @@ export async function sendWeeklyDigests(
       .in("id", ids);
     if (markError) {
       console.error(
-        `[alerts] digest email_sent_at stamp failed for ${userId}:`,
+        `[alerts] digest email_sent_at stamp failed for ${userId} (claim retained, no re-send this window):`,
         markError.message,
       );
       result.failed += 1;
       continue;
-    }
-
-    const { error: cadenceError } = await supabase
-      .from("user_preferences")
-      .update({ last_digest_sent_at: nowIso })
-      .eq("user_id", userId);
-    if (cadenceError) {
-      console.error(
-        `[alerts] digest last_digest_sent_at update failed for ${userId}:`,
-        cadenceError.message,
-      );
     }
 
     result.sent += 1;
