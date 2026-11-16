@@ -505,8 +505,9 @@ describe('fanOutAlerts', () => {
         select() {
           return chain;
         },
-        update() {
+        update(p?: Record<string, unknown>) {
           chain._op = 'update';
+          chain._payload = p ?? null;
           return chain;
         },
         eq() {
@@ -534,7 +535,14 @@ describe('fanOutAlerts', () => {
           return Promise.resolve({ data: null, error: null });
         },
         then(resolve: any) {
-          if (chain._op === 'update') return resolve({ data: null, error: null });
+          if (chain._op === 'update') {
+            // Atomic digest claim (atomic-claim fix): UPDATE user_preferences
+            // SET last_digest_sent_at ... RETURNING user_id yields the claimed row.
+            if (chain._table === 'user_preferences' && chain._payload && 'last_digest_sent_at' in chain._payload) {
+              return resolve({ data: prefs.map((p: any) => ({ user_id: p.user_id })), error: null });
+            }
+            return resolve({ data: null, error: null });
+          }
           switch (chain._table) {
             case 'alert_events':
               return resolve({ data: pending, error: null });
@@ -730,6 +738,9 @@ describe('sendWeeklyDigests — token persist failure', () => {
           if (q._update) {
             if (tokenPersistError && 'digest_unsub_token' in q._update) {
               resolve({ data: null, error: { message: 'simulated persist failure' } });
+            } else if ('last_digest_sent_at' in q._update && table === 'user_preferences') {
+              // Atomic digest claim: RETURNING user_id — report the claimed row.
+              resolve({ data: [{ user_id: 'user-token-fail' }], error: null });
             } else {
               resolve({ data: null, error: null });
             }
@@ -788,14 +799,17 @@ describe('sendWeeklyDigests — token persist failure', () => {
     expect(result.alertsEmailed).toBe(0);
     expect(send).not.toHaveBeenCalled();
 
-    // The token persist was attempted, but neither the alert ledger nor the
-    // cadence column was stamped — so the user is retried next Monday.
+    // The token persist was attempted, and under the at-most-once design the
+    // digest window is claimed and then released (nothing was delivered), so the
+    // net cadence change is nil and the user is retried on the next pass. The
+    // alert ledger is never stamped.
     const tokenPersists = updateCalls.filter((u) => 'digest_unsub_token' in u.payload);
     expect(tokenPersists).toHaveLength(1);
-    const stamped = updateCalls.filter(
-      (u) => 'email_sent_at' in u.payload || 'last_digest_sent_at' in u.payload,
-    );
-    expect(stamped).toEqual([]);
+    expect(updateCalls.filter((u) => 'email_sent_at' in u.payload)).toEqual([]);
+    const cadenceWrites = updateCalls.filter((u) => 'last_digest_sent_at' in u.payload);
+    // Claim (stamped to `now`) followed by release (restored to the observed NULL).
+    expect(cadenceWrites.length).toBeGreaterThanOrEqual(2);
+    expect(cadenceWrites[cadenceWrites.length - 1].payload.last_digest_sent_at).toBeNull();
 
     // AC2: the error is logged with the user id, never the email address.
     const logged = errorSpy.mock.calls.flat().join(' ');
@@ -906,6 +920,11 @@ function fakeDigestSupabase(opts: {
             update: (vals: Record<string, unknown>) => {
               if ('last_digest_sent_at' in vals) {
                 recorded.cadenceUpdates.push(vals.last_digest_sent_at as string);
+                // Atomic digest claim: UPDATE ... RETURNING user_id → claimed rows.
+                return chain({
+                  data: opts.prefs.map((p) => ({ user_id: p.user_id })),
+                  error: null,
+                });
               }
               if ('digest_unsub_token' in vals) {
                 recorded.tokenUpdates.push(vals.digest_unsub_token as string);
@@ -1204,5 +1223,278 @@ describe('sendWeeklyDigests — per-pass user cap', () => {
 
     warn.mockRestore();
     log.mockRestore();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Atomic digest claim: at-most-once under concurrent invocation (HIGH #2).
+//
+// A stateful fake Supabase whose `.update()` reads and writes its row store
+// synchronously — mirroring Postgres' row-locked, single-statement UPDATE — so
+// two overlapping `sendWeeklyDigests` calls contend for the same cadence stamp
+// exactly as they would against the real database.
+// ─────────────────────────────────────────────────────────────────────────
+function makeFakeBackend(seed: {
+  prefs: Array<Record<string, unknown> & { user_id: string }>;
+  alerts: Array<Record<string, unknown> & { id: string }>;
+  entities?: Array<Record<string, unknown>>;
+  signals?: Array<Record<string, unknown>>;
+  content?: Array<Record<string, unknown>>;
+}) {
+  const state: Record<string, Array<Record<string, unknown>>> = {
+    user_preferences: seed.prefs.map((p) => ({ ...p })),
+    alert_events: seed.alerts.map((a) => ({ ...a })),
+    entities: (seed.entities ?? []).map((e) => ({ ...e })),
+    signals: (seed.signals ?? []).map((s) => ({ ...s })),
+    content: (seed.content ?? []).map((c) => ({ ...c })),
+  };
+  let failAlertStamp = false;
+
+  function makeBuilder(table: string): any {
+    let op: 'select' | 'update' = 'select';
+    let payload: Record<string, unknown> | null = null;
+    const preds: Array<(row: any) => boolean> = [];
+
+    const builder: any = {
+      select() {
+        return builder;
+      },
+      update(p: Record<string, unknown>) {
+        op = 'update';
+        payload = p;
+        return builder;
+      },
+      eq(col: string, val: unknown) {
+        preds.push((r) => r[col] === val);
+        return builder;
+      },
+      is(col: string, val: unknown) {
+        preds.push((r) => (val === null ? r[col] == null : r[col] === val));
+        return builder;
+      },
+      in(col: string, vals: unknown[]) {
+        preds.push((r) => vals.includes(r[col]));
+        return builder;
+      },
+      gte(col: string, val: unknown) {
+        preds.push((r) => (r[col] as any) >= val);
+        return builder;
+      },
+      lte(col: string, val: unknown) {
+        preds.push((r) => (r[col] as any) <= val);
+        return builder;
+      },
+      lt(col: string, val: unknown) {
+        preds.push((r) => (r[col] as any) < val);
+        return builder;
+      },
+      not(col: string, _operator: string, val: unknown) {
+        preds.push((r) => !(val === null ? r[col] == null : r[col] === val));
+        return builder;
+      },
+      or() {
+        return builder;
+      },
+      order() {
+        return builder;
+      },
+      limit() {
+        return builder;
+      },
+      maybeSingle() {
+        return builder;
+      },
+      then(resolve: (value: unknown) => unknown) {
+        const rows = state[table] ?? [];
+        const matched = rows.filter((r) => preds.every((p) => p(r)));
+
+        if (op === 'update') {
+          if (table === 'alert_events' && failAlertStamp) {
+            resolve({ data: null, error: { message: 'simulated stamp failure' } });
+            return;
+          }
+          // Synchronous read-modify-write == one atomic statement.
+          for (const row of matched) Object.assign(row, payload);
+          resolve({
+            data: matched.map((r) => ({ user_id: r.user_id })),
+            error: null,
+          });
+          return;
+        }
+        resolve({ data: matched.map((r) => ({ ...r })), error: null });
+      },
+    };
+    return builder;
+  }
+
+  const client: any = {
+    from: (table: string) => makeBuilder(table),
+    auth: {
+      admin: {
+        getUserById: async (id: string) => ({
+          data: { user: { id, email: `${id}@example.com` } },
+          error: null,
+        }),
+      },
+    },
+  };
+
+  return {
+    client,
+    state,
+    setFailAlertStamp: (v: boolean) => {
+      failAlertStamp = v;
+    },
+  };
+}
+
+describe('sendWeeklyDigests — atomic claim (at-most-once)', () => {
+  const now = new Date('2026-11-16T12:00:00Z'); // Monday UTC
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getEmailConfig).mockReturnValue({ apiKey: 're_key', from: 'alerts@example.com' });
+    vi.mocked(getDigestFooterAddress).mockReturnValue('123 Main St');
+    vi.mocked(getSiteUrl).mockReturnValue('https://terminal.always-scheming.com');
+    vi.mocked(generateDigestUnsubToken).mockReturnValue('a'.repeat(64));
+    vi.mocked(buildDigestUnsubUrl).mockReturnValue(
+      'https://terminal.always-scheming.com/unsubscribe?token=a',
+    );
+    vi.mocked(buildDigestUnsubHeaders).mockReturnValue({
+      'List-Unsubscribe': '<https://terminal.always-scheming.com/unsubscribe?token=a>',
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    });
+  });
+
+  function seed() {
+    return makeFakeBackend({
+      prefs: [
+        {
+          user_id: 'user1',
+          notification_prefs: { watchlist_email: true },
+          last_digest_sent_at: null,
+          digest_unsub_token: 'a'.repeat(64),
+        },
+      ],
+      alerts: [
+        {
+          id: 'al1',
+          user_id: 'user1',
+          signal_id: 'sig1',
+          entity_id: 'ent1',
+          signal_type: 'earnings',
+          score: 0.9,
+          created_at: '2026-11-16T00:00:00Z',
+          email_sent_at: null,
+        },
+      ],
+      entities: [{ id: 'ent1', canonical_name: 'Acme' }],
+      signals: [{ id: 'sig1', summary: 'Acme beats estimates', content_id: 'cont1' }],
+      content: [{ id: 'cont1', url: 'https://example.com/a' }],
+    });
+  }
+
+  it('sends at most one digest when two runs overlap on the same Monday', async () => {
+    const backend = seed();
+    const sendImpl = vi.fn(async () => ({ ok: true, id: 'msg_1' }));
+
+    // Two concurrent invocations, exactly the cron self-chaining scenario.
+    const [a, b] = await Promise.all([
+      sendWeeklyDigests({ supabase: backend.client, now, sendEmailImpl: sendImpl }),
+      sendWeeklyDigests({ supabase: backend.client, now, sendEmailImpl: sendImpl }),
+    ]);
+
+    // The window claim lets exactly one run through; the other sees "taken".
+    expect(sendImpl).toHaveBeenCalledTimes(1);
+    expect(a.sent + b.sent).toBe(1);
+    expect(a.failed + b.failed).toBe(0);
+
+    // Ledger + cadence stamps written exactly once.
+    expect(backend.state.user_preferences[0].last_digest_sent_at).toBe(now.toISOString());
+    expect(backend.state.alert_events[0].email_sent_at).toBe(now.toISOString());
+  });
+
+  it('is idempotent: a later run the same Monday sends nothing', async () => {
+    const backend = seed();
+    const sendImpl = vi.fn(async () => ({ ok: true, id: 'msg_1' }));
+
+    const first = await sendWeeklyDigests({ supabase: backend.client, now, sendEmailImpl: sendImpl });
+    expect(first.sent).toBe(1);
+
+    const second = await sendWeeklyDigests({ supabase: backend.client, now, sendEmailImpl: sendImpl });
+    expect(second.sent).toBe(0);
+    expect(second.alertsEmailed).toBe(0);
+    expect(sendImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains the claim when the send succeeded but the email_sent_at stamp failed (AC#4)', async () => {
+    const backend = seed();
+    backend.setFailAlertStamp(true);
+    const sendImpl = vi.fn(async () => ({ ok: true, id: 'msg_1' }));
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const r1 = await sendWeeklyDigests({ supabase: backend.client, now, sendEmailImpl: sendImpl });
+    expect(r1.sent).toBe(0);
+    expect(r1.failed).toBe(1);
+    expect(sendImpl).toHaveBeenCalledTimes(1);
+    // Claim held (cadence stamped before send) and the alert stays un-stamped.
+    expect(backend.state.user_preferences[0].last_digest_sent_at).toBe(now.toISOString());
+    expect(backend.state.alert_events[0].email_sent_at).toBeNull();
+
+    // Same-Monday re-run must NOT re-send (at-most-once).
+    const r2 = await sendWeeklyDigests({ supabase: backend.client, now, sendEmailImpl: sendImpl });
+    expect(r2.sent).toBe(0);
+    expect(sendImpl).toHaveBeenCalledTimes(1);
+
+    errSpy.mockRestore();
+  });
+
+  it('releases the claim when the send fails, so a later run retries', async () => {
+    const backend = seed();
+    const failing = vi.fn(async () => ({ ok: false, error: 'resend_500' }));
+
+    const r1 = await sendWeeklyDigests({ supabase: backend.client, now, sendEmailImpl: failing });
+    expect(r1.failed).toBe(1);
+    expect(r1.sent).toBe(0);
+    // Nothing delivered → the cadence stamp is restored so the window is retryable.
+    expect(backend.state.user_preferences[0].last_digest_sent_at).toBeNull();
+    expect(backend.state.alert_events[0].email_sent_at).toBeNull();
+
+    const ok = vi.fn(async () => ({ ok: true, id: 'msg_2' }));
+    const r2 = await sendWeeklyDigests({ supabase: backend.client, now, sendEmailImpl: ok });
+    expect(r2.sent).toBe(1);
+    expect(ok).toHaveBeenCalledTimes(1);
+    expect(backend.state.user_preferences[0].last_digest_sent_at).toBe(now.toISOString());
+  });
+
+  it('does not send when the cadence gate is not due (within 6 days)', async () => {
+    const backend = makeFakeBackend({
+      prefs: [
+        {
+          user_id: 'user1',
+          notification_prefs: { watchlist_email: true },
+          last_digest_sent_at: '2026-11-14T12:00:00Z', // 2 days ago
+          digest_unsub_token: 'a'.repeat(64),
+        },
+      ],
+      alerts: [
+        {
+          id: 'al1',
+          user_id: 'user1',
+          signal_id: 'sig1',
+          entity_id: 'ent1',
+          signal_type: 'earnings',
+          score: 0.9,
+          created_at: '2026-11-16T00:00:00Z',
+          email_sent_at: null,
+        },
+      ],
+    });
+    const sendImpl = vi.fn(async () => ({ ok: true, id: 'msg_1' }));
+    const r = await sendWeeklyDigests({ supabase: backend.client, now, sendEmailImpl: sendImpl });
+    expect(r.sent).toBe(0);
+    expect(sendImpl).not.toHaveBeenCalled();
+    // Untouched cadence stamp preserved.
+    expect(backend.state.user_preferences[0].last_digest_sent_at).toBe('2026-11-14T12:00:00Z');
   });
 });
