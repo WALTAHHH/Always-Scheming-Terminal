@@ -9,6 +9,45 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      alert_events: {
+        Row: {
+          id: string
+          user_id: string
+          signal_id: string
+          watchlist_id: string | null
+          entity_id: string | null
+          signal_type: string
+          score: number
+          created_at: string | null
+          read_at: string | null
+          email_sent_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          signal_id: string
+          watchlist_id?: string | null
+          entity_id?: string | null
+          signal_type: string
+          score: number
+          created_at?: string | null
+          read_at?: string | null
+          email_sent_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          signal_id?: string
+          watchlist_id?: string | null
+          entity_id?: string | null
+          signal_type?: string
+          score?: number
+          created_at?: string | null
+          read_at?: string | null
+          email_sent_at?: string | null
+        }
+        Relationships: []
+      }
       api_keys: {
         Row: {
           id: string
@@ -500,6 +539,9 @@ export type Database = {
           segments: Json | null
           notification_prefs: Json
           digest_frequency: string | null
+          watchlist_min_score: number
+          last_digest_sent_at: string | null
+          digest_unsub_token: string | null
           theme: string | null
           created_at: string | null
           updated_at: string | null
@@ -511,6 +553,9 @@ export type Database = {
           segments?: Json | null
           notification_prefs: Json
           digest_frequency?: string | null
+          watchlist_min_score?: number
+          last_digest_sent_at?: string | null
+          digest_unsub_token?: string | null
           theme?: string | null
           created_at?: string | null
           updated_at?: string | null
@@ -522,9 +567,33 @@ export type Database = {
           segments?: Json | null
           notification_prefs?: Json
           digest_frequency?: string | null
+          watchlist_min_score?: number
+          last_digest_sent_at?: string | null
+          digest_unsub_token?: string | null
           theme?: string | null
           created_at?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      watchlists: {
+        Row: {
+          id: string
+          user_id: string
+          entity_id: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          entity_id: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          entity_id?: string
+          created_at?: string | null
         }
         Relationships: []
       }
@@ -637,6 +706,8 @@ export type IngestionLog = Database["public"]["Tables"]["ingestion_logs"]["Row"]
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"]
 export type UserPreferences = Database["public"]["Tables"]["user_preferences"]["Row"]
 export type ApiKey = Database["public"]["Tables"]["api_keys"]["Row"]
+export type Watchlist = Database["public"]["Tables"]["watchlists"]["Row"]
+export type AlertEvent = Database["public"]["Tables"]["alert_events"]["Row"]
 
 // Legacy aliases (backward compat)
 export type Item = Content
