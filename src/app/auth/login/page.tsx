@@ -237,8 +237,20 @@ export default function LoginPage() {
               </div>
             )}
 
+            {/*
+              Forgot-password confirmation (issue #107): intentionally persistent —
+              no auto-dismiss timer, and it is not cleared by unrelated form
+              activity (typing, tab switches, or a sign-in submit). It only resets
+              when the user starts another reset attempt. role="status" makes the
+              success announcement polite-but-reliable for assistive tech.
+            */}
             {resetPasswordMessage && (
-              <div className={`flex items-start gap-2 px-3 py-2 ${resetPasswordMessage.type === 'success' ? 'bg-ast-mint/10 border border-ast-mint/30 text-ast-mint' : 'bg-ast-pink/10 border border-ast-pink/30 text-ast-pink'} rounded text-xs font-mono`}>
+              <div
+                role={resetPasswordMessage.type === 'success' ? 'status' : 'alert'}
+                aria-live={resetPasswordMessage.type === 'success' ? 'polite' : 'assertive'}
+                aria-atomic="true"
+                className={`flex items-start gap-2 px-3 py-2 ${resetPasswordMessage.type === 'success' ? 'bg-ast-mint/10 border border-ast-mint/30 text-ast-mint' : 'bg-ast-pink/10 border border-ast-pink/30 text-ast-pink'} rounded text-xs font-mono`}
+              >
                 <span className="mt-0.5 flex-shrink-0">{resetPasswordMessage.type === 'success' ? '✓' : '✕'}</span>
                 <span>{resetPasswordMessage.text}</span>
               </div>
