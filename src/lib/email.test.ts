@@ -13,6 +13,7 @@ import {
   renderDigestText,
   renderDigestHtml,
   groupDigestAlerts,
+  safeDigestUrl,
   type DigestAlert,
   type DigestRenderInput,
 } from './email';
@@ -404,5 +405,127 @@ describe('digest rendering', () => {
     expect(html).toContain('Company &amp; Co.');
     expect(html).toContain('Buy &amp; sell &gt; 100');
     expect(html).toContain('https://example.com/?q=&quot;test&quot;');
+  });
+});
+
+describe('digest URL scheme allowlist', () => {
+  const inputWithUrl = (url: string): DigestRenderInput => ({
+    alerts: [
+      {
+        entityName: 'Acme',
+        signalType: 'earnings',
+        summary: 'Acme beats estimates',
+        score: 0.9,
+        url,
+        createdAt: '2026-11-10T12:00:00Z',
+      },
+    ],
+    unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+    footerAddress: '',
+    siteUrl: 'https://example.com',
+  });
+
+  const hostileUrls = [
+    'javascript:alert(document.domain)',
+    'JavaScript:alert(1)',
+    '  javascript:alert(1)  ',
+    'java\tscript:alert(1)',
+    'java\nscript:alert(1)',
+    'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==',
+    'vbscript:msgbox(1)',
+    'file:///etc/passwd',
+    'tel:+15555550100',
+    '//evil.example/article',
+    '/relative/path',
+    'not a url',
+  ];
+
+  it('safeDigestUrl accepts absolute http and https URLs', () => {
+    expect(safeDigestUrl('https://example.com/article')).toBe('https://example.com/article');
+    expect(safeDigestUrl('http://example.com/article?a=1#b')).toBe(
+      'http://example.com/article?a=1#b',
+    );
+    expect(safeDigestUrl('HTTPS://Example.com/Article')).toBe('HTTPS://Example.com/Article');
+  });
+
+  it('safeDigestUrl rejects disallowed schemes and non-absolute values', () => {
+    for (const url of hostileUrls) {
+      expect(safeDigestUrl(url), url).toBeNull();
+    }
+    expect(safeDigestUrl('')).toBeNull();
+    expect(safeDigestUrl('   ')).toBeNull();
+    expect(safeDigestUrl(null)).toBeNull();
+    expect(safeDigestUrl(undefined)).toBeNull();
+    expect(safeDigestUrl(42)).toBeNull();
+    expect(safeDigestUrl({ toString: () => 'https://example.com' })).toBeNull();
+  });
+
+  it.each(hostileUrls)('renderDigestHtml drops the link for %j', (url) => {
+    const html = renderDigestHtml(inputWithUrl(url));
+    const lowered = html.toLowerCase();
+    for (const marker of [
+      'javascript:',
+      'data:text/html',
+      'vbscript:',
+      'file:///etc/passwd',
+      'tel:+1555',
+      'evil.example',
+      '/relative/path',
+    ]) {
+      expect(lowered).not.toContain(marker);
+    }
+    // Degrades gracefully: alert text survives, link is rendered as plain text.
+    expect(html).toContain('(link unavailable)');
+    expect(html).toContain('Acme beats estimates');
+    expect(html).toContain('Unsubscribe');
+  });
+
+  it('renderDigestText omits a disallowed URL but keeps the summary and footer', () => {
+    const text = renderDigestText(inputWithUrl('javascript:alert(1)'));
+    expect(text).toContain('Acme beats estimates');
+    expect(text).not.toContain('javascript:');
+    expect(text).toContain('Unsubscribe: https://example.com/unsubscribe?token=xyz');
+  });
+
+  it('renderDigestText keeps allowed article URLs', () => {
+    const text = renderDigestText(inputWithUrl('https://example.com/story?id=1'));
+    expect(text).toContain('https://example.com/story?id=1');
+  });
+
+  it('renderDigestHtml keeps allowed links and still escapes them', () => {
+    const html = renderDigestHtml(inputWithUrl('https://example.com/?q="x"&y=<z>'));
+    expect(html).toContain('href="https://example.com/?q=&quot;x&quot;&amp;y=&lt;z&gt;"');
+    expect(html).not.toContain('(link unavailable)');
+  });
+
+  it('a mixed digest renders the valid link and degrades only the hostile one', () => {
+    const input: DigestRenderInput = {
+      alerts: [
+        {
+          entityName: 'Acme',
+          signalType: 'earnings',
+          summary: 'Good article',
+          score: 0.9,
+          url: 'https://example.com/good',
+          createdAt: '2026-11-10T12:00:00Z',
+        },
+        {
+          entityName: 'Acme',
+          signalType: 'news',
+          summary: 'Hostile article',
+          score: 0.8,
+          url: 'javascript:alert(1)',
+          createdAt: '2026-11-09T12:00:00Z',
+        },
+      ],
+      unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+      footerAddress: '',
+      siteUrl: 'https://example.com',
+    };
+    const html = renderDigestHtml(input);
+    expect(html).toContain('href="https://example.com/good"');
+    expect(html).not.toContain('javascript:');
+    expect(html).toContain('Hostile article');
+    expect(html).toContain('(link unavailable)');
   });
 });
