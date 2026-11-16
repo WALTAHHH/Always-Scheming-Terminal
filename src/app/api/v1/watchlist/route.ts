@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthServerClient } from "@/lib/supabase-server";
+import { isValidUuid } from "@/lib/entity-validation";
 
 export const runtime = "nodejs";
 // Auth is cookie-based; never cache a per-user response.
@@ -15,6 +16,11 @@ export const dynamic = "force-dynamic";
  * All verbs are session-authenticated. Row-level security on `watchlists`
  * (`auth.uid() = user_id`) is the second line of defence: the auth-scoped
  * client below can only ever read/write the caller's own rows.
+ *
+ * `entity_id` is validated as a UUID and, on POST, checked against `entities`
+ * so that only existing *public* entities can be followed (§5.1) — otherwise a
+ * malformed/foreign id would surface as a Postgres FK 500, and a private
+ * entity could leak into the caller's digest and alerts.
  */
 
 // The nested `entity:entities(...)` embed below is not reflected in the
@@ -94,6 +100,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Reject anything that is not a UUID before it reaches a query: a malformed
+  // id would otherwise blow up as a Postgres uuid-cast error → 500.
+  if (!isValidUuid(entityId)) {
+    return NextResponse.json(
+      { error: "entity_id must be a valid UUID" },
+      { status: 400 }
+    );
+  }
+
+  // Only existing *public* entities may be followed (§5.1). Filtering on
+  // `is_public` in the query (rather than a separate existence check) makes a
+  // missing id and a private id indistinguishable to the caller — both 404 —
+  // so we never leak the existence of a private entity. Runs on the
+  // auth-scoped client so it keeps working as-is when RLS on `entities` is
+  // tightened.
+  const { data: entity, error: entityError } = await supabase
+    .from("entities")
+    .select("id")
+    .eq("id", entityId)
+    .eq("is_public", true)
+    .maybeSingle();
+
+  if (entityError) {
+    return NextResponse.json(
+      { error: "Failed to verify entity" },
+      { status: 500 }
+    );
+  }
+
+  if (!entity) {
+    return NextResponse.json({ error: "Entity not found" }, { status: 404 });
+  }
+
   // Idempotent follow: UNIQUE(user_id, entity_id) + ignoreDuplicates makes a
   // repeated watch a no-op rather than a 409.
   const { error } = await supabase
@@ -124,6 +163,15 @@ export async function DELETE(req: NextRequest) {
   if (!entityId) {
     return NextResponse.json(
       { error: "entity_id query parameter is required" },
+      { status: 400 }
+    );
+  }
+
+  // Delete is idempotent, so no existence check is needed — but a malformed id
+  // must still be rejected up front (Postgres would 500 on the uuid cast).
+  if (!isValidUuid(entityId)) {
+    return NextResponse.json(
+      { error: "entity_id must be a valid UUID" },
       { status: 400 }
     );
   }
