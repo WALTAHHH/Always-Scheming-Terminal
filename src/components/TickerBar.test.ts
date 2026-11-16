@@ -53,8 +53,35 @@ describe('TickerBar race + marquee fix', () => {
     })
 
     it('keeps the click-to-drawer handler', () => {
-      expect(source).toMatch(/onClick=\{\(\)\s*=>\s*\{/)
+      expect(source).toMatch(/onClick=\{\s*\(\)\s*=>\s*\{/)
       expect(source).toContain('openCompanyDrawer(entity.canonical_name)')
+    })
+  })
+
+  // Pause-on-hover/focus so a moving ticker item can be examined (issue: hover pause).
+  describe('pause scroll on hover / focus', () => {
+    const css = readFileSync(path.resolve(__dirname, 'TickerBar.module.css'), 'utf-8')
+
+    it('tags the ticker bar container with the ticker-bar class', () => {
+      expect(source).toMatch(/styles\["ticker-bar"\]/)
+    })
+
+    it('pauses the marquee while the bar is hovered', () => {
+      expect(css).toMatch(/\.ticker-bar:hover \.animate-ticker-scroll/)
+      expect(css).toMatch(/animation-play-state:\s*paused/)
+    })
+
+    it('pauses the marquee while the bar has keyboard focus', () => {
+      expect(css).toMatch(/\.ticker-bar:focus-within \.animate-ticker-scroll/)
+    })
+
+    it('disables the marquee animation under prefers-reduced-motion: reduce', () => {
+      const reduced = css.match(
+        /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\}/
+      )
+      expect(reduced).not.toBeNull()
+      expect(reduced![0]).toMatch(/\.animate-ticker-scroll/)
+      expect(reduced![0]).toMatch(/animation:\s*none/)
     })
   })
 })

@@ -117,7 +117,9 @@ export function TickerBar() {
   };
 
   return (
-    <div className="hidden sm:flex items-center h-6 bg-ast-surface/60 border-b border-ast-border/40 font-mono overflow-hidden">
+    <div
+      className={`hidden sm:flex items-center h-6 bg-ast-surface/60 border-b border-ast-border/40 font-mono overflow-hidden ${styles["ticker-bar"]}`}
+    >
       <div
         className={`flex items-center h-full whitespace-nowrap ${
           scrollEnabled ? styles["animate-ticker-scroll"] : ""

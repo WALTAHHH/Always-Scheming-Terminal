@@ -10,3 +10,18 @@
 .animate-ticker-scroll {
   animation: ticker-scroll 40s linear infinite;
 }
+
+/* Pause the marquee while a ticker item (or the bar itself) is hovered, or
+   while the bar contains keyboard focus, so a moving item can be read or
+   clicked without scrolling out from under the pointer. */
+.ticker-bar:hover .animate-ticker-scroll,
+.ticker-bar:focus-within .animate-ticker-scroll {
+  animation-play-state: paused;
+}
+
+/* Honour the user's reduced-motion preference: don't auto-scroll at all. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-ticker-scroll {
+    animation: none;
+  }
+}
