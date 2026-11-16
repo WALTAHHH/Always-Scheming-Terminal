@@ -40,7 +40,6 @@ describe("CompanyDrawer watch star (spec §5.1)", () => {
     expect(html).toContain("Watch");
     expect(html).toContain('aria-pressed="false"');
   });
-
   it("shows a disabled 'Sign in to watch' star before auth resolves", () => {
     const html = render(entity);
     // isAuthed starts null → treated as unauthenticated until the session check.

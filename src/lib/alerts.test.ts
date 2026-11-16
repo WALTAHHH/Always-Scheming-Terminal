@@ -337,5 +337,41 @@ describe('fanOutAlerts', () => {
     });
   });
 
+  // Safety: migration 018 (watchlists/alert_events) may not be applied in an
+  // environment yet. The fan-out MUST log and no-op, never throw, so the
+  // signal-extraction cron can never fail because of the watchlist feature.
+  it('no-ops without throwing when watchlist tables do not exist (migration 018 unapplied)', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const signals = [
+      { id: 'sig1', content_id: 'cont1', signal_type: 'earnings', investment_relevance_score: 0.9 },
+    ];
+    const contentTags = [{ content_id: 'cont1', entity_id: 'ent1' }];
+    const chain: any = {
+      from(table: string) { chain._table = table; return chain; },
+      select() { return chain; },
+      in() { return chain; },
+      eq() { return chain; },
+      not() { return chain; },
+      order() { return chain; },
+      limit() { return chain; },
+      maybeSingle() { return Promise.resolve({ data: null, error: null }); },
+      then(resolve: any) {
+        const table = chain._table;
+        if (table === 'signals') return resolve({ data: signals, error: null });
+        if (table === 'content_tags') return resolve({ data: contentTags, error: null });
+        // watchlists / alert_events not created yet → Postgres "relation does not exist"
+        return resolve({
+          data: null,
+          error: { message: `relation "${table}" does not exist` },
+        });
+      },
+    };
 
+    await expect(
+      fanOutAlerts(['sig1'], { supabase: chain }),
+    ).resolves.toEqual({ candidates: 0, created: 0 });
+    expect(errSpy).toHaveBeenCalled();
+
+    errSpy.mockRestore();
+  });
 });
