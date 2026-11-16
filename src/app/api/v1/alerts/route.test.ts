@@ -88,6 +88,63 @@ describe('GET /api/v1/alerts', () => {
     expect(body.unread).toBe(2);
     expect(listBuilder.is).toHaveBeenCalledWith('read_at', null);
   });
+
+  it('returns paginated results with cursor', async () => {
+    mockAuthGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null });
+
+    // Mock count query
+    const countBuilder = createMockBuilder({ count: 5, error: null });
+    // Mock list query with limit
+    const listBuilder = createMockBuilder({
+      data: [
+        { id: VALID_UUID, signal_id: 'sig-1', read_at: null, score: 0.8, created_at: '2026-01-01T00:00:00Z' },
+        { id: VALID_UUID2, signal_id: 'sig-2', read_at: null, score: 0.9, created_at: '2026-01-02T00:00:00Z' },
+      ],
+      error: null,
+    });
+    mockFrom.mockReturnValueOnce(countBuilder);
+    mockFrom.mockReturnValueOnce(listBuilder);
+
+    const response = await GET(new Request('http://localhost/api/v1/alerts?limit=2'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.alerts).toHaveLength(2);
+    expect(body.unread).toBe(5);
+    expect(body.next_cursor).toBe('2026-01-02T00:00:00Z');
+    expect(listBuilder.limit).toHaveBeenCalledWith(2);
+  });
+
+  it('applies cursor filter', async () => {
+    mockAuthGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null });
+
+    const countBuilder = createMockBuilder({ count: 0, error: null });
+    const listBuilder = createMockBuilder({ data: [], error: null });
+    mockFrom.mockReturnValueOnce(countBuilder);
+    mockFrom.mockReturnValueOnce(listBuilder);
+
+    const response = await GET(new Request('http://localhost/api/v1/alerts?cursor=2026-01-03T00:00:00Z'));
+    expect(response.status).toBe(200);
+    expect(listBuilder.lt).toHaveBeenCalledWith('created_at', '2026-01-03T00:00:00Z');
+  });
+
+  it('includes score field in alert rows', async () => {
+    mockAuthGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null });
+
+    const countBuilder = createMockBuilder({ count: 1, error: null });
+    const listBuilder = createMockBuilder({
+      data: [
+        { id: VALID_UUID, signal_id: 'sig-1', read_at: null, score: 0.8 },
+      ],
+      error: null,
+    });
+    mockFrom.mockReturnValueOnce(countBuilder);
+    mockFrom.mockReturnValueOnce(listBuilder);
+
+    const response = await GET(new Request('http://localhost/api/v1/alerts'));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.alerts[0].score).toBe(0.8);
+  });
 });
 
 describe('PATCH /api/v1/alerts (bulk)', () => {
@@ -146,6 +203,23 @@ describe('PATCH /api/v1/alerts (bulk)', () => {
     expect(updateBuilder.in).toHaveBeenCalledWith('id', [VALID_UUID, VALID_UUID2]);
     expect(updateBuilder.eq).toHaveBeenCalledWith('user_id', 'user-123');
   });
+
+  it('returns zero updated when alert belongs to another user', async () => {
+    mockAuthGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null });
+    
+    const updateBuilder = createMockBuilder({ data: [], error: null });
+    mockFrom.mockReturnValueOnce(updateBuilder);
+
+    const response = await PATCH(new Request('http://localhost/api/v1/alerts', {
+      method: 'PATCH',
+      body: JSON.stringify({ ids: [VALID_UUID] }),
+    }));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.updated).toBe(0);
+    expect(updateBuilder.in).toHaveBeenCalledWith('id', [VALID_UUID]);
+    expect(updateBuilder.eq).toHaveBeenCalledWith('user_id', 'user-123');
+  });
 });
 
 describe('PATCH /api/v1/alerts/[id]', () => {
@@ -199,5 +273,21 @@ describe('PATCH /api/v1/alerts/[id]', () => {
     const body = await response.json();
     expect(body.id).toBe(VALID_UUID);
     expect(body.read_at).toBeDefined();
+  });
+
+  it('validates ownership via user_id filter', async () => {
+    mockAuthGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null });
+    
+    const updateBuilder = createMockBuilder({ data: null, error: null });
+    mockFrom.mockReturnValueOnce(updateBuilder);
+
+    const response = await PATCH_SINGLE(
+      new Request(`http://localhost/api/v1/alerts/${VALID_UUID}`, {
+        method: 'PATCH',
+      }),
+      { params: Promise.resolve({ id: VALID_UUID }) },
+    );
+    expect(response.status).toBe(404);
+    expect(updateBuilder.eq).toHaveBeenCalledWith('user_id', 'user-123');
   });
 });
