@@ -7,6 +7,14 @@
   }
 }
 
+/*
+ * Marquee speed: the single source of truth for how fast the ticker scrolls.
+ * The keyframes translate by -50% of the track width, so this constant is a
+ * full loop time; the wider the content, the faster the on-screen pixels move.
+ * Raise the duration to slow the scroll down (larger = slower).
+ * Was 40s; now ~44% slower (40 / 72 = 0.56x the original speed).
+ */
 .animate-ticker-scroll {
-  animation: ticker-scroll 40s linear infinite;
+  --ticker-scroll-duration: 72s;
+  animation: ticker-scroll var(--ticker-scroll-duration) linear infinite;
 }
