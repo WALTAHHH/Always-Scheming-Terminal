@@ -23,6 +23,19 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
+import {
+  buildDigestUnsubHeaders,
+  buildDigestUnsubUrl,
+  generateDigestUnsubToken,
+  getDigestFooterAddress,
+  getEmailConfig,
+  getSiteUrl,
+  renderDigestHtml,
+  renderDigestSubject,
+  renderDigestText,
+  sendEmail,
+  type DigestAlert,
+} from "./email";
 
 /** Default `user_preferences.watchlist_min_score` when a user has no prefs row. */
 export const DEFAULT_WATCHLIST_MIN_SCORE = 0.75;
@@ -273,4 +286,362 @@ export async function fanOutAlerts(
     console.error("[alerts] alert_events insert threw:", err);
     return { candidates: candidates.length, created: 0 };
   }
+}
+
+// ── weekly email digest (card W8) ──────────────────────────────────────────
+//
+// The digest rides on the tail of the extract-signals cron (no new cron slot —
+// Hobby caps crons at 2/day) and is gated so it is idempotent on retries:
+//
+//   1. It only runs on **Monday UTC**. Any other weekday is a hard no-op, so
+//      the cron's self-chaining invocations the rest of the week never send.
+//   2. Per user, it requires `user_preferences.last_digest_sent_at` to be
+//      absent or at least DIGEST_MIN_INTERVAL_DAYS (6) days old.
+//   3. `alert_events.email_sent_at` is stamped only *after* a successful send,
+//      and the digest only contains rows where it is still NULL — so a re-run
+//      (or a same-day second invocation) finds nothing left to send.
+//
+// Digest content = unsent `alert_events` from the past DIGEST_LOOKBACK_DAYS (7)
+// days, grouped by entity. Every digest carries the one-click unsubscribe link
+// (W9 route `/unsubscribe?token=…`) and the physical-address footer line from
+// `DIGEST_FOOTER_ADDRESS`. When Resend is unconfigured the whole pass is a
+// logged no-op and *nothing* is stamped (so the next configured run sends).
+
+/** Minimum days between two digests for one user. */
+export const DIGEST_MIN_INTERVAL_DAYS = 6;
+/** How far back the digest looks for unsent alerts. */
+export const DIGEST_LOOKBACK_DAYS = 7;
+
+/** `true` when `now` is a Monday in UTC — the single allowed digest weekday. */
+export function isMondayUtc(now: Date): boolean {
+  return now.getUTCDay() === 1;
+}
+
+/**
+ * Cadence gate: a digest is due when the user has never had one, or the last
+ * one is at least `minDays` days old. An unparseable timestamp is treated as
+ * "never" so a corrupt value can't wedge a user out of the digest forever.
+ */
+export function isDigestDue(
+  lastSentAt: string | null | undefined,
+  now: Date,
+  minDays: number = DIGEST_MIN_INTERVAL_DAYS,
+): boolean {
+  if (!lastSentAt) return true;
+  const last = new Date(lastSentAt).getTime();
+  if (Number.isNaN(last)) return true;
+  return now.getTime() - last >= minDays * 24 * 60 * 60 * 1000;
+}
+
+/**
+ * Email-channel gate. `notification_prefs.watchlist_email === false` is the
+ * opt-out (the one-click unsubscribe route writes exactly this); any other
+ * value — `true`, a missing key, or a missing prefs blob — counts as enabled
+ * so the digest is on by default and only the explicit toggle/unsubscribe
+ * turns it off.
+ */
+export function isDigestEnabled(prefs: unknown): boolean {
+  if (!prefs || typeof prefs !== "object") return true;
+  const p = prefs as Record<string, unknown>;
+  if (!("watchlist_email" in p)) return true;
+  return p.watchlist_email !== false;
+}
+
+/** `alert_events` row shape read by the digest pass. */
+export interface PendingAlertRow {
+  id: string;
+  user_id: string;
+  signal_id: string;
+  entity_id: string | null;
+  signal_type: string;
+  score: number;
+  created_at: string | null;
+}
+
+export interface DigestPrefRow {
+  user_id: string;
+  notification_prefs: unknown;
+  last_digest_sent_at: string | null;
+  digest_unsub_token: string | null;
+}
+
+export type WeeklyDigestSkip = "not_monday" | "unconfigured" | "no_client" | null;
+
+export interface WeeklyDigestResult {
+  /** Why the pass did nothing, or `null` when it actually ran. */
+  skipped: WeeklyDigestSkip;
+  /** Users with an unsent alert considered in this pass. */
+  usersConsidered: number;
+  /** Digests handed to Resend successfully. */
+  sent: number;
+  /** Per-user send failures (left unsent for the next Monday). */
+  failed: number;
+  /** `alert_events` rows stamped `email_sent_at` in this pass. */
+  alertsEmailed: number;
+}
+
+export interface SendWeeklyDigestsOptions {
+  /** Service-role client; built from env when omitted. */
+  supabase?: AlertsClient;
+  /** Clock injection for tests (defaults to `new Date()`). */
+  now?: Date;
+  /** Transport injection for tests (defaults to the real Resend sender). */
+  sendEmailImpl?: typeof sendEmail;
+  /** Override the CAN-SPAM footer line (defaults to `DIGEST_FOOTER_ADDRESS`). */
+  footerAddress?: string;
+  /** Override the public origin used for links (defaults to `NEXT_PUBLIC_SITE_URL`). */
+  siteUrl?: string;
+}
+
+/**
+ * Build the digest's `DigestAlert[]` for one user from raw rows, resolving the
+ * entity display name and the article URL. Pure so it can be unit-tested.
+ */
+export function buildDigestAlerts(
+  alerts: PendingAlertRow[],
+  entities: { id: string; canonical_name: string }[],
+  signals: { id: string; summary: string; content_id: string }[],
+  content: { id: string; url: string }[],
+): DigestAlert[] {
+  const entityName = new Map(entities.map((e) => [e.id, e.canonical_name]));
+  const signalById = new Map(signals.map((s) => [s.id, s]));
+  const urlByContent = new Map(content.map((c) => [c.id, c.url]));
+
+  const out: DigestAlert[] = [];
+  for (const a of alerts) {
+    const signal = signalById.get(a.signal_id);
+    out.push({
+      entityName: (a.entity_id && entityName.get(a.entity_id)) || "Unknown company",
+      signalType: a.signal_type,
+      summary: signal?.summary ?? "Signal details unavailable",
+      score: typeof a.score === "number" ? a.score : 0,
+      url: (signal && urlByContent.get(signal.content_id)) || "",
+      createdAt: a.created_at,
+    });
+  }
+  return out;
+}
+
+/**
+ * Weekly digest send pass. See the block comment above for the gates.
+ *
+ * Degrades gracefully: returns `{ skipped: "unconfigured" }` (after a log line)
+ * when `RESEND_API_KEY`/`DIGEST_FROM` are unset and `{ skipped: "no_client" }`
+ * when Supabase service credentials are missing. Neither stamps any state, so
+ * a later configured run sends the same alerts.
+ */
+export async function sendWeeklyDigests(
+  opts: SendWeeklyDigestsOptions = {},
+): Promise<WeeklyDigestResult> {
+  const empty: WeeklyDigestResult = {
+    skipped: null,
+    usersConsidered: 0,
+    sent: 0,
+    failed: 0,
+    alertsEmailed: 0,
+  };
+
+  const now = opts.now ?? new Date();
+
+  // Gate 0: Monday UTC only.
+  if (!isMondayUtc(now)) return { ...empty, skipped: "not_monday" };
+
+  // Gate 1: Resend must be configured (unless the transport is injected).
+  if (!opts.sendEmailImpl && getEmailConfig() === null) {
+    console.warn("[alerts] digest skipped: RESEND_API_KEY/DIGEST_FROM unset");
+    return { ...empty, skipped: "unconfigured" };
+  }
+
+  let supabase = opts.supabase;
+  if (!supabase) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) {
+      console.warn("[alerts] digest skipped: Supabase service credentials unset");
+      return { ...empty, skipped: "no_client" };
+    }
+    supabase = createClient<Database>(url, key, { auth: { persistSession: false } });
+  }
+
+  const nowIso = now.toISOString();
+  const lookbackIso = new Date(
+    now.getTime() - DIGEST_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  // 1. Unsent alerts from the last 7 days.
+  const { data: pendingData, error: pendingError } = await supabase
+    .from("alert_events")
+    .select("id, user_id, signal_id, entity_id, signal_type, score, created_at")
+    .is("email_sent_at", null)
+    .gte("created_at", lookbackIso)
+    .order("created_at", { ascending: true });
+
+  if (pendingError) {
+    console.error("[alerts] digest pending-alert lookup failed:", pendingError.message);
+    return empty;
+  }
+  const pending = (pendingData ?? []) as PendingAlertRow[];
+  if (pending.length === 0) return empty;
+
+  const byUser = new Map<string, PendingAlertRow[]>();
+  for (const row of pending) {
+    const list = byUser.get(row.user_id);
+    if (list) list.push(row);
+    else byUser.set(row.user_id, [row]);
+  }
+  const userIds = Array.from(byUser.keys());
+
+  // 2. Per-user digest preferences (cadence + token + channel toggle).
+  const { data: prefData, error: prefError } = await supabase
+    .from("user_preferences")
+    .select("user_id, notification_prefs, last_digest_sent_at, digest_unsub_token")
+    .in("user_id", userIds);
+
+  if (prefError) {
+    console.error("[alerts] digest user_preferences lookup failed:", prefError.message);
+    return empty;
+  }
+  const prefByUser = new Map(
+    ((prefData ?? []) as DigestPrefRow[]).map((p) => [p.user_id, p]),
+  );
+
+  // 3. Bulk-resolve display data for everything the digest will render.
+  const alertRows = pending;
+  const entityIds = Array.from(
+    new Set(alertRows.map((a) => a.entity_id).filter((id): id is string => !!id)),
+  );
+  const signalIds = Array.from(new Set(alertRows.map((a) => a.signal_id)));
+
+  const [entityRes, signalRes] = await Promise.all([
+    entityIds.length
+      ? supabase.from("entities").select("id, canonical_name").in("id", entityIds)
+      : Promise.resolve({ data: [], error: null }),
+    signalIds.length
+      ? supabase.from("signals").select("id, summary, content_id").in("id", signalIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const entities = (entityRes.data ?? []) as { id: string; canonical_name: string }[];
+  const signals = (signalRes.data ?? []) as {
+    id: string;
+    summary: string;
+    content_id: string;
+  }[];
+
+  const contentIds = Array.from(new Set(signals.map((s) => s.content_id)));
+  const { data: contentData } = contentIds.length
+    ? await supabase.from("content").select("id, url").in("id", contentIds)
+    : { data: [] as { id: string; url: string }[] };
+  const content = (contentData ?? []) as { id: string; url: string }[];
+
+  const send = opts.sendEmailImpl ?? sendEmail;
+  const footerAddress = opts.footerAddress ?? getDigestFooterAddress();
+  const siteUrl = opts.siteUrl ?? getSiteUrl();
+
+  const result: WeeklyDigestResult = { ...empty };
+  let newAlertsEmailed = 0;
+
+  for (const userId of userIds) {
+    const alerts = byUser.get(userId) ?? [];
+    if (alerts.length === 0) continue;
+    result.usersConsidered += 1;
+
+    const pref = prefByUser.get(userId);
+    // No prefs row → can't record cadence or the unsub token; skip rather than
+    // risk mailing the same person on every cron tick.
+    if (!pref) continue;
+    // Channel opt-out (one-click unsubscribe writes watchlist_email=false).
+    if (!isDigestEnabled(pref.notification_prefs)) continue;
+    // Cadence: at most one digest every DIGEST_MIN_INTERVAL_DAYS days.
+    if (!isDigestDue(pref.last_digest_sent_at, now)) continue;
+
+    // Recipient address comes from auth (service role only).
+    let email: string | undefined;
+    try {
+      const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+      if (userError) {
+        console.error(`[alerts] digest user lookup failed for ${userId}:`, userError.message);
+      }
+      email = userData?.user?.email ?? undefined;
+    } catch (err) {
+      console.error("[alerts] digest user lookup threw:", err);
+    }
+    if (!email) {
+      console.warn(`[alerts] digest skipped for ${userId}: no email address`);
+      continue;
+    }
+
+    // The W9 route looks the token up on `user_preferences`, so persist a fresh
+    // one before linking to it. A previously stored token is reused as-is.
+    let token = pref.digest_unsub_token;
+    if (!token) {
+      token = generateDigestUnsubToken(userId);
+      const { error: tokenError } = await supabase
+        .from("user_preferences")
+        .update({ digest_unsub_token: token })
+        .eq("user_id", userId);
+      if (tokenError) {
+        console.error(
+          `[alerts] digest token persist failed for ${userId}:`,
+          tokenError.message,
+        );
+      }
+    }
+
+    const unsubscribeUrl = buildDigestUnsubUrl(token, siteUrl);
+    const digestAlerts = buildDigestAlerts(alerts, entities, signals, content);
+    const renderInput = { alerts: digestAlerts, unsubscribeUrl, footerAddress, siteUrl };
+
+    const sendResult = await send({
+      to: email,
+      subject: renderDigestSubject(digestAlerts.length),
+      html: renderDigestHtml(renderInput),
+      text: renderDigestText(renderInput),
+      headers: buildDigestUnsubHeaders(token, siteUrl),
+    });
+
+    if (!sendResult.ok) {
+      result.failed += 1;
+      continue;
+    }
+
+    // Stamp the ledger only after the send succeeded (idempotency on retries).
+    const ids = alerts.map((a) => a.id);
+    const { error: markError } = await supabase
+      .from("alert_events")
+      .update({ email_sent_at: nowIso })
+      .in("id", ids);
+    if (markError) {
+      console.error(
+        `[alerts] digest email_sent_at stamp failed for ${userId}:`,
+        markError.message,
+      );
+      result.failed += 1;
+      continue;
+    }
+
+    const { error: cadenceError } = await supabase
+      .from("user_preferences")
+      .update({ last_digest_sent_at: nowIso })
+      .eq("user_id", userId);
+    if (cadenceError) {
+      console.error(
+        `[alerts] digest last_digest_sent_at update failed for ${userId}:`,
+        cadenceError.message,
+      );
+    }
+
+    result.sent += 1;
+    newAlertsEmailed += ids.length;
+  }
+
+  result.alertsEmailed = newAlertsEmailed;
+
+  if (result.sent > 0 || result.failed > 0) {
+    console.log(
+      `[alerts] weekly digest pass: ${result.sent} sent, ${result.failed} failed, ${result.alertsEmailed} alerts emailed`,
+    );
+  }
+
+  return result;
 }
