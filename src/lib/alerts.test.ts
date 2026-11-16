@@ -32,6 +32,9 @@ vi.mock('./email', () => ({
   buildDigestUnsubHeaders: vi.fn(),
   getDigestFooterAddress: vi.fn(),
   getSiteUrl: vi.fn(),
+  renderDigestSubject: vi.fn(() => 'subject'),
+  renderDigestText: vi.fn(() => 'text body'),
+  renderDigestHtml: vi.fn(() => '<html>body</html>'),
 }));
 
 describe('buildAlertCandidates', () => {
@@ -373,5 +376,157 @@ describe('fanOutAlerts', () => {
     expect(errSpy).toHaveBeenCalled();
 
     errSpy.mockRestore();
+  });
+});
+
+/**
+ * Regression for the MEDIUM finding "token persist failure swallowed" on PR #133:
+ * if generating and persisting a fresh `digest_unsub_token` fails, the email's
+ * one-click unsubscribe link would 404 (the W9 route reads the token back from
+ * `user_preferences`). The send must be aborted for that user instead.
+ */
+describe('sendWeeklyDigests — token persist failure', () => {
+  const pendingAlert = {
+    id: 'ev1',
+    user_id: 'user-token-fail',
+    signal_id: 'sig1',
+    entity_id: 'ent1',
+    signal_type: 'earnings',
+    score: 0.9,
+    created_at: '2026-11-15T00:00:00Z',
+  };
+  const prefRow = {
+    user_id: 'user-token-fail',
+    notification_prefs: {},
+    last_digest_sent_at: null,
+    digest_unsub_token: null, // forces token generation + persist
+  };
+
+  function buildMockSupabase(tokenPersistError: boolean): {
+    client: { from: ReturnType<typeof vi.fn>; auth: { admin: { getUserById: ReturnType<typeof vi.fn> } } };
+    updateCalls: { table: string; payload: Record<string, unknown> }[];
+  } {
+    const updateCalls: { table: string; payload: Record<string, unknown> }[] = [];
+    const selectResults: Record<string, { data: unknown; error: null }> = {
+      alert_events: { data: [pendingAlert], error: null },
+      user_preferences: { data: [prefRow], error: null },
+      entities: { data: [{ id: 'ent1', canonical_name: 'Acme Corp' }], error: null },
+      signals: { data: [{ id: 'sig1', summary: 'Q3 beat', content_id: 'cont1' }], error: null },
+      content: { data: [{ id: 'cont1', url: 'https://example.com/a' }], error: null },
+    };
+
+    const client = {
+      from: vi.fn((table: string) => {
+        // Thenable query stub: chainable methods return itself; awaiting it
+        // resolves either the recorded select result or the update result.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const q: any = { _update: null as Record<string, unknown> | null };
+        for (const m of ['select', 'eq', 'in', 'is', 'gte', 'not', 'order', 'limit']) {
+          q[m] = vi.fn(() => q);
+        }
+        q.update = vi.fn((payload: Record<string, unknown>) => {
+          q._update = payload;
+          updateCalls.push({ table, payload });
+          return q;
+        });
+        q.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));
+        q.then = (resolve: (value: unknown) => void) => {
+          if (q._update) {
+            if (tokenPersistError && 'digest_unsub_token' in q._update) {
+              resolve({ data: null, error: { message: 'simulated persist failure' } });
+            } else {
+              resolve({ data: null, error: null });
+            }
+          } else {
+            resolve(selectResults[table] ?? { data: [], error: null });
+          }
+        };
+        return q;
+      }),
+      auth: {
+        admin: {
+          getUserById: vi.fn(() =>
+            Promise.resolve({ data: { user: { email: 'user@example.com' } }, error: null }),
+          ),
+        },
+      },
+    };
+    return { client, updateCalls };
+  }
+
+  const mockGenerateDigestUnsubToken = vi.mocked(generateDigestUnsubToken);
+  const mockBuildDigestUnsubUrl = vi.mocked(buildDigestUnsubUrl);
+  const mockBuildDigestUnsubHeaders = vi.mocked(buildDigestUnsubHeaders);
+  const mockGetDigestFooterAddress = vi.mocked(getDigestFooterAddress);
+  const mockGetSiteUrl = vi.mocked(getSiteUrl);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGenerateDigestUnsubToken.mockReturnValue('a'.repeat(64));
+    mockBuildDigestUnsubUrl.mockImplementation(
+      (token, baseUrl) => `${baseUrl ?? 'https://x'}/unsubscribe?token=${token}`,
+    );
+    mockBuildDigestUnsubHeaders.mockImplementation((token, baseUrl) => ({
+      'List-Unsubscribe': `<${baseUrl ?? 'https://x'}/unsubscribe?token=${token}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    }));
+    mockGetDigestFooterAddress.mockReturnValue('123 Main St');
+    mockGetSiteUrl.mockReturnValue('https://terminal.always-scheming.com');
+  });
+
+  it('fails the send (no email, no stamps) when the token cannot be persisted', async () => {
+    const { client, updateCalls } = buildMockSupabase(true);
+    const send = vi.fn(() => Promise.resolve({ ok: true, id: 'msg_1' }));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: client as never,
+      sendEmailImpl: send as never,
+      now: new Date('2026-11-16T12:00:00Z'), // Monday UTC
+    });
+
+    // AC1: counted as a failure, not a send.
+    expect(result.usersConsidered).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.sent).toBe(0);
+    expect(result.alertsEmailed).toBe(0);
+    expect(send).not.toHaveBeenCalled();
+
+    // The token persist was attempted, but neither the alert ledger nor the
+    // cadence column was stamped — so the user is retried next Monday.
+    const tokenPersists = updateCalls.filter((u) => 'digest_unsub_token' in u.payload);
+    expect(tokenPersists).toHaveLength(1);
+    const stamped = updateCalls.filter(
+      (u) => 'email_sent_at' in u.payload || 'last_digest_sent_at' in u.payload,
+    );
+    expect(stamped).toEqual([]);
+
+    // AC2: the error is logged with the user id, never the email address.
+    const logged = errorSpy.mock.calls.flat().join(' ');
+    expect(logged).toContain('user-token-fail');
+    expect(logged).not.toContain('user@example.com');
+
+    errorSpy.mockRestore();
+  });
+
+  it('control: sends and stamps when the token persist succeeds', async () => {
+    const { client, updateCalls } = buildMockSupabase(false);
+    const send = vi.fn(() => Promise.resolve({ ok: true, id: 'msg_1' }));
+
+    const result = await sendWeeklyDigests({
+      supabase: client as never,
+      sendEmailImpl: send as never,
+      now: new Date('2026-11-16T12:00:00Z'),
+    });
+
+    expect(result.failed).toBe(0);
+    expect(result.sent).toBe(1);
+    expect(result.alertsEmailed).toBe(1);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    const stamped = updateCalls.filter(
+      (u) => 'email_sent_at' in u.payload || 'last_digest_sent_at' in u.payload,
+    );
+    expect(stamped).toHaveLength(2);
   });
 });

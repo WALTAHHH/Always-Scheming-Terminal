@@ -581,10 +581,17 @@ export async function sendWeeklyDigests(
         .update({ digest_unsub_token: token })
         .eq("user_id", userId);
       if (tokenError) {
+        // The unsubscribe link would point at a token that was never stored
+        // (the W9 route looks it up on `user_preferences`), so the email's
+        // one-click unsubscribe would 404 — a CAN-SPAM violation. Fail this
+        // user's send instead of mailing a broken link; their alerts stay
+        // pending and they are retried on the next digest pass.
         console.error(
           `[alerts] digest token persist failed for ${userId}:`,
           tokenError.message,
         );
+        result.failed += 1;
+        continue;
       }
     }
 
