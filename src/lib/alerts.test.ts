@@ -25,9 +25,6 @@ vi.mock('./email', () => ({
   getSiteUrl: vi.fn(),
 }));
 
-  type ContentTagRow,
-  type WatchlistRow,
-  type PrefRow,
 } from './alerts';
 
 describe('buildAlertCandidates', () => {
