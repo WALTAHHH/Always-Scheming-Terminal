@@ -236,6 +236,38 @@ function humanSignalType(t: string): string {
   return t.replace(/_/g, " ");
 }
 
+/** Schemes allowed in outbound article links. Everything else is dropped. */
+const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:"]);
+
+/**
+ * Return `url` only when it is an absolute `http:`/`https:` URL, else `null`.
+ *
+ * Article URLs come from upstream scrapers, so a `javascript:`, `data:` or
+ * `vbscript:` value must never reach an `href`. Notes on the parsing order:
+ *
+ *  - Control characters are stripped and surrounding whitespace trimmed first.
+ *    Browsers ignore embedded tabs/newlines when resolving a scheme, so
+ *    `java\tscript:alert(1)` would otherwise bypass a naive check.
+ *  - A scheme prefix is required: relative paths and protocol-relative
+ *    (`//evil.example`) links are not outbound article links and are rejected.
+ *  - `new URL` normalises the scheme to lowercase, so `HTTPS://` still passes.
+ *
+ * Callers render rejected URLs as plain text instead of a link (see
+ * {@link renderDigestHtml} / {@link renderDigestText}).
+ */
+export function safeDigestUrl(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  const cleaned = url.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  if (cleaned.length === 0) return null;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(cleaned)) return null;
+  try {
+    const parsed = new URL(cleaned);
+    return ALLOWED_LINK_PROTOCOLS.has(parsed.protocol) ? cleaned : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Group alerts by entity name, entities sorted alphabetically and alerts
  * newest-first inside each group. Pure — this is the "grouped by entity" shape
@@ -278,7 +310,10 @@ export function renderDigestText(input: DigestRenderInput): string {
       out.push(
         `- [${humanSignalType(a.signalType)}] ${a.summary} (score ${a.score.toFixed(2)})`,
       );
-      out.push(`  ${a.url}`);
+      // Only absolute http(s) URLs are printed; a disallowed scheme is omitted
+      // entirely while the rest of the digest still goes out.
+      const link = safeDigestUrl(a.url);
+      if (link) out.push(`  ${link}`);
     }
     out.push("");
   }
@@ -301,13 +336,19 @@ export function renderDigestHtml(input: DigestRenderInput): string {
         .map((a) => {
           const type = escapeHtml(humanSignalType(a.signalType));
           const summary = escapeHtml(a.summary);
-          const link = escapeHtml(a.url);
+          // Reject non-http(s) schemes before they reach an href; a rejected
+          // article degrades to plain text with an "invalid link" note.
+          const safeUrl = safeDigestUrl(a.url);
+          const title = safeUrl
+            ? `<a href="${escapeHtml(safeUrl)}" style="color:#e7e9ee;text-decoration:none;font-size:15px;line-height:1.45;">${summary}</a>`
+            : `<span style="color:#e7e9ee;font-size:15px;line-height:1.45;">${summary}</span>
+      <span style="color:#6b7280;font-size:12px;"> (link unavailable)</span>`;
           return `<tr>
   <td style="padding:10px 0;border-bottom:1px solid #232831;">
     <div style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#7cc4ff;margin-bottom:4px;">
       ${type} · score ${a.score.toFixed(2)}
     </div>
-    <a href="${link}" style="color:#e7e9ee;text-decoration:none;font-size:15px;line-height:1.45;">${summary}</a>
+    ${title}
   </td>
 </tr>`;
         })
