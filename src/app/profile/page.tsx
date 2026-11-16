@@ -35,6 +35,14 @@ export default function ProfilePage() {
   const [interestInput, setInterestInput] = useState("");
   const [availableThemes, setAvailableThemes] = useState<string[]>([]);
 
+  // Segment save state (issue #112): explicit Save button + dirty tracking.
+  // The checkbox list autosaved silently before, so users had no visible
+  // trigger or confirmation that their selection was persisted.
+  const [savedSegments, setSavedSegments] = useState<string[]>([]);
+  const [segmentStatus, setSegmentStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+
   useEffect(() => {
     const fetchData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -55,6 +63,7 @@ export default function ProfilePage() {
           setDisplayName(data.profile.display_name || "");
           setInterests(data.preferences.interests || []);
           setSegments(data.preferences.segments || []);
+          setSavedSegments(data.preferences.segments || []);
         }
 
         // Fetch available themes
@@ -72,6 +81,13 @@ export default function ProfilePage() {
 
     fetchData();
   }, [router, supabase]);
+
+  // Auto-dismiss the "Saved" confirmation after a short delay.
+  useEffect(() => {
+    if (segmentStatus !== "saved") return;
+    const timer = setTimeout(() => setSegmentStatus("idle"), 2500);
+    return () => clearTimeout(timer);
+  }, [segmentStatus]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -135,21 +151,41 @@ export default function ProfilePage() {
     }
   };
 
-  const handleToggleSegment = async (segmentName: string) => {
-    const newSegments = segments.includes(segmentName)
-      ? segments.filter((s) => s !== segmentName)
-      : [...segments, segmentName];
-    
-    setSegments(newSegments);
+  // Toggle a segment locally only — the change is persisted when the user
+  // clicks "Save preferences" (issue #112). Previously this autosaved with no
+  // visible trigger or feedback.
+  const handleToggleSegment = (segmentName: string) => {
+    setSegments((prev) =>
+      prev.includes(segmentName)
+        ? prev.filter((s) => s !== segmentName)
+        : [...prev, segmentName]
+    );
+    setSegmentStatus("idle");
+  };
 
+  // True when the local segment selection differs from what is persisted.
+  const segmentsDirty =
+    segments.length !== savedSegments.length ||
+    segments.some((s) => !savedSegments.includes(s));
+
+  const handleSaveSegments = async () => {
+    setSegmentStatus("saving");
     try {
-      await fetch("/api/user/preferences", {
+      const response = await fetch("/api/user/preferences", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ segments: newSegments }),
+        body: JSON.stringify({ segments }),
       });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save segments (${response.status})`);
+      }
+
+      setSavedSegments(segments);
+      setSegmentStatus("saved");
     } catch (err) {
       console.error("Failed to save segments", err);
+      setSegmentStatus("error");
     }
   };
 
@@ -191,7 +227,7 @@ export default function ProfilePage() {
               </div>
               <div className="flex-1">
                 <div className="text-sm text-ast-muted mb-1">Avatar</div>
-                <div className="text-xs text-ast-muted">Initials only for now</div>
+                <div className="text-xs text-ast-muted">Initials from your name or email</div>
               </div>
             </div>
 
@@ -216,6 +252,11 @@ export default function ProfilePage() {
                     {saving ? "Saving..." : "Save"}
                   </button>
                 </div>
+                {displayName === email.split('@')[0] && (
+                  <p className="text-xs text-ast-muted mt-2">
+                    Auto-set from your email — feel free to update
+                  </p>
+                )}
               </div>
 
               <div>
@@ -308,6 +349,33 @@ export default function ProfilePage() {
                   </div>
                 </label>
               ))}
+            </div>
+
+            {/* Explicit save trigger for segments (issue #112) */}
+            <div className="sticky bottom-4 z-10 mt-4 pt-4 border-t border-ast-border flex items-center gap-3 bg-ast-surface/95 backdrop-blur-sm rounded-b">
+              <button
+                onClick={handleSaveSegments}
+                disabled={!segmentsDirty || segmentStatus === "saving"}
+                className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {segmentStatus === "saving" ? "Saving..." : "Save preferences"}
+              </button>
+
+              {segmentStatus === "saved" && (
+                <span className="text-sm text-ast-accent" role="status">
+                  ✓ Saved
+                </span>
+              )}
+              {segmentStatus === "error" && (
+                <span className="text-sm text-red-400" role="alert">
+                  Failed to save — try again
+                </span>
+              )}
+              {segmentStatus === "idle" && segmentsDirty && (
+                <span className="text-sm text-ast-muted">
+                  Unsaved changes
+                </span>
+              )}
             </div>
           </section>
 
