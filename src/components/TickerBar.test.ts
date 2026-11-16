@@ -57,4 +57,32 @@ describe('TickerBar race + marquee fix', () => {
       expect(source).toContain('openCompanyDrawer(entity.canonical_name)')
     })
   })
+
+  describe('marquee scroll speed', () => {
+    const css = readFileSync(path.resolve(__dirname, 'TickerBar.module.css'), 'utf-8')
+
+    it('declares the duration as a single named constant', () => {
+      // one custom property is the sole source of truth for the speed
+      const declarations = css.match(/--ticker-scroll-duration\s*:/g) ?? []
+      expect(declarations).toHaveLength(1)
+      expect(css).toMatch(/--ticker-scroll-duration:\s*[\d.]+s/)
+    })
+
+    it('drives the animation from that constant (no hard-coded duration)', () => {
+      expect(css).toMatch(/animation:\s*ticker-scroll\s+var\(--ticker-scroll-duration\)\s+linear\s+infinite/)
+      // the old hard-coded 40s literal must be gone
+      expect(css).not.toMatch(/animation:\s*ticker-scroll\s+\d+s/)
+    })
+
+    it('is roughly 40-50% slower than the original 40s loop', () => {
+      const match = css.match(/--ticker-scroll-duration:\s*([\d.]+)s/)
+      expect(match).not.toBeNull()
+      const durationSeconds = Number(match![1])
+      const ORIGINAL_DURATION_SECONDS = 40
+      // speed is inversely proportional to duration
+      const speedRatio = ORIGINAL_DURATION_SECONDS / durationSeconds
+      expect(speedRatio).toBeGreaterThanOrEqual(0.5) // >= 40% slower
+      expect(speedRatio).toBeLessThanOrEqual(0.6) // <= 40% slower
+    })
+  })
 })
