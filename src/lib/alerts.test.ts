@@ -13,6 +13,15 @@ import {
   type PrefRow,
   type AlertCandidate,
 } from './alerts';
+import {
+  getEmailConfig,
+  sendEmail,
+  generateDigestUnsubToken,
+  buildDigestUnsubUrl,
+  buildDigestUnsubHeaders,
+  getDigestFooterAddress,
+  getSiteUrl,
+} from './email';
 
 // Mock email module to isolate digest tests
 vi.mock('./email', () => ({
@@ -24,8 +33,6 @@ vi.mock('./email', () => ({
   getDigestFooterAddress: vi.fn(),
   getSiteUrl: vi.fn(),
 }));
-
-} from './alerts';
 
 describe('buildAlertCandidates', () => {
   const signal1: SignalRow = {
@@ -208,10 +215,127 @@ describe('fanOutAlerts', () => {
   });
 
   describe('sendWeeklyDigests', () => {
-    // We'll add tests later
-    it('placeholder', () => {
-      expect(true).toBe(true);
+    const mockSupabase = {
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      not: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn(),
+      auth: {
+        admin: {
+          getUserById: vi.fn(),
+        },
+      },
+    };
+
+    // Mock email functions
+    const mockGetEmailConfig = vi.mocked(getEmailConfig);
+    const mockSendEmail = vi.mocked(sendEmail);
+    const mockGenerateDigestUnsubToken = vi.mocked(generateDigestUnsubToken);
+    const mockBuildDigestUnsubUrl = vi.mocked(buildDigestUnsubUrl);
+    const mockBuildDigestUnsubHeaders = vi.mocked(buildDigestUnsubHeaders);
+    const mockGetDigestFooterAddress = vi.mocked(getDigestFooterAddress);
+    const mockGetSiteUrl = vi.mocked(getSiteUrl);
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockSupabase.from.mockClear();
+      mockSupabase.select.mockClear();
+      mockSupabase.eq.mockClear();
+      mockSupabase.in.mockClear();
+      mockSupabase.order.mockClear();
+      mockSupabase.is.mockClear();
+      mockSupabase.gte.mockClear();
+      mockSupabase.not.mockClear();
+      mockSupabase.maybeSingle.mockClear();
+      mockSupabase.auth.admin.getUserById.mockClear();
+
+      // Default mocks
+      mockGetEmailConfig.mockReturnValue({ apiKey: 're_key', from: 'alerts@example.com' });
+      mockSendEmail.mockResolvedValue({ ok: true, id: 'msg_123' });
+      mockGenerateDigestUnsubToken.mockReturnValue('a'.repeat(64));
+      mockBuildDigestUnsubUrl.mockImplementation((token, baseUrl) => `${baseUrl || 'https://terminal.always-scheming.com'}/unsubscribe?token=${token}`);
+      mockBuildDigestUnsubHeaders.mockImplementation((token, baseUrl) => ({
+        'List-Unsubscribe': `<${(baseUrl || 'https://terminal.always-scheming.com')}/unsubscribe?token=${token}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      }));
+      mockGetDigestFooterAddress.mockReturnValue('123 Main St');
+      mockGetSiteUrl.mockReturnValue('https://terminal.always-scheming.com');
+    });
+
+    it('skips when not Monday UTC', async () => {
+      const result = await sendWeeklyDigests({
+        now: new Date('2026-11-17T12:00:00Z'), // Tuesday
+      });
+      expect(result.skipped).toBe('not_monday');
+      expect(result.sent).toBe(0);
+    });
+
+    it('skips when Resend not configured', async () => {
+      mockGetEmailConfig.mockReturnValue(null);
+      const result = await sendWeeklyDigests({
+        now: new Date('2026-11-16T12:00:00Z'), // Monday
+      });
+      expect(result.skipped).toBe('unconfigured');
+      expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    it('skips when Supabase service role missing', async () => {
+      const originalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      const result = await sendWeeklyDigests({
+        now: new Date('2026-11-16T12:00:00Z'),
+      });
+      expect(result.skipped).toBe('no_client');
+      if (originalUrl) process.env.NEXT_PUBLIC_SUPABASE_URL = originalUrl;
+      if (originalKey) process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+    });
+
+    it('returns empty when no pending alerts', async () => {
+      // Mock supabase queries to return empty arrays
+      mockSupabase.maybeSingle.mockResolvedValue({ data: [], error: null });
+      const result = await sendWeeklyDigests({
+        supabase: mockSupabase,
+        now: new Date('2026-11-16T12:00:00Z'),
+      });
+      expect(result.skipped).toBe(null);
+      expect(result.usersConsidered).toBe(0);
+      expect(result.sent).toBe(0);
+      expect(result.alertsEmailed).toBe(0);
+    });
+
+
+
+    it('is idempotent: second run with same pending alerts does not send duplicate', async () => {
+      // Simulate that email_sent_at has been stamped (pending query returns empty)
+      const now = new Date('2026-11-16T12:00:00Z');
+      mockSupabase.from.mockImplementation((table) => ({
+        then: (resolve) => resolve({ data: [], error: null }),
+        select: function() { return this; },
+        eq: function() { return this; },
+        in: function() { return this; },
+        order: function() { return this; },
+        is: function() { return this; },
+        gte: function() { return this; },
+        not: function() { return this; },
+        maybeSingle: function() { return this; },
+      }));
+      const result = await sendWeeklyDigests({
+        supabase: mockSupabase,
+        now,
+      });
+      expect(result.skipped).toBe(null);
+      expect(result.sent).toBe(0);
+      expect(result.alertsEmailed).toBe(0);
+      expect(mockSendEmail).not.toHaveBeenCalled();
     });
   });
+
 
 });
