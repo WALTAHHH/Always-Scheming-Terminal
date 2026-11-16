@@ -6,8 +6,9 @@ import type { FeedItem } from "@/lib/database.types";
 import type { FilterState } from "./FilterBar";
 import { FilterBar, EMPTY_FILTERS } from "./FilterBar";
 import { ClusterRow } from "./ClusterRow";
-import { clusterItems, type StoryCluster } from "@/lib/cluster";
+import { clusterItems } from "@/lib/cluster";
 import { scoreCluster } from "@/lib/importance";
+import { groupByDate } from "@/lib/feed-grouping";
 
 // Parse filters from URL search params
 function parseFiltersFromParams(params: URLSearchParams): FilterState {
@@ -124,66 +125,6 @@ export function matchesFilter(item: FeedItem, filters: FilterState): boolean {
   return filters.mode === "and"
     ? checks.every(Boolean)
     : checks.some(Boolean);
-}
-
-/**
- * Group clusters by date label.
- */
-function groupByDate(
-  clusters: StoryCluster[]
-): { label: string; clusters: StoryCluster[] }[] {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const groups: Map<string, StoryCluster[]> = new Map();
-
-  for (const cluster of clusters) {
-    const pubDate = cluster.lead.published_at
-      ? new Date(cluster.lead.published_at)
-      : null;
-    let label: string;
-
-    if (!pubDate) {
-      label = "Unknown Date";
-    } else {
-      const itemDate = new Date(
-        pubDate.getFullYear(),
-        pubDate.getMonth(),
-        pubDate.getDate()
-      );
-
-      if (itemDate.getTime() === today.getTime()) {
-        label = "Today";
-      } else if (itemDate.getTime() === yesterday.getTime()) {
-        label = "Yesterday";
-      } else if (itemDate.getFullYear() === now.getFullYear()) {
-        label = pubDate.toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "short",
-          day: "numeric",
-        });
-      } else {
-        label = pubDate.toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        });
-      }
-    }
-
-    if (!groups.has(label)) {
-      groups.set(label, []);
-    }
-    groups.get(label)!.push(cluster);
-  }
-
-  return Array.from(groups.entries()).map(([label, clusters]) => ({
-    label,
-    clusters,
-  }));
 }
 
 function DateGroupHeader({
