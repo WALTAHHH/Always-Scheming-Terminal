@@ -538,6 +538,15 @@ export async function sendWeeklyDigests(
   const footerAddress = opts.footerAddress ?? getDigestFooterAddress();
   const siteUrl = opts.siteUrl ?? getSiteUrl();
 
+  // CAN-SPAM (15 U.S.C. §7704) requires a valid physical postal address in every
+  // commercial email. When `DIGEST_FOOTER_ADDRESS` is unset the digest renders
+  // without that footer line — a compliance risk we surface loudly. Warn **once
+  // per run** (not once per recipient) the first time a digest is actually about
+  // to be sent, so the signal shows up in Vercel/console logs without flooding
+  // them for a large audience.
+  const footerAddressMissing = footerAddress.trim().length === 0;
+  let footerWarningLogged = false;
+
   const result: WeeklyDigestResult = { ...empty };
   let newAlertsEmailed = 0;
 
@@ -591,6 +600,15 @@ export async function sendWeeklyDigests(
     const unsubscribeUrl = buildDigestUnsubUrl(token, siteUrl);
     const digestAlerts = buildDigestAlerts(alerts, entities, signals, content);
     const renderInput = { alerts: digestAlerts, unsubscribeUrl, footerAddress, siteUrl };
+
+    // CAN-SPAM: warn once per run, on the first digest actually being sent
+    // without a physical mailing address configured.
+    if (footerAddressMissing && !footerWarningLogged) {
+      footerWarningLogged = true;
+      console.warn(
+        "[alerts] DIGEST_FOOTER_ADDRESS is unset — sending weekly digest without the CAN-SPAM physical mailing address footer",
+      );
+    }
 
     const sendResult = await send({
       to: email,
