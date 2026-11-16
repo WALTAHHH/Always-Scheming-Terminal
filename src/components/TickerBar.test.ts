@@ -58,3 +58,38 @@ describe('TickerBar race + marquee fix', () => {
     })
   })
 })
+
+// Hover styling parity with the rest of the site.
+// Dominant convention (surveyed across FeedRow/SignalPanel/FilterBar/Header):
+//   row hover -> bg tint `hover:bg-ast-mint/5` + `transition-colors`
+//   hovered text -> `group-hover:text-ast-accent`
+//   keyboard focus -> `focus:outline-none focus:ring-2 focus:ring-ast-accent(/50)`
+// All colours come from ast-* theme tokens so both themes are covered.
+describe('TickerBar hover styling parity', () => {
+  const source = readFileSync(path.resolve(__dirname, 'TickerBar.tsx'), 'utf-8')
+
+  it('uses the site row-hover bg tint token (hover:bg-ast-mint/5)', () => {
+    expect(source).toContain('hover:bg-ast-mint/5')
+    // the old, one-off hover:bg-ast-surface is gone
+    expect(source).not.toContain('hover:bg-ast-surface')
+  })
+
+  it('animates the hover state with transition-colors', () => {
+    expect(source).toMatch(/className="group[^"]*transition-colors[^"]*hover:bg-ast-mint\/5/)
+  })
+
+  it('highlights the ticker symbol on hover via group-hover:text-ast-accent', () => {
+    expect(source).toContain('group-hover:text-ast-accent')
+  })
+
+  it('makes items keyboard focusable as buttons (focus-visible parity)', () => {
+    expect(source).toMatch(/<button[\s\S]*?key=\{`\$\{stock\.ticker\}-/)
+    expect(source).toMatch(/type="button"[\s\S]*?onClick/)
+    expect(source).toMatch(/focus-visible:ring-2/)
+    expect(source).toMatch(/focus-visible:ring-ast-accent/)
+  })
+
+  it('keeps the pointer cursor on hoverable items', () => {
+    expect(source).toContain('cursor-pointer')
+  })
+})
