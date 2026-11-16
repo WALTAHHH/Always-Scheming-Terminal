@@ -32,6 +32,9 @@ vi.mock('./email', () => ({
   buildDigestUnsubHeaders: vi.fn(),
   getDigestFooterAddress: vi.fn(),
   getSiteUrl: vi.fn(),
+  renderDigestHtml: vi.fn(() => '<html></html>'),
+  renderDigestSubject: vi.fn((n: number) => `Weekly AST watchlist digest — ${n} updates`),
+  renderDigestText: vi.fn(() => 'text'),
 }));
 
 describe('buildAlertCandidates', () => {
@@ -334,6 +337,157 @@ describe('fanOutAlerts', () => {
       expect(result.sent).toBe(0);
       expect(result.alertsEmailed).toBe(0);
       expect(mockSendEmail).not.toHaveBeenCalled();
+    });
+
+    // Fetch-based Supabase stub good enough to drive a full digest send:
+    // pending alerts + prefs + entity/signal/content lookups + update writes.
+    function makeFullClient(
+      pending: Record<string, unknown>[],
+      prefs: Record<string, unknown>[],
+      emailByUser: Record<string, string>,
+    ) {
+      const entities = [{ id: 'ent1', canonical_name: 'Acme Corp' }];
+      const signals = [{ id: 'sig1', summary: 'Acme raises', content_id: 'c1' }];
+      const content = [{ id: 'c1', url: 'https://example.com/a' }];
+      const chain: any = {
+        _table: '',
+        _op: 'select',
+        from(t: string) {
+          chain._table = t;
+          chain._op = 'select';
+          return chain;
+        },
+        select() {
+          return chain;
+        },
+        update() {
+          chain._op = 'update';
+          return chain;
+        },
+        eq() {
+          return chain;
+        },
+        in() {
+          return chain;
+        },
+        is() {
+          return chain;
+        },
+        not() {
+          return chain;
+        },
+        gte() {
+          return chain;
+        },
+        order() {
+          return chain;
+        },
+        limit() {
+          return chain;
+        },
+        maybeSingle() {
+          return Promise.resolve({ data: null, error: null });
+        },
+        then(resolve: any) {
+          if (chain._op === 'update') return resolve({ data: null, error: null });
+          switch (chain._table) {
+            case 'alert_events':
+              return resolve({ data: pending, error: null });
+            case 'user_preferences':
+              return resolve({ data: prefs, error: null });
+            case 'entities':
+              return resolve({ data: entities, error: null });
+            case 'signals':
+              return resolve({ data: signals, error: null });
+            case 'content':
+              return resolve({ data: content, error: null });
+            default:
+              return resolve({ data: [], error: null });
+          }
+        },
+        auth: {
+          admin: {
+            getUserById: vi.fn((id: string) =>
+              Promise.resolve({ data: { user: { email: emailByUser[id] } }, error: null }),
+            ),
+          },
+        },
+      };
+      return chain;
+    }
+
+    const monday = new Date('2026-11-16T12:00:00Z');
+    const pendingOne = [
+      {
+        id: 'ae1',
+        user_id: 'u1',
+        signal_id: 'sig1',
+        entity_id: 'ent1',
+        signal_type: 'earnings',
+        score: 0.9,
+        created_at: '2026-11-15T00:00:00Z',
+      },
+    ];
+    const prefsOne = [
+      {
+        user_id: 'u1',
+        notification_prefs: {},
+        last_digest_sent_at: null,
+        digest_unsub_token: 'a'.repeat(64),
+      },
+    ];
+
+    it('warns once when DIGEST_FOOTER_ADDRESS is unset and a digest is about to be sent', async () => {
+      mockGetDigestFooterAddress.mockReturnValue('');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const client = makeFullClient(pendingOne, prefsOne, { u1: 'user@example.com' });
+
+      const result = await sendWeeklyDigests({ supabase: client, now: monday });
+
+      expect(result.sent).toBe(1);
+      const footerWarns = warnSpy.mock.calls.filter((c: unknown[]) =>
+        String(c[0]).includes('DIGEST_FOOTER_ADDRESS'),
+      );
+      expect(footerWarns).toHaveLength(1);
+      warnSpy.mockRestore();
+    });
+
+    it('warns only once per run, not once per recipient', async () => {
+      mockGetDigestFooterAddress.mockReturnValue('');
+      const pendingTwo = [
+        pendingOne[0],
+        { ...pendingOne[0], id: 'ae2', user_id: 'u2' },
+      ];
+      const prefsTwo = [prefsOne[0], { ...prefsOne[0], user_id: 'u2', digest_unsub_token: 'b'.repeat(64) }];
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const client = makeFullClient(pendingTwo, prefsTwo, {
+        u1: 'a@example.com',
+        u2: 'b@example.com',
+      });
+
+      const result = await sendWeeklyDigests({ supabase: client, now: monday });
+
+      expect(result.sent).toBe(2);
+      const footerWarns = warnSpy.mock.calls.filter((c: unknown[]) =>
+        String(c[0]).includes('DIGEST_FOOTER_ADDRESS'),
+      );
+      expect(footerWarns).toHaveLength(1);
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn when the footer address is configured', async () => {
+      mockGetDigestFooterAddress.mockReturnValue('123 Main St, Springfield');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const client = makeFullClient(pendingOne, prefsOne, { u1: 'user@example.com' });
+
+      const result = await sendWeeklyDigests({ supabase: client, now: monday });
+
+      expect(result.sent).toBe(1);
+      const footerWarns = warnSpy.mock.calls.filter((c: unknown[]) =>
+        String(c[0]).includes('DIGEST_FOOTER_ADDRESS'),
+      );
+      expect(footerWarns).toHaveLength(0);
+      warnSpy.mockRestore();
     });
   });
 
