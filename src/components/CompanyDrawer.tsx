@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { fetchEntityByAlias, type EntityData } from "@/lib/entity-client";
+import { fetchWatchedEntityIds, watchEntity, unwatchEntity } from "@/lib/watchlist";
+import { createAuthBrowserClient } from "@/lib/supabase";
 import type { StockResponse, StockQuote, StockHistory } from "@/app/api/stock/[ticker]/route";
 import type { FeedItem } from "@/lib/database.types";
 
@@ -405,13 +407,19 @@ interface DrawerContentProps {
   onClose: () => void;
 }
 
-function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps) {
+export function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps) {
   const [stockData, setStockData] = useState<StockResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [chartRange, setChartRange] = useState<ChartRange>("3mo");
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [pendingRange, setPendingRange] = useState<ChartRange | null>(null);
+
+  // Watch/unwatch state (spec §5.1). `isAuthed === null` means "unknown yet"
+  // (before the session check resolves); the star stays disabled until known.
+  const [isWatched, setIsWatched] = useState(false);
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+  const [watchPending, setWatchPending] = useState(false);
   
   // Cache previous history to prevent flicker during range changes
   const prevHistoryRef = useRef<StockHistory[]>([]);
@@ -484,6 +492,46 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [loading, onClose]);
 
+  // Watch state: check session + fetch watched ids once per drawer open (§5.1).
+  useEffect(() => {
+    const entityId = companyData?.id;
+    if (!entityId) return;
+    let active = true;
+    (async () => {
+      let authed = false;
+      try {
+        const supabase = createAuthBrowserClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        authed = !!session;
+      } catch {
+        authed = false;
+      }
+      if (!active) return;
+      setIsAuthed(authed);
+      if (!authed) {
+        setIsWatched(false);
+        return;
+      }
+      const ids = await fetchWatchedEntityIds();
+      if (active) setIsWatched(ids.has(entityId));
+    })().catch(() => {
+      if (active) { setIsAuthed(false); setIsWatched(false); }
+    });
+    return () => { active = false; };
+  }, [companyData?.id]);
+
+  // Optimistic toggle: flip the star immediately, revert if the request fails.
+  const handleToggleWatch = useCallback(async () => {
+    const entityId = companyData?.id;
+    if (!entityId || !isAuthed || watchPending) return;
+    const next = !isWatched;
+    setIsWatched(next);
+    setWatchPending(true);
+    const ok = next ? await watchEntity(entityId) : await unwatchEntity(entityId);
+    setWatchPending(false);
+    if (!ok) setIsWatched(!next);
+  }, [companyData?.id, isAuthed, isWatched, watchPending]);
+
   const handleRangeChange = (newRange: ChartRange) => {
     if (newRange === chartRange) return;
     setPendingRange(newRange);
@@ -510,7 +558,28 @@ function DrawerContent({ companyName, companyData, onClose }: DrawerContentProps
               <span className="text-ast-muted text-sm">via parent · {companyData.ticker}</span>
             )}
           </div>
-          <button onClick={onClose} autoFocus aria-label="Close drawer" className="w-8 h-8 rounded border border-ast-border text-ast-muted hover:text-ast-text flex items-center justify-center">✕</button>
+          <div className="flex items-center gap-2">
+            {/* Watch/unwatch star (§5.1) — only for a known entity. */}
+            {companyData?.id && (
+              <button
+                type="button"
+                onClick={handleToggleWatch}
+                disabled={isAuthed !== true || watchPending}
+                aria-pressed={isWatched}
+                aria-label={isAuthed !== true ? "Sign in to watch" : isWatched ? "Unwatch company" : "Watch company"}
+                title={isAuthed !== true ? "Sign in to watch" : isWatched ? "Watching" : "Watch"}
+                className={`flex items-center gap-1 h-8 px-3 rounded border text-sm transition-colors ${
+                  isWatched
+                    ? "border-ast-accent text-ast-accent"
+                    : "border-ast-border text-ast-muted hover:text-ast-text"
+                } ${isAuthed !== true ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <span aria-hidden="true">{isWatched ? "★" : "☆"}</span>
+                <span className="hidden sm:inline">{isWatched ? "Watching" : "Watch"}</span>
+              </button>
+            )}
+            <button onClick={onClose} autoFocus aria-label="Close drawer" className="w-8 h-8 rounded border border-ast-border text-ast-muted hover:text-ast-text flex items-center justify-center">✕</button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto relative">
