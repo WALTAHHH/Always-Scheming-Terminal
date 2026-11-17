@@ -9,6 +9,51 @@ import { TickerBar } from "./TickerBar";
 import { useTheme } from "./ThemeProvider";
 import { createAuthBrowserClient } from "@/lib/supabase";
 
+/** Minimal shape of an alert row from GET /api/v1/alerts (spec §3.5, §5.3). */
+interface AlertSignal {
+  summary?: string | null;
+  signal_type?: string | null;
+  content?:
+    | { title?: string | null; url?: string | null }
+    | { title?: string | null; url?: string | null }[]
+    | null;
+}
+
+interface AlertEntity {
+  canonical_name?: string | null;
+  ticker?: string | null;
+}
+
+interface AlertRow {
+  id: string;
+  created_at?: string | null;
+  read_at?: string | null;
+  signal?: AlertSignal | AlertSignal[] | null;
+  entity?: AlertEntity | AlertEntity[] | null;
+}
+
+/** Supabase embeds can come back as an object or a one-element array. */
+function firstOf<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function describeAlert(alert: AlertRow): { summary: string; url: string | null; entity: string | null } {
+  const signal = firstOf(alert.signal);
+  const content = firstOf(signal?.content);
+  const entity = firstOf(alert.entity);
+  const entityLabel = entity?.canonical_name
+    ? entity.ticker
+      ? `${entity.canonical_name} (${entity.ticker})`
+      : entity.canonical_name
+    : null;
+  return {
+    summary: signal?.summary || content?.title || "New signal alert",
+    url: content?.url ?? null,
+    entity: entityLabel,
+  };
+}
+
 export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -65,6 +110,10 @@ export function Header() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
@@ -84,6 +133,78 @@ export function Header() {
     };
     getUser();
   }, [supabase]);
+
+  // Unread badge count — GET /api/v1/alerts?unread=1 returns { unread: n }.
+  useEffect(() => {
+    if (!userEmail) {
+      setUnread(0);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/v1/alerts?unread=1", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && typeof data?.unread === "number") setUnread(data.unread);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail]);
+
+  const toggleAlerts = async () => {
+    if (alertsOpen) {
+      setAlertsOpen(false);
+      return;
+    }
+    setAlertsOpen(true);
+    setAlertsLoading(true);
+    try {
+      const res = await fetch("/api/v1/alerts?unread_only=1&limit=20", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setAlerts(Array.isArray(data?.alerts) ? data.alerts : []);
+        if (typeof data?.unread === "number") setUnread(data.unread);
+      }
+    } catch {}
+    setAlertsLoading(false);
+  };
+
+  const markAlertsRead = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    try {
+      const res = await fetch("/api/v1/alerts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (res.ok) {
+        setAlerts((prev) => prev.filter((a) => !ids.includes(a.id)));
+        setUnread((n) => Math.max(0, n - ids.length));
+      }
+    } catch {}
+  };
+
+  const markAllAlertsRead = async () => {
+    try {
+      const res = await fetch("/api/v1/alerts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      if (res.ok) {
+        setAlerts([]);
+        setUnread(0);
+      }
+    } catch {}
+  };
+
+  const openAlert = (alert: AlertRow) => {
+    const { url } = describeAlert(alert);
+    void markAlertsRead([alert.id]);
+    setAlertsOpen(false);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -165,6 +286,90 @@ export function Header() {
               </svg>
               <span className="hidden sm:inline">Markets</span>
             </button>
+            {userEmail && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={toggleAlerts}
+                  className="relative text-ast-muted hover:text-ast-accent text-xs transition-colors flex items-center"
+                  title={unread > 0 ? `${unread} unread alert${unread === 1 ? "" : "s"}` : "Alerts"}
+                  aria-label={unread > 0 ? `Alerts, ${unread} unread` : "Alerts"}
+                  aria-expanded={alertsOpen}
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  </svg>
+                  {unread > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[14px] h-[14px] px-1 rounded-full bg-ast-pink text-white text-[9px] font-bold leading-[14px] text-center">
+                      {unread > 99 ? "99+" : unread}
+                    </span>
+                  )}
+                </button>
+                {alertsOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setAlertsOpen(false)}
+                      aria-hidden="true"
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-80 max-w-[90vw] rounded border border-ast-border bg-ast-surface shadow-lg z-50 overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-ast-border">
+                        <span className="text-xs font-semibold text-ast-text">Alerts</span>
+                        <div className="flex items-center gap-2">
+                          {alerts.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={markAllAlertsRead}
+                              className="text-[10px] text-ast-muted hover:text-ast-accent transition-colors"
+                            >
+                              Mark all read
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setAlertsOpen(false)}
+                            className="text-[10px] text-ast-muted hover:text-ast-pink transition-colors"
+                            aria-label="Close alerts"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                      <div className="max-h-80 overflow-y-auto">
+                        {alertsLoading ? (
+                          <p className="px-3 py-3 text-xs text-ast-muted">Loading alerts…</p>
+                        ) : alerts.length === 0 ? (
+                          <p className="px-3 py-3 text-xs text-ast-muted">No unread alerts.</p>
+                        ) : (
+                          alerts.map((alert) => {
+                            const { summary, entity } = describeAlert(alert);
+                            return (
+                              <button
+                                key={alert.id}
+                                type="button"
+                                onClick={() => openAlert(alert)}
+                                className="w-full text-left px-3 py-2 border-b border-ast-border/50 hover:bg-ast-accent/5 transition-colors flex items-start gap-2"
+                              >
+                                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-ast-pink flex-shrink-0" />
+                                <span className="flex-1 min-w-0">
+                                  <span className="block text-xs text-ast-text leading-snug line-clamp-2">
+                                    {summary}
+                                  </span>
+                                  <span className="block text-[10px] text-ast-muted mt-0.5">
+                                    {entity ? `${entity} · ` : ""}open ↗
+                                  </span>
+                                </span>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             {userEmail && (
               <Link
                 href="/profile"

@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createAuthBrowserClient } from "@/lib/supabase";
 import { Profile, UserPreferences } from "@/lib/database.types";
+import {
+  fetchWatchlist,
+  unwatchEntity,
+  type WatchlistEntry,
+} from "@/lib/watchlist";
 
 // 9 segments from company-list-v1.md
 const SEGMENTS = [
@@ -17,6 +22,15 @@ const SEGMENTS = [
   { name: 'Infrastructure / Middleware / Services', description: 'Unity, Discord, Xsolla, Overwolf, ironSource, Twitch' },
   { name: 'Investment / Holding / Corporate', description: 'Savvy Games Group, Kadokawa, tencent holding stakes, private equity' },
 ];
+
+// Default watchlist alert threshold (spec §2.3 + Matt's decision: 0.75, not 0.65).
+// Mirrors the DB default on user_preferences.watchlist_min_score.
+const DEFAULT_WATCHLIST_MIN_SCORE = 0.75;
+
+// Exact empty-state copy for the Following section (spec §5.4). Kept as a
+// literal constant so source-assertion/copy tests can match it verbatim.
+const FOLLOWING_EMPTY_STATE =
+  "You're not watching any companies yet. Open any company from the feed and tap ★ Watch.";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -43,6 +57,19 @@ export default function ProfilePage() {
     "idle" | "saving" | "saved" | "error"
   >("idle");
 
+  // Following / notification preferences (spec §5.4–§5.5).
+  const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
+  const [unwatching, setUnwatching] = useState<string | null>(null);
+  // Full notification_prefs blob, round-tripped so we don't clobber other keys.
+  const [notificationPrefs, setNotificationPrefs] = useState<
+    Record<string, unknown>
+  >({});
+  const [digestEnabled, setDigestEnabled] = useState(false);
+  const [minScore, setMinScore] = useState(DEFAULT_WATCHLIST_MIN_SCORE);
+  const [prefsStatus, setPrefsStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+
   useEffect(() => {
     const fetchData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -64,7 +91,27 @@ export default function ProfilePage() {
           setInterests(data.preferences.interests || []);
           setSegments(data.preferences.segments || []);
           setSavedSegments(data.preferences.segments || []);
+
+          // Hydrate notification preferences (spec §5.5). `watchlist_email` is
+          // the single canonical weekly-digest gate — opt-in, so only an
+          // explicit `true` shows the toggle ON (matching `isDigestEnabled`).
+          // The legacy `digest` key is ignored.
+          const blob = (data.preferences?.notification_prefs ?? {}) as Record<
+            string,
+            unknown
+          >;
+          setNotificationPrefs(blob);
+          setDigestEnabled(blob.watchlist_email === true);
+          setMinScore(
+            typeof data.preferences?.watchlist_min_score === "number"
+              ? data.preferences.watchlist_min_score
+              : DEFAULT_WATCHLIST_MIN_SCORE
+          );
         }
+
+        // Watched entities for the Following list (spec §5.4). Fails soft to [].
+        const watched = await fetchWatchlist();
+        setWatchlist(watched.data);
 
         // Fetch available themes
         const themesResponse = await fetch("/api/tags/themes");
@@ -88,6 +135,13 @@ export default function ProfilePage() {
     const timer = setTimeout(() => setSegmentStatus("idle"), 2500);
     return () => clearTimeout(timer);
   }, [segmentStatus]);
+
+  // Auto-dismiss the notification-prefs "Saved" confirmation.
+  useEffect(() => {
+    if (prefsStatus !== "saved") return;
+    const timer = setTimeout(() => setPrefsStatus("idle"), 2500);
+    return () => clearTimeout(timer);
+  }, [prefsStatus]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -192,6 +246,61 @@ export default function ProfilePage() {
   const getInitials = (emailOrName: string) => {
     const name = emailOrName.split("@")[0];
     return name.substring(0, 2).toUpperCase();
+  };
+
+  // --- Following list (spec §5.4) -----------------------------------------
+  // Optimistically remove the row, revert if the DELETE fails. The watchlist
+  // helper never throws (returns false on failure), so revert is straightforward.
+  const handleUnwatch = async (entityId: string) => {
+    const previous = watchlist;
+    setUnwatching(entityId);
+    setWatchlist((prev) =>
+      prev.filter((entry) => entry.entity_id !== entityId)
+    );
+
+    const ok = await unwatchEntity(entityId);
+    if (!ok) {
+      setWatchlist(previous); // revert optimistic removal
+    }
+    setUnwatching(null);
+  };
+
+  // --- Notification preferences (spec §5.5) -------------------------------
+  // Persist a partial update through the existing PATCH /api/user/preferences.
+  const saveNotificationPrefs = async (payload: Record<string, unknown>) => {
+    setPrefsStatus("saving");
+    try {
+      const response = await fetch("/api/user/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to save preferences (${response.status})`);
+      }
+      setPrefsStatus("saved");
+    } catch (err) {
+      console.error("Failed to save notification preferences", err);
+      setPrefsStatus("error");
+    }
+  };
+
+  // Weekly digest on/off. `watchlist_email` is the single canonical gate read
+  // by the fan-out + unsubscribe routes; the legacy `digest` key is dropped
+  // from the blob so the UI and the backend can never disagree again.
+  const handleToggleDigest = async () => {
+    const next = !digestEnabled;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { digest: _legacyDigest, ...rest } = notificationPrefs;
+    const nextBlob = { ...rest, watchlist_email: next };
+    setDigestEnabled(next);
+    setNotificationPrefs(nextBlob);
+    await saveNotificationPrefs({ notification_prefs: nextBlob });
+  };
+
+  const handleMinScoreChange = async (value: number) => {
+    setMinScore(value);
+    await saveNotificationPrefs({ watchlist_min_score: value });
   };
 
   if (loading) {
@@ -379,39 +488,119 @@ export default function ProfilePage() {
             </div>
           </section>
 
-          {/* 4. Notifications (stub) */}
-          <section className="bg-ast-surface border border-ast-border rounded-lg p-6 opacity-60">
-            <h2 className="text-lg font-semibold text-ast-text mb-4">
-              Notifications <span className="text-xs text-ast-pink ml-2">Coming soon</span>
-            </h2>
+          {/* 4. Following (watched companies) — spec §5.4 */}
+          <section className="bg-ast-surface border border-ast-border rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-ast-text mb-4">Following</h2>
             <p className="text-sm text-ast-muted mb-4">
-              Email notifications for breaking news and digests
+              Companies you watch. When a high-importance signal lands on one, it
+              shows up in your alerts and weekly digest.
             </p>
 
-            <div className="space-y-3">
-              <label className="flex items-center gap-3 cursor-not-allowed">
+            {watchlist.length === 0 ? (
+              <div
+                className="text-sm text-ast-muted"
+                data-testid="following-empty"
+              >
+                {FOLLOWING_EMPTY_STATE}
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {watchlist.map((entry) => (
+                  <li
+                    key={entry.entity_id}
+                    className="flex items-center justify-between gap-3 p-2 bg-ast-bg/50 rounded"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm text-ast-text truncate">
+                        {entry.entity?.canonical_name || entry.entity_id}
+                      </div>
+                      {entry.entity?.ticker && (
+                        <div className="text-xs text-ast-muted">
+                          {entry.entity.ticker}
+                          {entry.entity.exchange
+                            ? ` · ${entry.entity.exchange}`
+                            : ""}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleUnwatch(entry.entity_id)}
+                      disabled={unwatching === entry.entity_id}
+                      aria-label={`Unwatch ${
+                        entry.entity?.canonical_name || entry.entity_id
+                      }`}
+                      className="shrink-0 px-2 py-1 rounded text-ast-muted hover:text-red-400 hover:bg-ast-bg disabled:opacity-50"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* 5. Notifications — spec §5.5 (replaces the disabled stub) */}
+          <section className="bg-ast-surface border border-ast-border rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-ast-text mb-4">
+              Notifications
+            </h2>
+            <p className="text-sm text-ast-muted mb-4">
+              Weekly email digest of high-importance signals for the companies
+              you follow
+            </p>
+
+            <div className="space-y-5">
+              <label className="flex items-start gap-3 cursor-pointer">
                 <input
                   type="checkbox"
-                  disabled
-                  className="w-4 h-4 rounded border-ast-border opacity-50"
+                  checked={digestEnabled}
+                  onChange={handleToggleDigest}
+                  className="mt-1 w-4 h-4 rounded border-ast-border text-ast-accent focus:ring-ast-accent"
                 />
                 <div>
-                  <div className="text-sm text-ast-muted">Breaking News</div>
-                  <div className="text-xs text-ast-muted">Major announcements and developments</div>
+                  <div className="text-sm text-ast-text">
+                    Weekly Watchlist Digest
+                  </div>
+                  <div className="text-xs text-ast-muted">
+                    One email a week — the top signals on companies you follow
+                  </div>
                 </div>
               </label>
 
-              <label className="flex items-center gap-3 cursor-not-allowed">
+              <div>
+                <label
+                  htmlFor="watchlist-min-score"
+                  className="block text-sm font-medium text-ast-muted mb-2"
+                >
+                  Alert threshold{" "}
+                  <span className="text-ast-text">{minScore.toFixed(2)}</span>
+                </label>
                 <input
-                  type="checkbox"
-                  disabled
-                  className="w-4 h-4 rounded border-ast-border opacity-50"
+                  id="watchlist-min-score"
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={minScore}
+                  onChange={(e) => handleMinScoreChange(Number(e.target.value))}
+                  className="w-full accent-ast-accent"
                 />
-                <div>
-                  <div className="text-sm text-ast-muted">Daily Digest</div>
-                  <div className="text-xs text-ast-muted">Summary of top stories</div>
-                </div>
-              </label>
+                <p className="text-xs text-ast-muted mt-2">
+                  Only signals scoring {minScore.toFixed(2)} or higher are sent.
+                  Default 0.75.
+                </p>
+              </div>
+
+              {prefsStatus === "saved" && (
+                <span className="text-sm text-ast-accent" role="status">
+                  ✓ Saved
+                </span>
+              )}
+              {prefsStatus === "error" && (
+                <span className="text-sm text-red-400" role="alert">
+                  Failed to save — try again
+                </span>
+              )}
             </div>
           </section>
 

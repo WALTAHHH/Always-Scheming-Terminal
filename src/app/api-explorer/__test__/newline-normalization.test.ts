@@ -2,6 +2,7 @@
 // Bug: String fields with embedded newlines should be normalized to spaces
 // but current implementation doesn't handle this.
 
+import { describe, test, expect } from 'vitest';
 import { tokenizeJson } from '../page';
 
 // Mock the functions since they're not exported

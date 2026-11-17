@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
+import { fanOutAlerts, sendWeeklyDigests, type WeeklyDigestResult } from "@/lib/alerts";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -230,6 +231,8 @@ export async function POST(req: NextRequest) {
   });
 
   const results: { id: string; title: string; status: string; detail?: string }[] = [];
+  // Ids of signals actually inserted this run — the alert fan-out input.
+  const insertedSignalIds: string[] = [];
 
   for (const item of eligible) {
     const tags = (item.tags as Record<string, string[]>) || {};
@@ -296,18 +299,23 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const { error: insertError } = await supabase.from("signals").insert({
-      content_id: item.id,
-      signal_type: signal.signal_type,
-      summary: signal.summary,
-      investment_relevance_score: signal.investment_relevance_score,
-      raw_llm_output: signal as any,
-      model_used: "gemini-2.5-flash-lite",
-    });
+    const { data: insertedSignal, error: insertError } = await supabase
+      .from("signals")
+      .insert({
+        content_id: item.id,
+        signal_type: signal.signal_type,
+        summary: signal.summary,
+        investment_relevance_score: signal.investment_relevance_score,
+        raw_llm_output: signal as any,
+        model_used: "gemini-2.5-flash-lite",
+      })
+      .select("id");
 
     if (insertError) {
       results.push({ id: item.id, title: item.title.slice(0, 60), status: "insert_error", detail: insertError.message });
     } else {
+      const newId = insertedSignal?.[0]?.id;
+      if (newId) insertedSignalIds.push(newId);
       results.push({ id: item.id, title: item.title.slice(0, 60), status: "ok", detail: `${signal.signal_type} (${signal.investment_relevance_score.toFixed(2)})` });
     }
 
@@ -335,6 +343,28 @@ export async function POST(req: NextRequest) {
     }).catch(() => {});
   }
 
+  // ── Alert fan-out + weekly email digest (docs/specs/watchlists-alerts.md §3-4) ──
+  // Both ride the tail of this existing cron so no third Vercel cron slot is
+  // needed (Hobby caps at 2). Each degrades to a logged no-op when its config
+  // is unset (fan-out: Supabase service role; digest: RESEND_API_KEY/DIGEST_FROM)
+  // and neither may fail the cron, so both are wrapped.
+  let alertsCreated = 0;
+  try {
+    const fanOut = await fanOutAlerts(insertedSignalIds);
+    alertsCreated = fanOut.created;
+  } catch (err) {
+    console.error("[extract-signals] alert fan-out threw:", err);
+  }
+
+  // Weekly digest pass: itself gated to Monday UTC + >=6 days per user, so it
+  // is a cheap no-op on every other invocation and idempotent on retries.
+  let digest: WeeklyDigestResult | null = null;
+  try {
+    digest = await sendWeeklyDigests();
+  } catch (err) {
+    console.error("[extract-signals] weekly digest pass threw:", err);
+  }
+
   const { count: totalSignals } = await supabase
     .from("signals")
     .select("*", { count: "exact", head: true });
@@ -353,6 +383,8 @@ export async function POST(req: NextRequest) {
       errors: errors.length,
       totalSignalsInDb: totalSignals,
       remaining,
+      alertsCreated,
+      digest,
     },
     deduped: deduped > 0 ? results.filter(r => r.status === "deduped").slice(0, 10) : undefined,
     errors: errors.length > 0 ? errors : undefined,
