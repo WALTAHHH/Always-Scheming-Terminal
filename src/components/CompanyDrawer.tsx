@@ -92,7 +92,7 @@ function formatDateShort(dateStr: string): string {
 // ── News marker sizing (CSS pixels) ──
 // The chart <svg> uses viewBox="0 0 100 100" + preserveAspectRatio="none", so the
 // viewBox is stretched non-uniformly to the container. Anything drawn inside it is
-// scaled by (containerWidth/100, containerHeight/100) — an SVG <circle> therefore
+// scaled by (containerWidth/100, containerHeight/100) — an SVG circle therefore
 // turns into an ellipse whose size depends on the drawer width. The news dots are
 // rendered as HTML overlays (absolutely positioned from x/y percentages) so they
 // stay true circles at a fixed pixel size at every width.
