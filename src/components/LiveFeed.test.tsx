@@ -1,6 +1,7 @@
 /// <reference types=\"vitest\" />
 /// @vitest-environment node
 
+import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { LiveFeed } from './LiveFeed';
