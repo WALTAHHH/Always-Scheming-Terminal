@@ -305,7 +305,14 @@ export async function fanOutAlerts(
 //      past the cap are simply served on the next Monday (nothing is stamped
 //      for them, so no digest is lost).
 //
-//   4. **Atomic claim (at-most-once).** Before touching a user's alerts the pass
+//   5. The pending-alert read itself is bounded (DEFAULT_DIGEST_MAX_PENDING_ROWS
+//      rows, oldest first) so a large backlog is never materialised in full
+//      before the user cap slices it. Rows past the bound keep `email_sent_at`
+//      NULL and are read on the next Monday. The read is FIFO by `created_at`,
+//      so the rows closest to falling out of the DIGEST_LOOKBACK_DAYS window
+//      are always the ones served first.
+//
+//   6. **Atomic claim (at-most-once).** Before touching a user's alerts the pass
 //      flips `user_preferences.last_digest_sent_at → now()` with a single
 //      compare-and-swap `UPDATE … WHERE user_id = $1 AND last_digest_sent_at IS
 //      [NOT DISTINCT FROM] <observed> RETURNING user_id`. Postgres serializes
@@ -339,6 +346,23 @@ export const DIGEST_LOOKBACK_DAYS = 7;
  * `alert_events.email_sent_at` stays NULL, so nothing is lost).
  */
 export const DEFAULT_DIGEST_MAX_USERS = 200;
+
+/**
+ * Maximum number of `alert_events` rows one digest pass will read.
+ *
+ * The digest content is "every unsent alert of the last
+ * DIGEST_LOOKBACK_DAYS (7) days", which is unbounded: a large backlog (a
+ * fan-out burst, or a first digest after the cron was down for a while) would
+ * otherwise be materialised in full — every row loaded into memory and shipped
+ * from Postgres — *before* the per-user cap above slices it. That is the cron
+ * tail's `maxDuration` risk this bound removes: one pass never pulls more than
+ * `DEFAULT_DIGEST_MAX_PENDING_ROWS` rows (override with `opts.maxPendingRows`).
+ *
+ * Rows past the bound keep `email_sent_at` NULL and are read on the next
+ * Monday, so nothing is lost. The read is FIFO by `created_at`, so the rows
+ * closest to falling out of the 7-day lookback window are always served first.
+ */
+export const DEFAULT_DIGEST_MAX_PENDING_ROWS = 5000;
 
 /** `true` when `now` is a Monday in UTC — the single allowed digest weekday. */
 export function isMondayUtc(now: Date): boolean {
@@ -412,6 +436,22 @@ export interface WeeklyDigestResult {
   alertsEmailed: number;
   /** Users deferred to the next Monday because the per-pass cap was hit. */
   skippedByCap: number;
+  /**
+   * `alert_events` rows the pending-alert read returned. Never more than the
+   * row bound (`opts.maxPendingRows`), so `usersConsidered` above is derived
+   * from — and may be smaller than — the true backlog.
+   */
+  pendingRowsRead: number;
+  /**
+   * Pending rows inside the lookback window that this pass did **not** read
+   * because the row bound was hit; `0` when the read was complete.
+   *
+   * `null` means the read filled the bound but the server did not report the
+   * unbounded match count, so the exact figure is unknown (it is always at
+   * least 1 in that case). Rows counted here keep `email_sent_at` NULL and are
+   * picked up on the next Monday.
+   */
+  pendingRowsTruncated: number | null;
 }
 
 export interface SendWeeklyDigestsOptions {
@@ -433,6 +473,14 @@ export interface SendWeeklyDigestsOptions {
    * next Monday.
    */
   maxUsers?: number;
+  /**
+   * Maximum `alert_events` rows to read this pass (defaults to
+   * {@link DEFAULT_DIGEST_MAX_PENDING_ROWS}). Same coercion as
+   * {@link maxUsers}: fractional values are floored, and `0` (or a negative /
+   * non-finite value) disables the bound — an escape hatch, since the default
+   * is bounded. Rows beyond the bound are deferred to the next Monday.
+   */
+  maxPendingRows?: number;
 }
 
 /**
@@ -547,6 +595,15 @@ export async function releaseDigestClaim(
  * ascending order so a capped run always serves the same users first. Anyone
  * beyond the cap keeps their unsent alerts and is served next Monday.
  *
+ * Also bounded: at most {@link DEFAULT_DIGEST_MAX_PENDING_ROWS} `alert_events`
+ * rows are read (override with `opts.maxPendingRows`; `0` = uncapped), oldest
+ * first. A pass therefore never materialises the whole backlog; rows past the
+ * bound keep `email_sent_at` NULL and are read next Monday. Note the tradeoff
+ * this introduces: the *row* window advances as rows get stamped, so the set of
+ * users served can differ between passes (a later pass picks up the users whose
+ * alerts were past the previous bound). User-level selection stays
+ * deterministic — given a row set, the same users are served in `user_id` order.
+ *
  * Degrades gracefully: returns `{ skipped: "unconfigured" }` (after a log line)
  * when `RESEND_API_KEY`/`DIGEST_FROM` are unset and `{ skipped: "no_client" }`
  * when Supabase service credentials are missing. Neither stamps any state, so
@@ -562,6 +619,8 @@ export async function sendWeeklyDigests(
     failed: 0,
     alertsEmailed: 0,
     skippedByCap: 0,
+    pendingRowsRead: 0,
+    pendingRowsTruncated: 0,
   };
 
   const now = opts.now ?? new Date();
@@ -591,19 +650,73 @@ export async function sendWeeklyDigests(
     now.getTime() - DIGEST_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  // 1. Unsent alerts from the last 7 days.
-  const { data: pendingData, error: pendingError } = await supabase
+  // Row bound (card t_0d9c0c7c). Coerced exactly like `maxUsers` above: a
+  // fractional bound is floored rather than used raw (`.limit(0.5)` would be a
+  // zero-row read), and `0` / negative / non-finite disables the bound.
+  const requestedMaxPendingRows =
+    opts.maxPendingRows ?? DEFAULT_DIGEST_MAX_PENDING_ROWS;
+  const maxPendingRows = Number.isFinite(requestedMaxPendingRows)
+    ? Math.max(0, Math.floor(requestedMaxPendingRows))
+    : requestedMaxPendingRows;
+  if (
+    Number.isFinite(requestedMaxPendingRows) &&
+    !Number.isInteger(requestedMaxPendingRows)
+  ) {
+    console.warn(
+      `[alerts] digest: maxPendingRows=${requestedMaxPendingRows} is not a non-negative integer; coercing to ${maxPendingRows}`,
+    );
+  }
+  const rowBounded = Number.isFinite(maxPendingRows) && maxPendingRows > 0;
+
+  // 1. Unsent alerts from the last 7 days — oldest first, and bounded so a
+  // backlog is never pulled into memory whole (the per-user cap below slices
+  // *after* the read, so it cannot bound this).
+  //
+  // Ordering is `created_at` ascending (FIFO) with an `id` tiebreaker:
+  // `created_at` is not unique — one fan-out batch stamps every row with the
+  // same `now()` — so without the tiebreaker the row that lands on the
+  // `.limit()` cut-off is not pinned down, and two passes over the same
+  // database state could serve different users. With it, the row window is
+  // total-ordered and stable, so a partial pass never reshuffles who is served.
+  // FIFO also means the rows nearest to ageing out of DIGEST_LOOKBACK_DAYS are
+  // the ones read first.
+  //
+  // `count: "exact"` reports the *unbounded* match count in the same round
+  // trip, so the log line can state how many rows the bound left behind
+  // instead of just that it was hit.
+  const pendingQuery = supabase
     .from("alert_events")
-    .select("id, user_id, signal_id, entity_id, signal_type, score, created_at")
+    .select("id, user_id, signal_id, entity_id, signal_type, score, created_at", {
+      count: "exact",
+    })
     .is("email_sent_at", null)
     .gte("created_at", lookbackIso)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+
+  const {
+    data: pendingData,
+    count: pendingCount,
+    error: pendingError,
+  } = rowBounded
+    ? await pendingQuery.limit(maxPendingRows)
+    : await pendingQuery;
 
   if (pendingError) {
     console.error("[alerts] digest pending-alert lookup failed:", pendingError.message);
     return empty;
   }
   const pending = (pendingData ?? []) as PendingAlertRow[];
+  const pendingRowsRead = pending.length;
+  // Rows the bound kept out of this pass. Exact when the server reported the
+  // unbounded match count; `null` when the read filled the bound but no count
+  // came back (custom/mock client) — i.e. "at least one, exact figure unknown".
+  const pendingRowsTruncated: number | null =
+    typeof pendingCount === "number"
+      ? Math.max(0, pendingCount - pendingRowsRead)
+      : rowBounded && pendingRowsRead >= maxPendingRows
+        ? null
+        : 0;
   if (pending.length === 0) return empty;
 
   const byUser = new Map<string, PendingAlertRow[]>();
@@ -704,6 +817,8 @@ export async function sendWeeklyDigests(
   const result: WeeklyDigestResult = { ...empty };
   result.usersConsidered = userIds.length;
   result.skippedByCap = skippedByCap;
+  result.pendingRowsRead = pendingRowsRead;
+  result.pendingRowsTruncated = pendingRowsTruncated;
   let newAlertsEmailed = 0;
 
   for (const userId of processUsers) {
@@ -834,8 +949,15 @@ export async function sendWeeklyDigests(
   result.alertsEmailed = newAlertsEmailed;
 
   if (result.usersConsidered > 0) {
+    // Ops signal: when the row bound truncated the read, `usersConsidered` is a
+    // floor of the true backlog (not the whole of it), so state how many pending
+    // rows the bound left behind.
+    const truncation =
+      pendingRowsTruncated === 0
+        ? ""
+        : `, ${pendingRowsTruncated === null ? "at least 1" : pendingRowsTruncated} pending rows truncated by the row bound (${pendingRowsRead} read, maxPendingRows=${maxPendingRows})`;
     console.log(
-      `[alerts] weekly digest pass: ${result.usersConsidered} users considered, ${result.sent} sent, ${result.failed} failed, ${result.skippedByCap} skipped by cap, ${result.alertsEmailed} alerts emailed`,
+      `[alerts] weekly digest pass: ${result.usersConsidered} users considered, ${result.sent} sent, ${result.failed} failed, ${result.skippedByCap} skipped by cap, ${result.alertsEmailed} alerts emailed${truncation}`,
     );
   }
 

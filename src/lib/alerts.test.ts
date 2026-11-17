@@ -4,6 +4,7 @@ import {
   fanOutAlerts,
   DEFAULT_WATCHLIST_MIN_SCORE,
   DEFAULT_DIGEST_MAX_USERS,
+  DEFAULT_DIGEST_MAX_PENDING_ROWS,
   isMondayUtc,
   isDigestDue,
   isDigestEnabled,
@@ -244,6 +245,7 @@ describe('fanOutAlerts', () => {
       eq: vi.fn().mockReturnThis(),
       in: vi.fn().mockReturnThis(),
       order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
       is: vi.fn().mockReturnThis(),
       gte: vi.fn().mockReturnThis(),
       not: vi.fn().mockReturnThis(),
@@ -271,6 +273,7 @@ describe('fanOutAlerts', () => {
       mockSupabase.eq.mockClear();
       mockSupabase.in.mockClear();
       mockSupabase.order.mockClear();
+      mockSupabase.limit.mockClear();
       mockSupabase.is.mockClear();
       mockSupabase.gte.mockClear();
       mockSupabase.not.mockClear();
@@ -360,6 +363,7 @@ describe('fanOutAlerts', () => {
           is: () => c,
           gte: () => c,
           order: () => c,
+          limit: () => c,
           in: () => c,
           eq: () => c,
           update: (payload: Record<string, unknown>) => {
@@ -469,6 +473,7 @@ describe('fanOutAlerts', () => {
         eq: function() { return this; },
         in: function() { return this; },
         order: function() { return this; },
+        limit: function() { return this; },
         is: function() { return this; },
         gte: function() { return this; },
         not: function() { return this; },
@@ -1240,7 +1245,14 @@ function makeFakeBackend(seed: {
   entities?: Array<Record<string, unknown>>;
   signals?: Array<Record<string, unknown>>;
   content?: Array<Record<string, unknown>>;
+  /**
+   * `false` mimics a PostgREST response with no `count` (a custom/mock client
+   * that ignores `select(..., { count: 'exact' })`), so the "exact backlog
+   * count unavailable" fallback can be exercised.
+   */
+  reportCount?: boolean;
 }) {
+  const reportCount = seed.reportCount ?? true;
   const state: Record<string, Array<Record<string, unknown>>> = {
     user_preferences: seed.prefs.map((p) => ({ ...p })),
     alert_events: seed.alerts.map((a) => ({ ...a })),
@@ -1248,15 +1260,45 @@ function makeFakeBackend(seed: {
     signals: (seed.signals ?? []).map((s) => ({ ...s })),
     content: (seed.content ?? []).map((c) => ({ ...c })),
   };
+  // Every awaited `select`, with the shape the digest actually asked for — so a
+  // test can assert the pending-alert read really carries a limit + ordering.
+  const recordedSelects: Array<{
+    table: string;
+    limit: number | null;
+    orders: string[];
+    countRequested: boolean;
+  }> = [];
   let failAlertStamp = false;
+
+  // Postgres-ish `ORDER BY`: nulls last for ASC, then the id tiebreaker.
+  function compareRows(
+    orders: Array<{ column: string; ascending: boolean }>,
+    a: Record<string, unknown>,
+    b: Record<string, unknown>,
+  ): number {
+    for (const { column, ascending } of orders) {
+      const av = a[column];
+      const bv = b[column];
+      if (av == null && bv == null) continue;
+      if (av == null) return ascending ? 1 : -1;
+      if (bv == null) return ascending ? -1 : 1;
+      if (av < bv) return ascending ? -1 : 1;
+      if (av > bv) return ascending ? 1 : -1;
+    }
+    return 0;
+  }
 
   function makeBuilder(table: string): any {
     let op: 'select' | 'update' = 'select';
     let payload: Record<string, unknown> | null = null;
     const preds: Array<(row: any) => boolean> = [];
+    const orders: Array<{ column: string; ascending: boolean }> = [];
+    let limitN: number | null = null;
+    let countRequested = false;
 
     const builder: any = {
-      select() {
+      select(_cols?: unknown, opts?: { count?: string }) {
+        if (opts?.count === 'exact') countRequested = true;
         return builder;
       },
       update(p: Record<string, unknown>) {
@@ -1295,10 +1337,12 @@ function makeFakeBackend(seed: {
       or() {
         return builder;
       },
-      order() {
+      order(col: string, opts?: { ascending?: boolean }) {
+        orders.push({ column: col, ascending: opts?.ascending !== false });
         return builder;
       },
-      limit() {
+      limit(n: number) {
+        limitN = n;
         return builder;
       },
       maybeSingle() {
@@ -1321,7 +1365,23 @@ function makeFakeBackend(seed: {
           });
           return;
         }
-        resolve({ data: matched.map((r) => ({ ...r })), error: null });
+
+        // PostgREST semantics: `count` is over the *filtered* set, before
+        // ORDER BY / LIMIT; the page itself is ordered then limited.
+        let page = matched.slice();
+        if (orders.length) page.sort((a, b) => compareRows(orders, a, b));
+        if (limitN != null) page = page.slice(0, limitN);
+        recordedSelects.push({
+          table,
+          limit: limitN,
+          orders: orders.map((o) => `${o.column}.${o.ascending ? 'asc' : 'desc'}`),
+          countRequested,
+        });
+        resolve({
+          data: page.map((r) => ({ ...r })),
+          error: null,
+          count: countRequested && reportCount ? matched.length : null,
+        });
       },
     };
     return builder;
@@ -1342,6 +1402,7 @@ function makeFakeBackend(seed: {
   return {
     client,
     state,
+    recordedSelects,
     setFailAlertStamp: (v: boolean) => {
       failAlertStamp = v;
     },
@@ -1496,5 +1557,345 @@ describe('sendWeeklyDigests — atomic claim (at-most-once)', () => {
     expect(sendImpl).not.toHaveBeenCalled();
     // Untouched cadence stamp preserved.
     expect(backend.state.user_preferences[0].last_digest_sent_at).toBe('2026-11-14T12:00:00Z');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Pending-alert row bound (card t_0d9c0c7c).
+//
+// The per-pass user cap bounds the *work* per pass but not the pending-alert
+// read itself: without a row bound a large backlog is materialised in full
+// (loaded into memory, shipped from Postgres) before the cap can slice it,
+// which is the cron tail's `maxDuration` risk. These tests drive the stateful
+// fake backend — which now honours ORDER BY / LIMIT / `count: 'exact'` — with
+// more rows than the bound.
+// ─────────────────────────────────────────────────────────────────────────
+describe('sendWeeklyDigests — pending-alert row bound', () => {
+  const now = new Date('2026-11-16T12:00:00Z'); // Monday UTC
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getEmailConfig).mockReturnValue({ apiKey: 're_key', from: 'alerts@example.com' });
+    vi.mocked(getDigestFooterAddress).mockReturnValue('123 Main St');
+    vi.mocked(getSiteUrl).mockReturnValue('https://terminal.always-scheming.com');
+    vi.mocked(generateDigestUnsubToken).mockReturnValue('a'.repeat(64));
+    vi.mocked(buildDigestUnsubUrl).mockReturnValue(
+      'https://terminal.always-scheming.com/unsubscribe?token=a',
+    );
+    vi.mocked(buildDigestUnsubHeaders).mockReturnValue({
+      'List-Unsubscribe': '<https://terminal.always-scheming.com/unsubscribe?token=a>',
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    });
+  });
+
+  const LOOKUPS = {
+    entities: [{ id: 'ent1', canonical_name: 'Acme' }],
+    signals: [{ id: 'sig1', summary: 'Acme beats estimates', content_id: 'cont1' }],
+    content: [{ id: 'cont1', url: 'https://example.com/a' }],
+  };
+
+  function alertRow(userId: string, id: string, createdAt: string) {
+    return {
+      id,
+      user_id: userId,
+      signal_id: 'sig1',
+      entity_id: 'ent1',
+      signal_type: 'earnings',
+      score: 0.9,
+      created_at: createdAt,
+      email_sent_at: null,
+    };
+  }
+
+  const idsIn = (rows: Array<Record<string, unknown>>) =>
+    rows.map((r) => r.id as string).sort();
+
+  const stampedIds = (backend: ReturnType<typeof makeFakeBackend>) =>
+    idsIn(backend.state.alert_events.filter((r) => r.email_sent_at != null));
+
+  const pendingIds = (backend: ReturnType<typeof makeFakeBackend>) =>
+    idsIn(backend.state.alert_events.filter((r) => r.email_sent_at == null));
+
+  /** The digest's pending-alert read, as the query actually shaped it. */
+  function pendingSelect(backend: ReturnType<typeof makeFakeBackend>) {
+    const reads = backend.recordedSelects.filter((s) => s.table === 'alert_events');
+    expect(reads).toHaveLength(1);
+    return reads[0];
+  }
+
+  /** `n` users, one alert each, oldest first (u1 oldest). */
+  function oneEach(users: string[]) {
+    return users.map((u, i) =>
+      alertRow(u, `al-${u}`, `2026-11-15T${String(i).padStart(2, '0')}:00:00Z`),
+    );
+  }
+
+  it('defaults the row bound to DEFAULT_DIGEST_MAX_PENDING_ROWS (5000)', () => {
+    expect(DEFAULT_DIGEST_MAX_PENDING_ROWS).toBe(5000);
+  });
+
+  it('limits the pending-alert read and stamps nothing beyond the bound', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+    const backend = makeFakeBackend({
+      prefs: users.map(prefsFor),
+      alerts: oneEach(users),
+      ...LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      maxPendingRows: 3,
+    });
+
+    // The read is bounded to 3 of the 5 pending rows — the 2 newest are left.
+    expect(result.pendingRowsRead).toBe(3);
+    expect(result.pendingRowsTruncated).toBe(2);
+    expect(result.usersConsidered).toBe(3);
+    expect(result.sent).toBe(3);
+    expect(result.alertsEmailed).toBe(3);
+
+    // The query carried the bound, the FIFO order, and the id tiebreaker.
+    const pending = pendingSelect(backend);
+    expect(pending.limit).toBe(3);
+    expect(pending.orders).toEqual(['created_at.asc', 'id.asc']);
+    expect(pending.countRequested).toBe(true);
+
+    // Nothing past the bound was stamped: those rows stay pending.
+    expect(stampedIds(backend)).toEqual(['al-u1', 'al-u2', 'al-u3']);
+    expect(pendingIds(backend)).toEqual(['al-u4', 'al-u5']);
+
+    // AC#3: the truncated row count is on the pass log line.
+    const logMsg = log.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logMsg).toContain('3 users considered');
+    expect(logMsg).toContain('3 sent');
+    expect(logMsg).toContain(
+      '2 pending rows truncated by the row bound (3 read, maxPendingRows=3)',
+    );
+
+    log.mockRestore();
+  });
+
+  it('picks up the rows the bound deferred on the next pass (no data loss)', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+    const backend = makeFakeBackend({
+      prefs: users.map(prefsFor),
+      alerts: oneEach(users),
+      ...LOOKUPS,
+    });
+    const send = vi.fn(async (_msg: { to: string }) => ({ ok: true, id: 'msg' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const first = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      maxPendingRows: 3,
+    });
+    expect(first.pendingRowsRead).toBe(3);
+    expect(first.pendingRowsTruncated).toBe(2);
+
+    // The cron's next self-chained invocation reads exactly what the bound left
+    // behind — nothing was stamped for it, so nothing was lost.
+    const second = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      maxPendingRows: 3,
+    });
+    expect(second.pendingRowsRead).toBe(2);
+    expect(second.pendingRowsTruncated).toBe(0);
+    expect(second.usersConsidered).toBe(2);
+    expect(second.sent).toBe(2);
+    expect(second.skippedByCap).toBe(0);
+
+    // Every pending row was eventually stamped, in user_id order.
+    expect(pendingIds(backend)).toEqual([]);
+    expect(stampedIds(backend)).toEqual(['al-u1', 'al-u2', 'al-u3', 'al-u4', 'al-u5']);
+    expect(send.mock.calls.map((c) => (c[0] as { to: string }).to)).toEqual([
+      'u1@example.com',
+      'u2@example.com',
+      'u3@example.com',
+      'u4@example.com',
+      'u5@example.com',
+    ]);
+
+    log.mockRestore();
+  });
+
+  it('selects the same rows when created_at ties, whatever the input order', async () => {
+    // One fan-out batch stamps every row with the same `created_at`, so the
+    // ordering needs the `id` tiebreaker to pin the `.limit()` cut-off down.
+    const tied = '2026-11-15T00:00:00Z';
+    const newer = '2026-11-16T00:00:00Z';
+    const seedFor = (order: string[]) =>
+      makeFakeBackend({
+        prefs: order.map(prefsFor),
+        alerts: order.map((u) => alertRow(u, `al-${u}`, u === 'u4' ? newer : tied)),
+        ...LOOKUPS,
+      });
+
+    const runPass = async (backend: ReturnType<typeof makeFakeBackend>) => {
+      const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const result = await sendWeeklyDigests({
+        supabase: backend.client,
+        now,
+        sendEmailImpl: send as never,
+        maxPendingRows: 2,
+      });
+      log.mockRestore();
+      return result;
+    };
+
+    // Same database state, two different row orders out of the fake store.
+    const backendA = seedFor(['u3', 'u4', 'u1', 'u2']);
+    const backendB = seedFor(['u2', 'u1', 'u4', 'u3']);
+    const resA = await runPass(backendA);
+    const resB = await runPass(backendB);
+
+    // Both passes serve the same two users, chosen by (created_at, id) — not by
+    // whatever order the rows happened to come back in.
+    expect(stampedIds(backendA)).toEqual(['al-u1', 'al-u2']);
+    expect(stampedIds(backendB)).toEqual(['al-u1', 'al-u2']);
+    expect(resA.usersConsidered).toBe(2);
+    expect(resB.usersConsidered).toBe(2);
+    expect(resA.pendingRowsTruncated).toBe(2);
+    expect(resB.pendingRowsTruncated).toBe(2);
+  });
+
+  it('treats maxPendingRows 0 as uncapped (escape hatch)', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+    const backend = makeFakeBackend({
+      prefs: users.map(prefsFor),
+      alerts: oneEach(users),
+      ...LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      maxPendingRows: 0,
+    });
+
+    expect(result.pendingRowsRead).toBe(5);
+    expect(result.pendingRowsTruncated).toBe(0);
+    expect(result.sent).toBe(5);
+    // No LIMIT is applied to the query at all in this mode.
+    expect(pendingSelect(backend).limit).toBeNull();
+
+    log.mockRestore();
+  });
+
+  it('floors a fractional maxPendingRows instead of reading zero rows', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+    const backend = makeFakeBackend({
+      prefs: users.map(prefsFor),
+      alerts: oneEach(users),
+      ...LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      maxPendingRows: 2.7,
+    });
+
+    // 2.7 -> 2, not 0 (`.limit(0.5)` would read nothing at all).
+    expect(result.pendingRowsRead).toBe(2);
+    expect(result.pendingRowsTruncated).toBe(3);
+    expect(result.sent).toBe(2);
+    expect(pendingSelect(backend).limit).toBe(2);
+
+    const warnMsg = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warnMsg).toContain('maxPendingRows=2.7');
+    expect(warnMsg).toContain('coercing to 2');
+
+    warn.mockRestore();
+    log.mockRestore();
+  });
+
+  it('reports an unknown truncation count when the server returns no count', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+    const backend = makeFakeBackend({
+      prefs: users.map(prefsFor),
+      alerts: oneEach(users),
+      ...LOOKUPS,
+      reportCount: false,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      maxPendingRows: 3,
+    });
+
+    // The read still stopped at the bound; only the exact backlog is unknown.
+    expect(result.pendingRowsRead).toBe(3);
+    expect(result.pendingRowsTruncated).toBeNull();
+    expect(stampedIds(backend)).toEqual(['al-u1', 'al-u2', 'al-u3']);
+    const logMsg = log.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logMsg).toContain(
+      'at least 1 pending rows truncated by the row bound (3 read, maxPendingRows=3)',
+    );
+
+    log.mockRestore();
+  });
+
+  it('applies the default 5000-row bound to a larger backlog', async () => {
+    // 10 users x 600 alerts = 6000 pending rows, interleaved so the FIFO window
+    // spans every user (the real "large backlog" shape).
+    const users = Array.from({ length: 10 }, (_, i) => `u${String(i + 1).padStart(2, '0')}`);
+    const alerts: Array<Record<string, unknown> & { id: string }> = [];
+    for (let i = 0; i < 600; i += 1) {
+      const createdAt = new Date(Date.UTC(2026, 10, 10, 0, 0, i)).toISOString();
+      for (const u of users) {
+        alerts.push(alertRow(u, `al-${u}-${String(i).padStart(3, '0')}`, createdAt));
+      }
+    }
+    expect(alerts).toHaveLength(6000);
+
+    const backend = makeFakeBackend({
+      prefs: users.map(prefsFor),
+      alerts,
+      ...LOOKUPS,
+    });
+    const send = vi.fn(async () => ({ ok: true, id: 'msg' }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+    });
+
+    expect(pendingSelect(backend).limit).toBe(5000);
+    expect(result.pendingRowsRead).toBe(5000);
+    expect(result.pendingRowsTruncated).toBe(1000);
+    expect(result.usersConsidered).toBe(10);
+    expect(result.sent).toBe(10);
+    expect(result.alertsEmailed).toBe(5000);
+    expect(stampedIds(backend)).toHaveLength(5000);
+    expect(pendingIds(backend)).toHaveLength(1000);
+
+    const logMsg = log.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logMsg).toContain(
+      '1000 pending rows truncated by the row bound (5000 read, maxPendingRows=5000)',
+    );
+
+    log.mockRestore();
   });
 });
