@@ -132,7 +132,7 @@ export function TickerBar() {
             key={`${stock.ticker}-${idx}`}
             type="button"
             title={`${stock.ticker} · ${stock.loading ? "loading" : formatPrice(stock.price)} · ${stock.loading ? "" : formatChangePercent(stock.changePercent)}`.trim()}
-            className="group inline-flex items-center h-full px-3 border-r border-ast-border/40 cursor-pointer transition-colors hover:bg-ast-mint/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ast-accent/50"
+            className={`group inline-flex items-center h-full px-3 border-r border-ast-border/40 cursor-pointer transition-colors ${styles["ticker-item"]} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ast-accent/50`}
             onClick={() => {
               const entity = entities[idx % entities.length];
               if (entity) openCompanyDrawer(entity.canonical_name);

@@ -120,17 +120,35 @@ describe('TickerBar race + marquee fix', () => {
 //   hovered text -> `group-hover:text-ast-accent`
 //   keyboard focus -> `focus:outline-none focus:ring-2 focus:ring-ast-accent(/50)`
 // All colours come from ast-* theme tokens so both themes are covered.
+//
+// Note: the `hover:bg-ast-mint/5` utility is NOT usable here — ast-* colours
+// are bare `var(--ast-*)` strings in tailwind.config.ts, so Tailwind 3.4 never
+// emits the /alpha variant. The ticker therefore composes its hover tint with
+// `color-mix()` in TickerBar.module.css (`.ticker-item:hover`). These tests
+// pin that CSS rule and assert we are no longer relying on the dead utility.
 describe('TickerBar hover styling parity', () => {
   const source = readFileSync(path.resolve(__dirname, 'TickerBar.tsx'), 'utf-8')
+  const css = readFileSync(path.resolve(__dirname, 'TickerBar.module.css'), 'utf-8')
 
-  it('uses the site row-hover bg tint token (hover:bg-ast-mint/5)', () => {
-    expect(source).toContain('hover:bg-ast-mint/5')
-    // the old, one-off hover:bg-ast-surface is gone
+  it('applies the ticker-scoped hover class instead of the dead hover:bg-ast-mint/5', () => {
+    expect(source).toContain('styles["ticker-item"]')
+    // bare `hover:bg-mint/5` is never generated for var() tokens, so must be gone
+    expect(source).not.toContain('hover:bg-ast-mint/5')
+    // the old one-off hover:bg-ast-surface is also gone
     expect(source).not.toContain('hover:bg-ast-surface')
   })
 
   it('animates the hover state with transition-colors', () => {
-    expect(source).toMatch(/className="group[^"]*transition-colors[^"]*hover:bg-ast-mint\/5/)
+    expect(source).toMatch(/transition-colors/)
+  })
+
+  it('defines the hover tint as a color-mix() rule on .ticker-item:hover', () => {
+    expect(css).toMatch(/\.ticker-item:hover\s*\{[^}]*color-mix\(in srgb,\s*var\(--ast-mint\)/)
+    expect(css).toMatch(/background-color:\s*color-mix\(in srgb,\s*var\(--ast-mint\)\s+[\d.]+%,\s*transparent\)/)
+  })
+
+  it('tints with the ast-mint token so both themes are covered', () => {
+    expect(css).toMatch(/\.ticker-item:hover[\s\S]*var\(--ast-mint\)/)
   })
 
   it('highlights the ticker symbol on hover via group-hover:text-ast-accent', () => {
