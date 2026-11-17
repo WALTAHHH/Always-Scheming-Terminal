@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthServerClient } from "@/lib/supabase-server";
+import { createServerClient } from "@/lib/supabase";
 import { isValidUuid } from "@/lib/entity-validation";
 
 export const runtime = "nodejs";
@@ -17,10 +18,20 @@ export const dynamic = "force-dynamic";
  * (`auth.uid() = user_id`) is the second line of defence: the auth-scoped
  * client below can only ever read/write the caller's own rows.
  *
- * `entity_id` is validated as a UUID and, on POST, checked against `entities`
- * so that only existing *public* entities can be followed (§5.1) — otherwise a
- * malformed/foreign id would surface as a Postgres FK 500, and a private
- * entity could leak into the caller's digest and alerts.
+ * `entity_id` is validated as a UUID and, on POST, checked for existence in
+ * `entities` so that a malformed/foreign id surfaces as a 404 instead of a
+ * Postgres FK 500.
+ *
+ * Visibility rule (deliberate, see AST card t_7a718c60): the follow gate is
+ * "can the drawer show this entity?", NOT "is `entities.is_public` true". The
+ * drawer is fed by `/api/v1/entities?alias=…`, which selects through the
+ * service-role client and applies **no** `is_public` filter, so an entity with
+ * `is_public = false/null` (or an entity hidden from the auth-scoped client by
+ * RLS) was rendered with a Watch button that could only ever 404 — the exact
+ * Take-Two regression. The existence probe below therefore uses the same
+ * service-role client as the drawer's data source. It reads a single `id` for
+ * an id the caller already holds and returns nothing else, so it reveals no
+ * entity data the public `/api/v1/entities` endpoint does not already serve.
  */
 
 // The nested `entity:entities(...)` embed below is not reflected in the
@@ -109,28 +120,31 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Only existing *public* entities may be followed (§5.1). Filtering on
-  // `is_public` in the query (rather than a separate existence check) makes a
-  // missing id and a private id indistinguishable to the caller — both 404 —
-  // so we never leak the existence of a private entity. Runs on the
-  // auth-scoped client so it keeps working as-is when RLS on `entities` is
-  // tightened.
-  const { data: entity, error: entityError } = await supabase
+  // Existence gate: the caller may follow any entity the drawer can render.
+  // This runs on the service-role client — the same client the drawer's
+  // `/api/v1/entities` data source uses — so the gate can never disagree with
+  // what the UI showed (no `is_public` filter, no dependence on entities RLS).
+  const { data: entity, error: entityError } = await createServerClient()
     .from("entities")
     .select("id")
     .eq("id", entityId)
-    .eq("is_public", true)
     .maybeSingle();
 
   if (entityError) {
     return NextResponse.json(
-      { error: "Failed to verify entity" },
+      { error: "Failed to verify entity", code: "entity_verify_failed" },
       { status: 500 }
     );
   }
 
   if (!entity) {
-    return NextResponse.json({ error: "Entity not found" }, { status: 404 });
+    // Only a genuinely absent row 404s: the id came from the drawer, so a
+    // missing row means the entity was deleted (or the caller sent a foreign
+    // id from another environment).
+    return NextResponse.json(
+      { error: "Entity not found", code: "entity_not_found" },
+      { status: 404 }
+    );
   }
 
   // Idempotent follow: UNIQUE(user_id, entity_id) + ignoreDuplicates makes a
