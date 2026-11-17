@@ -1,12 +1,21 @@
--- Smoke test for migration 020 RLS tightening (PR #138)
--- Run this in Supabase SQL editor AFTER applying 018,019,020 in order.
--- This script assumes there is at least one public entity and one private entity.
+-- Smoke test for migration 020 RLS tightening (PR #145)
+-- Run this in the Supabase SQL editor AFTER applying 018, 019, 020 in order.
 -- It does NOT modify any data.
+--
+-- Expected model after 020:
+--   * anon          → 0 rows on all five tables (no SELECT policy for anon)
+--   * authenticated → ALL rows on all five tables, including entities with
+--                     is_public = false or NULL (is_public is "publicly traded",
+--                     NOT visibility — it must not gate reads)
+--   * service_role  → all rows (BYPASSRLS)
+--
+-- "0 rows/denied" below means either an empty result or a permission error for
+-- the anon role; both are acceptable. An anon count > 0 is a failure.
 
--- 1. Check that the new policies exist
-SELECT 
-    tablename, 
-    policyname, 
+-- 1. The new policies exist and are authenticated-only, SELECT-only
+SELECT
+    tablename,
+    policyname,
     permissive,
     roles,
     cmd,
@@ -15,68 +24,68 @@ FROM pg_policies
 WHERE schemaname = 'public'
     AND tablename IN ('entities', 'signals', 'content', 'content_tags', 'entity_aliases')
 ORDER BY tablename, policyname;
+-- Expected: exactly one policy per table, all named *_authenticated_read,
+-- roles = {authenticated}, cmd = SELECT, qual = true. No policy with anon.
 
--- 2. Check that SECURITY DEFINER functions exist with search_path = ''
-SELECT 
-    proname,
-    prosecdef,
-    provolatile,
-    proargtypes::regtype[] as arg_types,
-    prosrc
+-- 2. The previous draft's helper functions are gone
+SELECT proname
 FROM pg_proc
-WHERE proname IN ('entity_is_public', 'content_is_public', 'user_owns_entity', 'user_owns_signal', 'user_owns_content')
+WHERE proname IN ('entity_is_public', 'content_is_public', 'user_owns_entity',
+                  'user_owns_signal', 'user_owns_content')
     AND pronamespace = 'public'::regnamespace;
+-- Expected: 0 rows.
 
--- 3. Test anon role (no authentication)
+-- 3. anon role: no direct table read. Every count must be 0 (or denied).
 SET ROLE anon;
 SET request.jwt.claims TO '{}';
 
-SELECT 'anon entities count' as label, COUNT(*) as cnt FROM entities;
-SELECT 'anon signals count' as label, COUNT(*) as cnt FROM signals;
-SELECT 'anon content count' as label, COUNT(*) as cnt FROM content;
-SELECT 'anon content_tags count' as label, COUNT(*) as cnt FROM content_tags;
-SELECT 'anon entity_aliases count' as label, COUNT(*) as cnt FROM entity_aliases;
+SELECT 'anon entities count'      AS label, COUNT(*) AS cnt FROM entities;
+SELECT 'anon signals count'       AS label, COUNT(*) AS cnt FROM signals;
+SELECT 'anon content count'       AS label, COUNT(*) AS cnt FROM content;
+SELECT 'anon content_tags count'  AS label, COUNT(*) AS cnt FROM content_tags;
+SELECT 'anon entity_aliases count' AS label, COUNT(*) AS cnt FROM entity_aliases;
 
--- Verify that anon cannot see private entities (should have zero rows where is_public = false)
--- Assuming there is at least one private entity
-SELECT 'anon private entities' as label, COUNT(*) as cnt FROM entities WHERE is_public = false;
+-- Sanity: anon must not be able to see non-public (private) companies either.
+SELECT 'anon non-public entities' AS label, COUNT(*) AS cnt
+FROM entities WHERE is_public IS NOT TRUE;
 
--- Reset role
 RESET ROLE;
 RESET request.jwt.claims;
 
--- 4. Test authenticated role (with a dummy user_id, no watchlists)
+-- 4. authenticated role: ALL rows, including non-public entities.
 SET ROLE authenticated;
 SET request.jwt.claims TO '{"sub":"00000000-0000-0000-0000-000000000000"}';
 
-SELECT 'authenticated entities count' as label, COUNT(*) as cnt FROM entities;
-SELECT 'authenticated signals count' as label, COUNT(*) as cnt FROM signals;
-SELECT 'authenticated content count' as label, COUNT(*) as cnt FROM content;
-SELECT 'authenticated content_tags count' as label, COUNT(*) as cnt FROM content_tags;
-SELECT 'authenticated entity_aliases count' as label, COUNT(*) as cnt FROM entity_aliases;
+SELECT 'authenticated entities count'      AS label, COUNT(*) AS cnt FROM entities;
+SELECT 'authenticated signals count'       AS label, COUNT(*) AS cnt FROM signals;
+SELECT 'authenticated content count'       AS label, COUNT(*) AS cnt FROM content;
+SELECT 'authenticated content_tags count'  AS label, COUNT(*) AS cnt FROM content_tags;
+SELECT 'authenticated entity_aliases count' AS label, COUNT(*) AS cnt FROM entity_aliases;
 
--- Should see same as anon because no watchlists
--- Reset
+-- The whole point of the semantic correction: non-public companies are visible.
+SELECT 'authenticated non-public entities' AS label, COUNT(*) AS cnt
+FROM entities WHERE is_public IS NOT TRUE;
+-- Expected: equals the service_role count below (and > 0 if such entities exist).
+
 RESET ROLE;
 RESET request.jwt.claims;
 
--- 5. Test service_role (bypasses RLS)
+-- 5. service_role: bypasses RLS and sees everything.
 SET ROLE service_role;
 
-SELECT 'service_role entities count' as label, COUNT(*) as cnt FROM entities;
-SELECT 'service_role signals count' as label, COUNT(*) as cnt FROM signals;
-SELECT 'service_role content count' as label, COUNT(*) as cnt FROM content;
-SELECT 'service_role content_tags count' as label, COUNT(*) as cnt FROM content_tags;
-SELECT 'service_role entity_aliases count' as label, COUNT(*) as cnt FROM entity_aliases;
+SELECT 'service_role entities count'      AS label, COUNT(*) AS cnt FROM entities;
+SELECT 'service_role signals count'       AS label, COUNT(*) AS cnt FROM signals;
+SELECT 'service_role content count'       AS label, COUNT(*) AS cnt FROM content;
+SELECT 'service_role content_tags count'  AS label, COUNT(*) AS cnt FROM content_tags;
+SELECT 'service_role entity_aliases count' AS label, COUNT(*) AS cnt FROM entity_aliases;
 
--- service_role should see all rows, including private ones
-SELECT 'service_role private entities' as label, COUNT(*) as cnt FROM entities WHERE is_public = false;
+SELECT 'service_role non-public entities' AS label, COUNT(*) AS cnt
+FROM entities WHERE is_public IS NOT TRUE;
 
 RESET ROLE;
 
--- 6. Verify that anon/authenticated cannot INSERT/UPDATE/DELETE (no policies)
--- Check that there are no INSERT/UPDATE/DELETE policies for anon/authenticated on these tables
-SELECT 
+-- 6. No write policies for anon/authenticated on these tables
+SELECT
     tablename,
     policyname,
     cmd,
@@ -86,8 +95,7 @@ WHERE schemaname = 'public'
     AND tablename IN ('entities', 'signals', 'content', 'content_tags', 'entity_aliases')
     AND cmd IN ('INSERT', 'UPDATE', 'DELETE')
     AND ('anon' = ANY(roles) OR 'authenticated' = ANY(roles));
-
--- If any rows returned, that's a problem.
+-- Expected: 0 rows. Any row here is a problem.
 
 -- 7. Summary
-SELECT 'Smoke test completed. Compare counts: anon <= authenticated <= service_role.' as note;
+SELECT 'Smoke test completed. Expected: anon = 0 on all five tables; authenticated = service_role on all five; authenticated non-public entities = service_role non-public entities.' AS note;
