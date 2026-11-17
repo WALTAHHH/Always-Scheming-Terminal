@@ -15,6 +15,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Public path: one-click unsubscribe (RFC 8058 List-Unsubscribe GET/POST from
+  // mail clients and logged-out recipients). Must bypass the session check below.
+  if (pathname === "/unsubscribe") {
+    return NextResponse.next();
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });
