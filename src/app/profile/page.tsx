@@ -10,6 +10,7 @@ import {
   unwatchEntity,
   type WatchlistEntry,
 } from "@/lib/watchlist";
+import TagPicker from "@/components/TagPicker";
 
 // 9 segments from company-list-v1.md
 const SEGMENTS = [
@@ -51,8 +52,10 @@ export default function ProfilePage() {
   const [displayName, setDisplayName] = useState("");
   const [interests, setInterests] = useState<string[]>([]);
   const [segments, setSegments] = useState<string[]>([]);
-  const [interestInput, setInterestInput] = useState("");
-  const [availableThemes, setAvailableThemes] = useState<string[]>([]);
+  // Interest save state (mirrors the segments/notification patterns).
+  const [interestsStatus, setInterestsStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
 
   // Segment save state (issue #112): explicit Save button + dirty tracking.
   // The checkbox list autosaved silently before, so users had no visible
@@ -118,13 +121,6 @@ export default function ProfilePage() {
         // Watched entities for the Following list (spec §5.4). Fails soft to [].
         const watched = await fetchWatchlist();
         setWatchlist(watched.data);
-
-        // Fetch available themes
-        const themesResponse = await fetch("/api/tags/themes");
-        if (themesResponse.ok) {
-          const themesData = await themesResponse.json();
-          setAvailableThemes(themesData.themes || []);
-        }
       } catch (err) {
         console.error("Failed to fetch profile", err);
       } finally {
@@ -148,6 +144,13 @@ export default function ProfilePage() {
     const timer = setTimeout(() => setPrefsStatus("idle"), 2500);
     return () => clearTimeout(timer);
   }, [prefsStatus]);
+
+  // Auto-dismiss the interest "Saved" confirmation.
+  useEffect(() => {
+    if (interestsStatus !== "saved") return;
+    const timer = setTimeout(() => setInterestsStatus("idle"), 2500);
+    return () => clearTimeout(timer);
+  }, [interestsStatus]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -174,40 +177,27 @@ export default function ProfilePage() {
     }
   };
 
-  const handleAddInterest = async () => {
-    if (!interestInput.trim() || interests.includes(interestInput.trim())) {
-      setInterestInput("");
-      return;
-    }
-
-    const newInterests = [...interests, interestInput.trim()];
-    setInterests(newInterests);
-    setInterestInput("");
-
-    // Save immediately
+  // Persist the full interest selection (auto-saved, like before). The picker
+  // only produces values that exist in the tag catalogue or that were already
+  // saved, so a 400 means the catalogue changed under us — revert and surface it.
+  const handleInterestsChange = async (next: string[]) => {
+    const previous = interests;
+    setInterests(next);
+    setInterestsStatus("saving");
     try {
-      await fetch("/api/user/preferences", {
+      const response = await fetch("/api/user/preferences", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interests: newInterests }),
+        body: JSON.stringify({ interests: next }),
       });
+      if (!response.ok) {
+        throw new Error(`Failed to save interests (${response.status})`);
+      }
+      setInterestsStatus("saved");
     } catch (err) {
       console.error("Failed to save interests", err);
-    }
-  };
-
-  const handleRemoveInterest = async (interest: string) => {
-    const newInterests = interests.filter((i) => i !== interest);
-    setInterests(newInterests);
-
-    try {
-      await fetch("/api/user/preferences", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interests: newInterests }),
-      });
-    } catch (err) {
-      console.error("Failed to save interests", err);
+      setInterests(previous); // revert the optimistic update
+      setInterestsStatus("error");
     }
   };
 
@@ -394,49 +384,24 @@ export default function ProfilePage() {
           <section className="bg-ast-surface border border-ast-border rounded-lg p-6">
             <h2 className="text-lg font-semibold text-ast-text mb-4">Interests</h2>
             <p className="text-sm text-ast-muted mb-4">
-              Topics you care about (e.g., mobile, M&A, PC gaming)
+              Topics you care about — pick from the existing tags below.
             </p>
 
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={interestInput}
-                onChange={(e) => setInterestInput(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleAddInterest()}
-                placeholder="Add an interest"
-                list="theme-suggestions"
-                className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-ast-text focus:outline-none focus:ring-2 focus:ring-ast-accent"
-              />
-              <datalist id="theme-suggestions">
-                {availableThemes.map((theme) => (
-                  <option key={theme} value={theme} />
-                ))}
-              </datalist>
-              <button
-                onClick={handleAddInterest}
-                className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/90"
-              >
-                Add
-              </button>
-            </div>
+            <TagPicker selected={interests} onChange={handleInterestsChange} />
 
-            <div className="flex flex-wrap gap-2">
-              {interests.map((interest) => (
-                <span
-                  key={interest}
-                  className="px-3 py-1 bg-ast-accent/20 border border-ast-accent/40 rounded-full text-sm text-ast-accent flex items-center gap-2"
-                >
-                  {interest}
-                  <button
-                    onClick={() => handleRemoveInterest(interest)}
-                    className="hover:text-red-400"
-                  >
-                    ×
-                  </button>
+            <div className="mt-3 flex items-center gap-3" aria-live="polite">
+              {interestsStatus === "saving" && (
+                <span className="text-sm text-ast-muted">Saving…</span>
+              )}
+              {interestsStatus === "saved" && (
+                <span className="text-sm text-ast-accent" role="status">
+                  ✓ Saved
                 </span>
-              ))}
-              {interests.length === 0 && (
-                <div className="text-sm text-ast-muted">No interests added yet</div>
+              )}
+              {interestsStatus === "error" && (
+                <span className="text-sm text-red-400" role="alert">
+                  Failed to save — try again
+                </span>
               )}
             </div>
           </section>

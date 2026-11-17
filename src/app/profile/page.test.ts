@@ -145,3 +145,47 @@ describe('Following list rendering (AST t_9e83034c)', () => {
     expect(content).toContain('role="alert"')
   })
 })
+
+describe('Profile interests picker (card t_5ba5480e)', () => {
+  const filePath = path.resolve(__dirname, 'page.tsx')
+  const content = fs.readFileSync(filePath, 'utf-8')
+
+  test('uses the shared TagPicker instead of a free-text datalist input', () => {
+    expect(content).toContain('import TagPicker from "@/components/TagPicker"')
+    expect(content).toContain(
+      '<TagPicker selected={interests} onChange={handleInterestsChange} />'
+    )
+    // The old native, accept-anything input is gone.
+    expect(content).not.toContain('datalist')
+    expect(content).not.toContain('theme-suggestions')
+    expect(content).not.toContain('handleAddInterest')
+    expect(content).not.toContain('availableThemes')
+    expect(content).not.toContain('interestInput')
+  })
+
+  test('does not prefetch the tag catalogue on page load', () => {
+    // Tags are lazy-loaded inside TagPicker, not by the page effect.
+    const start = content.indexOf('const fetchData = async () => {')
+    const end = content.indexOf('fetchData();')
+    expect(start).toBeGreaterThan(-1)
+    const loadBody = content.slice(start, end)
+    expect(loadBody).not.toContain('/api/tags/themes')
+  })
+
+  test('persists the full selection and reverts on failure', () => {
+    const start = content.indexOf('const handleInterestsChange')
+    const end = content.indexOf('const handleToggleSegment')
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const body = content.slice(start, end)
+    expect(body).toContain('"/api/user/preferences"')
+    expect(body).toContain('method: "PATCH"')
+    expect(body).toContain('setInterests(previous)') // revert on error
+    expect(body).toContain('setInterestsStatus("error")')
+  })
+
+  test('surfaces interest save status accessibly', () => {
+    expect(content).toContain('aria-live="polite"')
+    expect(content).toContain('Saving…')
+  })
+})
