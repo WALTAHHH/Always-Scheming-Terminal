@@ -380,31 +380,44 @@ export default function TagPicker({ selected, onChange }: TagPickerProps) {
             </div>
 
             <ul className="flex-1 overflow-y-auto">
-              {browseList.slice(0, browseLimit).map((tag) => {
-                const isSelected = selected.includes(tag.value);
-                return (
-                  <li key={tag.value}>
-                    <button
-                      type="button"
-                      aria-pressed={isSelected}
-                      onClick={() => toggleTag(tag.value)}
-                      className={
-                        "flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left text-sm " +
-                        (isSelected
-                          ? "bg-ast-tag text-ast-accent"
-                          : "text-ast-text hover:bg-ast-tag")
-                      }
-                    >
-                      <span>
-                        {isSelected ? "✓ " : ""}
-                        {tag.value}
-                      </span>
-                      <span className="text-xs text-ast-muted">{tag.count}</span>
-                    </button>
-                  </li>
-                );
-              })}
-              {browseList.length === 0 && (
+              {loading && (
+                <li className="px-3 py-2 text-sm text-ast-muted">
+                  Loading tags…
+                </li>
+              )}
+              {!loading &&
+                browseList.slice(0, browseLimit).map((tag) => {
+                  const isSelected = selected.includes(tag.value);
+                  return (
+                    <li key={tag.value}>
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => toggleTag(tag.value)}
+                        className={
+                          "flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left text-sm " +
+                          (isSelected
+                            ? "bg-ast-tag text-ast-accent"
+                            : "text-ast-text hover:bg-ast-tag")
+                        }
+                      >
+                        <span>
+                          {isSelected ? "✓ " : ""}
+                          {tag.value}
+                        </span>
+                        <span className="text-xs text-ast-muted">
+                          {tag.count}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              {!loading && loadError && (
+                <li className="px-3 py-2 text-sm text-ast-muted">
+                  Couldn&apos;t load tags. Close and focus the field to retry.
+                </li>
+              )}
+              {!loading && !loadError && browseList.length === 0 && (
                 <li className="px-3 py-2 text-sm text-ast-muted">
                   No matching tags
                 </li>
