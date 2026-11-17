@@ -71,18 +71,29 @@ describe("CompanyDrawer watch star (spec §5.1)", () => {
     expect(star).toBeLessThan(close);
   });
 
-  it("uses the watchlist client helpers for toggle + initial state", () => {
-    expect(source).toContain(
-      'import { fetchWatchedEntityIds, watchEntity, unwatchEntity } from "@/lib/watchlist"'
-    );
+  it("uses the watchlist client for the initial star state and a status-aware toggle", () => {
+    expect(source).toContain('import { fetchWatchedEntityIds } from "@/lib/watchlist"');
     expect(source).toContain("fetchWatchedEntityIds()");
-    expect(source).toContain("watchEntity(entityId)");
-    expect(source).toContain("unwatchEntity(entityId)");
+    // The toggle must not use the boolean-only helpers: they hide the HTTP
+    // status, which is what made the star revert silently (AST t_7a718c60).
+    expect(source).toContain("toggleWatchlistEntry(entityId, next)");
+    expect(source).not.toContain("watchEntity(entityId)");
+    expect(source).not.toContain("unwatchEntity(entityId)");
   });
 
-  it("optimistically updates the star and reverts on failure", () => {
+  it("optimistically updates the star, reverts, and reports the failure", () => {
     expect(source).toContain("setIsWatched(next)");
-    expect(source).toContain("if (!ok) setIsWatched(!next)");
+    expect(source).toContain("setIsWatched(!next)");
+    expect(source).toContain("setWatchError(watchlistErrorMessage(status))");
+    // 401 gets its own path: demote to the 'Sign in to watch' affordance.
+    expect(source).toContain("if (status === 401) setIsAuthed(false)");
+  });
+
+  it("renders an inline alert (never a silent revert) and maps status → text", () => {
+    expect(source).toContain('role="alert"');
+    expect(source).toContain("{watchError && (");
+    expect(source).toContain('"Sign in to update your watchlist"');
+    expect(source).toContain("Couldn't update watchlist");
   });
 
   it("only renders the star when companyData?.id is present", () => {

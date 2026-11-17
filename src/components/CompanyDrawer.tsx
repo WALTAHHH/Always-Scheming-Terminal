@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { fetchEntityByAlias, type EntityData } from "@/lib/entity-client";
-import { fetchWatchedEntityIds, watchEntity, unwatchEntity } from "@/lib/watchlist";
+import { fetchWatchedEntityIds } from "@/lib/watchlist";
 import { createAuthBrowserClient } from "@/lib/supabase";
 import type { StockResponse, StockQuote, StockHistory } from "@/app/api/stock/[ticker]/route";
 import type { FeedItem } from "@/lib/database.types";
@@ -11,6 +11,41 @@ import type { FeedItem } from "@/lib/database.types";
 // Global state for the drawer (avoids context issues with SSR)
 let globalOpenCompany: ((name: string) => void) | null = null;
 let globalItems: FeedItem[] = [];
+
+/**
+ * Follow/unfollow an entity, reporting the HTTP status so the star can explain
+ * a failure instead of silently reverting (AST card t_7a718c60). The boolean
+ * helpers in `@/lib/watchlist` swallow the status, which made a 401 and a 500
+ * look identical to the user.
+ */
+async function toggleWatchlistEntry(
+  entityId: string,
+  watching: boolean
+): Promise<{ ok: boolean; status: number }> {
+  try {
+    const res = watching
+      ? await fetch("/api/v1/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entity_id: entityId }),
+        })
+      : await fetch(`/api/v1/watchlist?entity_id=${encodeURIComponent(entityId)}`, {
+          method: "DELETE",
+        });
+    return { ok: res.ok, status: res.status };
+  } catch {
+    // status 0 == the request never reached the server (offline/DNS).
+    return { ok: false, status: 0 };
+  }
+}
+
+/** User-facing text for a failed watchlist toggle, keyed off the HTTP status. */
+function watchlistErrorMessage(status: number): string {
+  if (status === 401) return "Sign in to update your watchlist";
+  if (status === 404) return "Couldn't update watchlist — entity not found";
+  if (status === 0) return "Couldn't update watchlist — network error";
+  return `Couldn't update watchlist (${status})`;
+}
 
 export function setGlobalItems(items: FeedItem[]) {
   globalItems = items;
@@ -420,6 +455,8 @@ export function DrawerContent({ companyName, companyData, onClose }: DrawerConte
   const [isWatched, setIsWatched] = useState(false);
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
   const [watchPending, setWatchPending] = useState(false);
+  // Set when a toggle fails; the star must never revert silently (t_7a718c60).
+  const [watchError, setWatchError] = useState<string | null>(null);
   
   // Cache previous history to prevent flicker during range changes
   const prevHistoryRef = useRef<StockHistory[]>([]);
@@ -520,16 +557,25 @@ export function DrawerContent({ companyName, companyData, onClose }: DrawerConte
     return () => { active = false; };
   }, [companyData?.id]);
 
-  // Optimistic toggle: flip the star immediately, revert if the request fails.
+  // Optimistic toggle: flip the star immediately, revert *and explain* if the
+  // request fails. 401 is distinguished from 404/500 so the user learns whether
+  // to sign in or whether the entity/API is the problem.
   const handleToggleWatch = useCallback(async () => {
     const entityId = companyData?.id;
     if (!entityId || !isAuthed || watchPending) return;
     const next = !isWatched;
     setIsWatched(next);
+    setWatchError(null);
     setWatchPending(true);
-    const ok = next ? await watchEntity(entityId) : await unwatchEntity(entityId);
+    const { ok, status } = await toggleWatchlistEntry(entityId, next);
     setWatchPending(false);
-    if (!ok) setIsWatched(!next);
+    if (!ok) {
+      setIsWatched(!next);
+      setWatchError(watchlistErrorMessage(status));
+      // A 401 means the session lapsed while the drawer was open: drop back to
+      // the "Sign in to watch" affordance rather than offering a dead button.
+      if (status === 401) setIsAuthed(false);
+    }
   }, [companyData?.id, isAuthed, isWatched, watchPending]);
 
   const handleRangeChange = (newRange: ChartRange) => {
@@ -556,6 +602,9 @@ export function DrawerContent({ companyName, companyData, onClose }: DrawerConte
             )}
             {companyData?.parent_id && (
               <span className="text-ast-muted text-sm">via parent · {companyData.ticker}</span>
+            )}
+            {watchError && (
+              <p role="alert" className="text-xs text-red-400 mt-1">{watchError}</p>
             )}
           </div>
           <div className="flex items-center gap-2">

@@ -1,15 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET, POST, DELETE } from './route';
 
-// --- Mock supabase-server ---
+// --- Mock supabase-server (auth-scoped client: watchlists rows) ---
 let mockAuthGetSession = vi.fn();
 let mockFrom = vi.fn();
+// --- Mock supabase (service-role client: the `entities` existence probe) ---
+let mockServiceFrom = vi.fn();
 
 vi.mock('@/lib/supabase-server', () => ({
   createAuthServerClient: vi.fn(() => ({
     auth: { getSession: mockAuthGetSession },
     from: mockFrom,
   })),
+}));
+
+vi.mock('@/lib/supabase', () => ({
+  createServerClient: vi.fn(() => ({ from: mockServiceFrom })),
 }));
 
 // Helper to create a mock builder that returns a promise with { data, error }
@@ -32,17 +38,23 @@ function createMockBuilder(result: { data?: any; error?: any }) {
 // rejects non-UUID ids with a 400 before any query runs.
 const PUBLIC_ENTITY_ID = '11111111-1111-4111-8111-111111111111';
 
-// Wire mockFrom so POST's two-table flow works: `entities` (the public-entity
-// gate) and `watchlists` (the actual write).
+// Wire the mocks so POST's two-table flow works: the `entities` existence probe
+// runs on the service-role client (mockServiceFrom) and the actual write runs on
+// the auth-scoped client (mockFrom → `watchlists`).
 function wirePostMocks(
   entityResult: { data?: any; error?: any },
   watchlistResult: { data?: any; error?: any } = { data: null, error: null }
 ) {
   const entityBuilder = createMockBuilder(entityResult);
   const watchlistBuilder = createMockBuilder(watchlistResult);
-  mockFrom.mockImplementation((table: string) =>
-    table === 'entities' ? entityBuilder : watchlistBuilder
-  );
+  mockServiceFrom.mockImplementation((table: string) => {
+    if (table !== 'entities') throw new Error(`unexpected service-role table: ${table}`);
+    return entityBuilder;
+  });
+  mockFrom.mockImplementation((table: string) => {
+    if (table !== 'watchlists') throw new Error(`unexpected auth-scoped table: ${table}`);
+    return watchlistBuilder;
+  });
   return { entityBuilder, watchlistBuilder };
 }
 
@@ -228,7 +240,7 @@ describe('POST /api/v1/watchlist', () => {
     expect((await response.json()).error).toBe('entity_id must be a valid UUID');
   });
 
-  // --- Existence + is_public enforcement (acceptance criterion 2) ---
+  // --- Existence gate (acceptance criterion 2) ---
   it('returns 404 when the entity does not exist', async () => {
     mockAuthGetSession.mockResolvedValue({
       data: { session: { user: { id: 'user-123' } } },
@@ -243,32 +255,60 @@ describe('POST /api/v1/watchlist', () => {
     }));
 
     expect(response.status).toBe(404);
-    expect((await response.json()).error).toBe('Entity not found');
-    // The gate queried entities and — crucially — filtered on is_public.
-    expect(mockFrom).toHaveBeenCalledWith('entities');
+    const body = await response.json();
+    expect(body.error).toBe('Entity not found');
+    expect(body.code).toBe('entity_not_found');
+    // The probe ran on the service-role client, keyed on the id only.
+    expect(mockServiceFrom).toHaveBeenCalledWith('entities');
     expect(entityBuilder.eq).toHaveBeenCalledWith('id', PUBLIC_ENTITY_ID);
-    expect(entityBuilder.eq).toHaveBeenCalledWith('is_public', true);
     // No watchlist row was written.
     expect(watchlistBuilder.upsert).not.toHaveBeenCalled();
   });
 
-  it('returns 404 for a private entity (indistinguishable from missing)', async () => {
+  // --- Regression: AST t_7a718c60 (Watch button reverted on Take-Two) ---
+  // The drawer renders entities straight from `/api/v1/entities` (service role,
+  // no is_public filter). A non-public / RLS-hidden row must therefore still be
+  // followable, otherwise the star can only ever flash and revert.
+  it('regression: follows an entity that exists but is NOT public', async () => {
     mockAuthGetSession.mockResolvedValue({
       data: { session: { user: { id: 'user-123' } } },
       error: null,
     });
-    // A private entity is filtered out by is_public = true, so the query
-    // returns no row — the caller cannot tell that it exists.
-    const { watchlistBuilder } = wirePostMocks({ data: null, error: null });
+    // The probe returns the row → the entity exists, whatever is_public says.
+    const { entityBuilder, watchlistBuilder } = wirePostMocks({
+      data: { id: PUBLIC_ENTITY_ID },
+      error: null,
+    });
 
     const response = await POST(new Request('http://localhost/api/v1/watchlist', {
       method: 'POST',
       body: JSON.stringify({ entity_id: PUBLIC_ENTITY_ID }),
     }));
 
-    expect(response.status).toBe(404);
-    expect((await response.json()).error).toBe('Entity not found');
-    expect(watchlistBuilder.upsert).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(watchlistBuilder.upsert).toHaveBeenCalled();
+    // The gate no longer filters on is_public — that filter is what 404'd TTWO.
+    expect(entityBuilder.eq).not.toHaveBeenCalledWith('is_public', true);
+  });
+
+  it('regression: the existence probe never uses the auth-scoped client', async () => {
+    mockAuthGetSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-123' } } },
+      error: null,
+    });
+    // RLS on `entities` (even once tightened) must not be able to turn a
+    // followable entity into a 404: only `watchlists` goes through the
+    // auth-scoped client.
+    wirePostMocks({ data: { id: PUBLIC_ENTITY_ID }, error: null });
+
+    const response = await POST(new Request('http://localhost/api/v1/watchlist', {
+      method: 'POST',
+      body: JSON.stringify({ entity_id: PUBLIC_ENTITY_ID }),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(mockFrom).not.toHaveBeenCalledWith('entities');
+    expect(mockServiceFrom).toHaveBeenCalledWith('entities');
   });
 
   it('returns 500 when the entity verification query fails', async () => {
@@ -284,7 +324,9 @@ describe('POST /api/v1/watchlist', () => {
     }));
 
     expect(response.status).toBe(500);
-    expect((await response.json()).error).toBe('Failed to verify entity');
+    const body = await response.json();
+    expect(body.error).toBe('Failed to verify entity');
+    expect(body.code).toBe('entity_verify_failed');
     expect(watchlistBuilder.upsert).not.toHaveBeenCalled();
   });
 
