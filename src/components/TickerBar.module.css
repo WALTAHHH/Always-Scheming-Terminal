@@ -7,6 +7,49 @@
   }
 }
 
+/*
+ * Marquee speed: the single source of truth for how fast the ticker scrolls.
+ * The keyframes translate by -50% of the track width, so this constant is a
+ * full loop time; the wider the content, the faster the on-screen pixels move.
+ * Raise the duration to slow the scroll down (larger = slower).
+ * Was 40s; now ~44% slower (40 / 72 = 0.56x the original speed).
+ */
 .animate-ticker-scroll {
-  animation: ticker-scroll 40s linear infinite;
+  --ticker-scroll-duration: 72s;
+  animation: ticker-scroll var(--ticker-scroll-duration) linear infinite;
+}
+
+/* Pause the marquee while a ticker item (or the bar itself) is hovered, or
+   while the bar contains keyboard focus, so a moving item can be read or
+   clicked without scrolling out from under the pointer. */
+.ticker-bar:hover .animate-ticker-scroll,
+.ticker-bar:focus-within .animate-ticker-scroll {
+  animation-play-state: paused;
+}
+
+/* Honour the user's reduced-motion preference: don't auto-scroll at all. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-ticker-scroll {
+    animation: none;
+  }
+}
+
+/*
+ * Ticker item hover tint.
+ *
+ * The site's usual row-hover utility is `hover:bg-ast-mint/5`, but that class
+ * is never emitted: tailwind.config.ts defines the ast-* colours as bare
+ * `var(--ast-*)` strings, and Tailwind 3.4 cannot apply an /alpha modifier to a
+ * var() colour. Reliably (re)introducing /alpha would mean changing the global
+ * colour definitions, which would simultaneously activate dozens of currently
+ * dead /alpha utilities site-wide (Feed, FeedRow, admin, …) and shift visuals
+ * everywhere — out of scope for a ticker fix. So compose the tint here with
+ * color-mix, scoped to the ticker items only.
+ *
+ * 8% (a touch above the 5% site token) is used because it reads clearly in both
+ * themes: in the light theme `--ast-mint` is the darker #059669, so the same
+ * percentage over white is more subtle than over the dark surface.
+ */
+.ticker-item:hover {
+  background-color: color-mix(in srgb, var(--ast-mint) 8%, transparent);
 }

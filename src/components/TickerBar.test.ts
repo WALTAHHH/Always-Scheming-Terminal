@@ -53,8 +53,116 @@ describe('TickerBar race + marquee fix', () => {
     })
 
     it('keeps the click-to-drawer handler', () => {
-      expect(source).toMatch(/onClick=\{\(\)\s*=>\s*\{/)
+      expect(source).toMatch(/onClick=\{\s*\(\)\s*=>\s*\{/)
       expect(source).toContain('openCompanyDrawer(entity.canonical_name)')
     })
+  })
+
+  describe('marquee scroll speed', () => {
+    const css = readFileSync(path.resolve(__dirname, 'TickerBar.module.css'), 'utf-8')
+
+    it('declares the duration as a single named constant', () => {
+      // one custom property is the sole source of truth for the speed
+      const declarations = css.match(/--ticker-scroll-duration\s*:/g) ?? []
+      expect(declarations).toHaveLength(1)
+      expect(css).toMatch(/--ticker-scroll-duration:\s*[\d.]+s/)
+    })
+
+    it('drives the animation from that constant (no hard-coded duration)', () => {
+      expect(css).toMatch(/animation:\s*ticker-scroll\s+var\(--ticker-scroll-duration\)\s+linear\s+infinite/)
+      // the old hard-coded 40s literal must be gone
+      expect(css).not.toMatch(/animation:\s*ticker-scroll\s+\d+s/)
+    })
+
+    it('is roughly 40-50% slower than the original 40s loop', () => {
+      const match = css.match(/--ticker-scroll-duration:\s*([\d.]+)s/)
+      expect(match).not.toBeNull()
+      const durationSeconds = Number(match![1])
+      const ORIGINAL_DURATION_SECONDS = 40
+      // speed is inversely proportional to duration
+      const speedRatio = ORIGINAL_DURATION_SECONDS / durationSeconds
+      expect(speedRatio).toBeGreaterThanOrEqual(0.5) // >= 40% slower
+      expect(speedRatio).toBeLessThanOrEqual(0.6) // <= 40% slower
+    })
+  })
+
+  // Pause-on-hover/focus so a moving ticker item can be examined (issue: hover pause).
+  describe('pause scroll on hover / focus', () => {
+    const css = readFileSync(path.resolve(__dirname, 'TickerBar.module.css'), 'utf-8')
+
+    it('tags the ticker bar container with the ticker-bar class', () => {
+      expect(source).toMatch(/styles\["ticker-bar"\]/)
+    })
+
+    it('pauses the marquee while the bar is hovered', () => {
+      expect(css).toMatch(/\.ticker-bar:hover \.animate-ticker-scroll/)
+      expect(css).toMatch(/animation-play-state:\s*paused/)
+    })
+
+    it('pauses the marquee while the bar has keyboard focus', () => {
+      expect(css).toMatch(/\.ticker-bar:focus-within \.animate-ticker-scroll/)
+    })
+
+    it('disables the marquee animation under prefers-reduced-motion: reduce', () => {
+      const reduced = css.match(
+        /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\}/
+      )
+      expect(reduced).not.toBeNull()
+      expect(reduced![0]).toMatch(/\.animate-ticker-scroll/)
+      expect(reduced![0]).toMatch(/animation:\s*none/)
+    })
+  })
+})
+
+// Hover styling parity with the rest of the site.
+// Dominant convention (surveyed across FeedRow/SignalPanel/FilterBar/Header):
+//   row hover -> bg tint `hover:bg-ast-mint/5` + `transition-colors`
+//   hovered text -> `group-hover:text-ast-accent`
+//   keyboard focus -> `focus:outline-none focus:ring-2 focus:ring-ast-accent(/50)`
+// All colours come from ast-* theme tokens so both themes are covered.
+//
+// Note: the `hover:bg-ast-mint/5` utility is NOT usable here — ast-* colours
+// are bare `var(--ast-*)` strings in tailwind.config.ts, so Tailwind 3.4 never
+// emits the /alpha variant. The ticker therefore composes its hover tint with
+// `color-mix()` in TickerBar.module.css (`.ticker-item:hover`). These tests
+// pin that CSS rule and assert we are no longer relying on the dead utility.
+describe('TickerBar hover styling parity', () => {
+  const source = readFileSync(path.resolve(__dirname, 'TickerBar.tsx'), 'utf-8')
+  const css = readFileSync(path.resolve(__dirname, 'TickerBar.module.css'), 'utf-8')
+
+  it('applies the ticker-scoped hover class instead of the dead hover:bg-ast-mint/5', () => {
+    expect(source).toContain('styles["ticker-item"]')
+    // bare `hover:bg-mint/5` is never generated for var() tokens, so must be gone
+    expect(source).not.toContain('hover:bg-ast-mint/5')
+    // the old one-off hover:bg-ast-surface is also gone
+    expect(source).not.toContain('hover:bg-ast-surface')
+  })
+
+  it('animates the hover state with transition-colors', () => {
+    expect(source).toMatch(/transition-colors/)
+  })
+
+  it('defines the hover tint as a color-mix() rule on .ticker-item:hover', () => {
+    expect(css).toMatch(/\.ticker-item:hover\s*\{[^}]*color-mix\(in srgb,\s*var\(--ast-mint\)/)
+    expect(css).toMatch(/background-color:\s*color-mix\(in srgb,\s*var\(--ast-mint\)\s+[\d.]+%,\s*transparent\)/)
+  })
+
+  it('tints with the ast-mint token so both themes are covered', () => {
+    expect(css).toMatch(/\.ticker-item:hover[\s\S]*var\(--ast-mint\)/)
+  })
+
+  it('highlights the ticker symbol on hover via group-hover:text-ast-accent', () => {
+    expect(source).toContain('group-hover:text-ast-accent')
+  })
+
+  it('makes items keyboard focusable as buttons (focus-visible parity)', () => {
+    expect(source).toMatch(/<button[\s\S]*?key=\{`\$\{stock\.ticker\}-/)
+    expect(source).toMatch(/type="button"[\s\S]*?onClick/)
+    expect(source).toMatch(/focus-visible:ring-2/)
+    expect(source).toMatch(/focus-visible:ring-ast-accent/)
+  })
+
+  it('keeps the pointer cursor on hoverable items', () => {
+    expect(source).toContain('cursor-pointer')
   })
 })

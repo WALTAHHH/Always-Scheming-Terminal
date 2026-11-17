@@ -117,7 +117,9 @@ export function TickerBar() {
   };
 
   return (
-    <div className="hidden sm:flex items-center h-6 bg-ast-surface/60 border-b border-ast-border/40 font-mono overflow-hidden">
+    <div
+      className={`hidden sm:flex items-center h-6 bg-ast-surface/60 border-b border-ast-border/40 font-mono overflow-hidden ${styles["ticker-bar"]}`}
+    >
       <div
         className={`flex items-center h-full whitespace-nowrap ${
           scrollEnabled ? styles["animate-ticker-scroll"] : ""
@@ -126,17 +128,18 @@ export function TickerBar() {
       >
         {/* Render twice for seamless loop */}
         {[...stocks, ...stocks].map((stock, idx) => (
-          <div
+          <button
             key={`${stock.ticker}-${idx}`}
+            type="button"
             title={`${stock.ticker} · ${stock.loading ? "loading" : formatPrice(stock.price)} · ${stock.loading ? "" : formatChangePercent(stock.changePercent)}`.trim()}
-            className="inline-flex items-center h-full px-3 border-r border-ast-border/40 cursor-pointer hover:bg-ast-surface"
+            className={`group inline-flex items-center h-full px-3 border-r border-ast-border/40 cursor-pointer transition-colors ${styles["ticker-item"]} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ast-accent/50`}
             onClick={() => {
               const entity = entities[idx % entities.length];
               if (entity) openCompanyDrawer(entity.canonical_name);
             }}
           >
-            <div className="flex items-center gap-1.5">
-              <span className="text-ast-text font-bold text-[10px] tracking-tight">
+            <span className="flex items-center gap-1.5">
+              <span className="text-ast-text font-bold text-[10px] tracking-tight group-hover:text-ast-accent transition-colors">
                 {stock.ticker}
               </span>
               <span className="text-ast-muted text-[10px]">·</span>
@@ -157,8 +160,8 @@ export function TickerBar() {
               >
                 {stock.loading ? "…" : formatChangePercent(stock.changePercent)}
               </span>
-            </div>
-          </div>
+            </span>
+          </button>
         ))}
       </div>
     </div>
