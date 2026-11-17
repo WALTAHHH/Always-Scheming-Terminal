@@ -32,6 +32,11 @@ const DEFAULT_WATCHLIST_MIN_SCORE = 0.75;
 const FOLLOWING_EMPTY_STATE =
   "You're not watching any companies yet. Open any company from the feed and tap ★ Watch.";
 
+// Fallback label when an entity row cannot be resolved (deleted, or the detail
+// lookup failed). The raw entity_id must never reach the UI — a UUID tells the
+// user nothing and looks like a bug.
+const UNKNOWN_COMPANY = "Unknown company";
+
 export default function ProfilePage() {
   const router = useRouter();
   const supabase = createAuthBrowserClient();
@@ -60,6 +65,7 @@ export default function ProfilePage() {
   // Following / notification preferences (spec §5.4–§5.5).
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
   const [unwatching, setUnwatching] = useState<string | null>(null);
+  const [unwatchError, setUnwatchError] = useState<string | null>(null);
   // Full notification_prefs blob, round-tripped so we don't clobber other keys.
   const [notificationPrefs, setNotificationPrefs] = useState<
     Record<string, unknown>
@@ -249,18 +255,20 @@ export default function ProfilePage() {
   };
 
   // --- Following list (spec §5.4) -----------------------------------------
-  // Optimistically remove the row, revert if the DELETE fails. The watchlist
-  // helper never throws (returns false on failure), so revert is straightforward.
+  // The row stays visible (button disabled, label reads "unfollowing...")
+  // until the DELETE settles, so the pending state is actually observable and
+  // a failed unfollow needs no revert. Success removes the row.
   const handleUnwatch = async (entityId: string) => {
-    const previous = watchlist;
+    setUnwatchError(null);
     setUnwatching(entityId);
-    setWatchlist((prev) =>
-      prev.filter((entry) => entry.entity_id !== entityId)
-    );
 
     const ok = await unwatchEntity(entityId);
-    if (!ok) {
-      setWatchlist(previous); // revert optimistic removal
+    if (ok) {
+      setWatchlist((prev) =>
+        prev.filter((entry) => entry.entity_id !== entityId)
+      );
+    } else {
+      setUnwatchError("Couldn't unfollow that company — please try again.");
     }
     setUnwatching(null);
   };
@@ -504,38 +512,65 @@ export default function ProfilePage() {
                 {FOLLOWING_EMPTY_STATE}
               </div>
             ) : (
-              <ul className="space-y-2">
-                {watchlist.map((entry) => (
-                  <li
-                    key={entry.entity_id}
-                    className="flex items-center justify-between gap-3 p-2 bg-ast-bg/50 rounded"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm text-ast-text truncate">
-                        {entry.entity?.canonical_name || entry.entity_id}
-                      </div>
-                      {entry.entity?.ticker && (
-                        <div className="text-xs text-ast-muted">
-                          {entry.entity.ticker}
-                          {entry.entity.exchange
-                            ? ` · ${entry.entity.exchange}`
-                            : ""}
+              <>
+                <ul className="space-y-2">
+                  {watchlist.map((entry) => {
+                    // Name first, never the id: an unresolved entity falls back
+                    // to a human label but the row stays removable.
+                    const name =
+                      entry.entity?.canonical_name?.trim() || UNKNOWN_COMPANY;
+                    const meta = [entry.entity?.ticker, entry.entity?.exchange]
+                      .filter(
+                        (part): part is string =>
+                          typeof part === "string" && part.trim() !== ""
+                      )
+                      .join(" · ");
+                    const pending = unwatching === entry.entity_id;
+
+                    return (
+                      <li
+                        key={entry.entity_id}
+                        className="flex items-center justify-between gap-3 p-3 bg-ast-bg/50 border border-ast-border/60 rounded"
+                        data-testid="following-row"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-ast-text truncate">
+                            {name}
+                          </div>
+                          {(meta || entry.entity?.entity_type) && (
+                            <div className="flex items-center gap-2 mt-1 min-w-0">
+                              {meta && (
+                                <span className="text-xs text-ast-muted truncate">
+                                  {meta}
+                                </span>
+                              )}
+                              {entry.entity?.entity_type && (
+                                <span className="shrink-0 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-ast-border text-ast-muted">
+                                  {entry.entity.entity_type}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleUnwatch(entry.entity_id)}
-                      disabled={unwatching === entry.entity_id}
-                      aria-label={`Unwatch ${
-                        entry.entity?.canonical_name || entry.entity_id
-                      }`}
-                      className="shrink-0 px-2 py-1 rounded text-ast-muted hover:text-red-400 hover:bg-ast-bg disabled:opacity-50"
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                        <button
+                          type="button"
+                          onClick={() => handleUnwatch(entry.entity_id)}
+                          disabled={pending}
+                          aria-label={`Unfollow ${name}`}
+                          className="shrink-0 px-2 py-1 rounded text-xs text-ast-muted hover:text-red-400 hover:bg-ast-bg disabled:opacity-50 disabled:cursor-wait"
+                        >
+                          {pending ? "unfollowing..." : "✕"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {unwatchError && (
+                  <p className="mt-3 text-sm text-red-400" role="alert">
+                    {unwatchError}
+                  </p>
+                )}
+              </>
             )}
           </section>
 

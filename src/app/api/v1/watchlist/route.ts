@@ -34,23 +34,34 @@ export const dynamic = "force-dynamic";
  * entity data the public `/api/v1/entities` endpoint does not already serve.
  */
 
-// The nested `entity:entities(...)` embed below is not reflected in the
+// The nested `entity:entities(...)` embed is not reflected in the
 // hand-maintained Database types, so the row shape is asserted locally.
-type WatchlistRowWithEntity = {
+type WatchlistRow = {
   id: string;
   entity_id: string;
   created_at: string | null;
-  entity: {
-    id: string;
-    canonical_name: string;
-    ticker: string | null;
-    exchange: string | null;
-    entity_type: string;
-    is_public: boolean | null;
-  } | null;
 };
 
-const ENTITY_SELECT = "id, entity_id, created_at, entity:entities(id, canonical_name, ticker, exchange, entity_type, is_public)";
+type EntityDetails = {
+  id: string;
+  canonical_name: string;
+  ticker: string | null;
+  exchange: string | null;
+  entity_type: string;
+};
+
+type WatchlistRowWithEntity = WatchlistRow & { entity: EntityDetails | null };
+
+// Only the caller's own watchlist rows come from the auth-scoped client.
+const WATCHLIST_SELECT = "id, entity_id, created_at";
+
+// Entity details are resolved with the service-role client: the Following list
+// must show a company name even when the row is not readable by the caller's
+// role (is_public false/NULL, or a tightened entities read policy). The embed
+// used to run on the auth-scoped client, so those rows came back as
+// `entity: null` and the UI fell back to the raw UUID. Only the five
+// display-only columns below are selected — no other entity data is exposed.
+const ENTITY_SELECT = "id, canonical_name, ticker, exchange, entity_type";
 
 async function getAuthedClient() {
   const supabase = await createAuthServerClient();
@@ -69,9 +80,11 @@ export async function GET() {
   }
   const { supabase, userId } = auth;
 
+  // 1. The caller's own rows only — RLS (auth.uid() = user_id) and the explicit
+  //    user_id filter both scope this to the authenticated user.
   const { data, error } = await supabase
     .from("watchlists")
-    .select(ENTITY_SELECT)
+    .select(WATCHLIST_SELECT)
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
@@ -79,10 +92,37 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to load watchlist" }, { status: 500 });
   }
 
-  const rows = (data ?? []) as unknown as WatchlistRowWithEntity[];
+  const rows = (data ?? []) as unknown as WatchlistRow[];
+  const entityIds = Array.from(new Set(rows.map((r) => r.entity_id)));
+
+  // 2. Resolve display details for exactly those ids on the service-role client
+  //    (see ENTITY_SELECT above). A deleted/missing entity still yields
+  //    `entity: null`, which the UI renders as "Unknown company" — never a UUID.
+  const entitiesById = new Map<string, EntityDetails>();
+  if (entityIds.length > 0) {
+    const { data: entityRows, error: entityError } = await createServerClient()
+      .from("entities")
+      .select(ENTITY_SELECT)
+      .in("id", entityIds);
+
+    if (entityError) {
+      // Degrade rather than blank the whole list: the rows are still removable,
+      // and the UI has a non-UUID fallback label for unresolved names.
+      console.error("watchlist: entity detail lookup failed", entityError);
+    } else {
+      for (const entity of (entityRows ?? []) as unknown as EntityDetails[]) {
+        entitiesById.set(entity.id, entity);
+      }
+    }
+  }
+
+  const withEntities: WatchlistRowWithEntity[] = rows.map((row) => ({
+    ...row,
+    entity: entitiesById.get(row.entity_id) ?? null,
+  }));
 
   return NextResponse.json({
-    data: rows,
+    data: withEntities,
     // Convenience list for the CompanyDrawer star state (§5.1).
     entity_ids: rows.map((r) => r.entity_id),
     count: rows.length,
