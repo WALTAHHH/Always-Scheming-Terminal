@@ -4,6 +4,7 @@ import {
   fanOutAlerts,
   DEFAULT_WATCHLIST_MIN_SCORE,
   DEFAULT_DIGEST_MAX_USERS,
+  DEFAULT_DIGEST_MAX_ELAPSED_MS,
   DEFAULT_DIGEST_MAX_PENDING_ROWS,
   isMondayUtc,
   isDigestDue,
@@ -1896,6 +1897,235 @@ describe('sendWeeklyDigests — pending-alert row bound', () => {
       '1000 pending rows truncated by the row bound (5000 read, maxPendingRows=5000)',
     );
 
+    log.mockRestore();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Wall-clock budget (card t_68c356d3): a slow pass must stop *before* it
+// starts another user's claim, leaving the un-attempted users for the next
+// Monday. The user cap bounds how many users a pass attempts, not how long
+// they take; this budget is what actually keeps the cron tail under
+// `maxDuration` when the transport is slow.
+// ─────────────────────────────────────────────────────────────────────────
+describe('sendWeeklyDigests — wall-clock budget', () => {
+  const now = new Date('2026-11-16T12:00:00Z'); // Monday UTC
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getEmailConfig).mockReturnValue({ apiKey: 're_key', from: 'alerts@example.com' });
+    vi.mocked(getDigestFooterAddress).mockReturnValue('123 Main St');
+    vi.mocked(getSiteUrl).mockReturnValue('https://terminal.always-scheming.com');
+    vi.mocked(generateDigestUnsubToken).mockReturnValue('a'.repeat(64));
+    vi.mocked(buildDigestUnsubUrl).mockReturnValue(
+      'https://terminal.always-scheming.com/unsubscribe?token=a',
+    );
+    vi.mocked(buildDigestUnsubHeaders).mockReturnValue({
+      'List-Unsubscribe': '<https://terminal.always-scheming.com/unsubscribe?token=a>',
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    });
+  });
+
+  const LOOKUPS = {
+    entities: [{ id: 'ent1', canonical_name: 'Acme' }],
+    signals: [{ id: 'sig1', summary: 'Acme beats estimates', content_id: 'cont1' }],
+    content: [{ id: 'cont1', url: 'https://example.com/a' }],
+  };
+
+  function alertRow(userId: string, id: string, createdAt: string) {
+    return {
+      id,
+      user_id: userId,
+      signal_id: 'sig1',
+      entity_id: 'ent1',
+      signal_type: 'earnings',
+      score: 0.9,
+      created_at: createdAt,
+      email_sent_at: null,
+    };
+  }
+
+  const idsIn = (rows: Array<Record<string, unknown>>) =>
+    rows.map((r) => r.id as string).sort();
+
+  const stampedIds = (backend: ReturnType<typeof makeFakeBackend>) =>
+    idsIn(backend.state.alert_events.filter((r) => r.email_sent_at != null));
+
+  const pendingIds = (backend: ReturnType<typeof makeFakeBackend>) =>
+    idsIn(backend.state.alert_events.filter((r) => r.email_sent_at == null));
+
+  /** `n` users, one alert each, oldest first (u1 oldest). */
+  function oneEach(users: string[]) {
+    return users.map((u, i) =>
+      alertRow(u, `al-${u}`, `2026-11-15T${String(i).padStart(2, '0')}:00:00Z`),
+    );
+  }
+
+  it('defaults the budget to DEFAULT_DIGEST_MAX_ELAPSED_MS (60 s)', () => {
+    expect(DEFAULT_DIGEST_MAX_ELAPSED_MS).toBe(60_000);
+  });
+
+  // (a) A pass with an injected slow send stops at the budget with the
+  // remaining users unstamped — not lost.
+  it('stops at the budget with the remaining users unstamped, not lost', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+    const backend = makeFakeBackend({
+      prefs: users.map(prefsFor),
+      alerts: oneEach(users),
+      ...LOOKUPS,
+    });
+
+    // Controllable clock: each send advances it by 100 ms.
+    let clock = 0;
+    const send = vi.fn(async () => {
+      clock += 100;
+      return { ok: true, id: 'msg' };
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      nowMs: () => clock,
+      maxElapsedMs: 250,
+    });
+
+    // 100 ms per send, 250 ms budget: u1 (0→100), u2 (100→200), u3 (200→300),
+    // then the check before u4 sees 300 >= 250 and breaks.
+    expect(result.usersConsidered).toBe(5);
+    expect(result.sent).toBe(3);
+    expect(result.failed).toBe(0);
+    expect(result.alertsEmailed).toBe(3);
+    expect(result.skippedByBudget).toBe(2);
+    expect(result.skippedByCap).toBe(0);
+    expect(send).toHaveBeenCalledTimes(3);
+
+    // The two deferred users are untouched: alerts still pending, never claimed.
+    expect(stampedIds(backend)).toEqual(['al-u1', 'al-u2', 'al-u3']);
+    expect(pendingIds(backend)).toEqual(['al-u4', 'al-u5']);
+    const claimed = backend.state.user_preferences
+      .filter((p) => p.last_digest_sent_at != null)
+      .map((p) => p.user_id)
+      .sort();
+    expect(claimed).toEqual(['u1', 'u2', 'u3']);
+
+    const warnMsg = warn.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(warnMsg).toContain('stopping early');
+    expect(warnMsg).toContain('wall-clock budget of 250ms reached after 3 of 5 users');
+    expect(warnMsg).toContain('2 deferred');
+    const logMsg = log.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logMsg).toContain('2 skipped by budget');
+
+    warn.mockRestore();
+    log.mockRestore();
+  });
+
+  // (b) A second pass picks the deferred users up.
+  it('lets a second pass pick up the users the budget deferred', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4', 'u5'];
+    const backend = makeFakeBackend({
+      prefs: users.map(prefsFor),
+      alerts: oneEach(users),
+      ...LOOKUPS,
+    });
+
+    let clock = 0;
+    const send = vi.fn(async () => {
+      clock += 100;
+      return { ok: true, id: 'msg' };
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const first = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      nowMs: () => clock,
+      maxElapsedMs: 250,
+    });
+    expect(first.sent).toBe(3);
+    expect(first.skippedByBudget).toBe(2);
+
+    // Second pass, fresh budget: only u4/u5 still have pending alerts (u1-u3
+    // were stamped) and both are due again (they were never claimed).
+    clock = 0;
+    const second = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      nowMs: () => clock,
+      maxElapsedMs: 250,
+    });
+
+    expect(second.usersConsidered).toBe(2);
+    expect(second.sent).toBe(2);
+    expect(second.skippedByBudget).toBe(0);
+    // Nothing lost, nothing duplicated: all five alerts now stamped exactly once.
+    expect(stampedIds(backend)).toEqual([
+      'al-u1',
+      'al-u2',
+      'al-u3',
+      'al-u4',
+      'al-u5',
+    ]);
+    expect(pendingIds(backend)).toEqual([]);
+
+    log.mockRestore();
+  });
+
+  // (c) A budget breach never releases a claim mid-flight: every user that was
+  // claimed is also fully delivered (claim implies stamped alert).
+  it('does not release a claim mid-flight when the budget is breached', async () => {
+    const users = ['u1', 'u2', 'u3', 'u4'];
+    const backend = makeFakeBackend({
+      prefs: users.map(prefsFor),
+      alerts: oneEach(users),
+      ...LOOKUPS,
+    });
+
+    // Send advances the clock past the budget *during* u2's send, so the breach
+    // is observed on the check before u3 — u2 must still complete normally.
+    let clock = 0;
+    const send = vi.fn(async () => {
+      clock += 100;
+      return { ok: true, id: 'msg' };
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await sendWeeklyDigests({
+      supabase: backend.client,
+      now,
+      sendEmailImpl: send as never,
+      nowMs: () => clock,
+      maxElapsedMs: 150,
+    });
+
+    // u1 (0→100) processed; check before u2: 100 < 150 → u2 processed (100→200);
+    // check before u3: 200 >= 150 → break. u2 finished, no partial state.
+    expect(result.sent).toBe(2);
+    expect(result.skippedByBudget).toBe(2);
+
+    // Invariant: claimed ⇔ stamped. A mid-flight release would leave a claimed
+    // user with an unstamped alert (or a released claim), breaking this.
+    const claimedUsers = backend.state.user_preferences
+      .filter((p) => p.last_digest_sent_at != null)
+      .map((p) => p.user_id)
+      .sort();
+    const stampedUsers = Array.from(
+      new Set(
+        backend.state.alert_events
+          .filter((r) => r.email_sent_at != null)
+          .map((r) => r.user_id as string),
+      ),
+    ).sort();
+    expect(claimedUsers).toEqual(['u1', 'u2']);
+    expect(stampedUsers).toEqual(['u1', 'u2']);
+    expect(stampedIds(backend)).toEqual(['al-u1', 'al-u2']);
+
+    warn.mockRestore();
     log.mockRestore();
   });
 });

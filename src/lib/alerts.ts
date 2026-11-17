@@ -326,6 +326,16 @@ export async function fanOutAlerts(
 //      `email_sent_at` stamp failed keeps the claim held, so the user is not
 //      emailed twice on the same Monday.
 //
+//   7. **Wall-clock budget.** The pass stops before starting another user's
+//      claim once DEFAULT_DIGEST_MAX_ELAPSED_MS of wall-clock time has elapsed
+//      (override with `opts.maxElapsedMs`; `0` = no time bound). The user cap
+//      bounds *how many* users one pass attempts but not *how long* they take:
+//      200 users × (claim + prefs + auth lookup + token persist + ledger stamp +
+//      Resend HTTP) can still overrun what is left of the cron's `maxDuration`.
+//      On breach the loop breaks *before* the next user's claim, so no user is
+//      left half-processed; the rest are deferred to the next Monday (nothing
+//      stamped for them) and counted in `skippedByBudget`.
+//
 // Digest content = unsent `alert_events` from the past DIGEST_LOOKBACK_DAYS (7)
 // days, grouped by entity. Every digest carries the one-click unsubscribe link
 // (W9 route `/unsubscribe?token=…`) and the physical-address footer line from
@@ -363,6 +373,21 @@ export const DEFAULT_DIGEST_MAX_USERS = 200;
  * closest to falling out of the 7-day lookback window are always served first.
  */
 export const DEFAULT_DIGEST_MAX_PENDING_ROWS = 5000;
+
+/**
+ * Wall-clock budget (milliseconds) for one digest pass.
+ *
+ * The user cap bounds how many users a pass *attempts*, not how long those
+ * attempts take. Each user costs a claim `UPDATE`, a prefs read, an auth
+ * lookup, a token persist and a Resend HTTP round trip; 200 of those can still
+ * overrun what is left of the extract-signals cron's `maxDuration=300` after
+ * the LLM extraction that runs first. This budget stops the pass before it
+ * starts another user's claim once the wall clock is spent, leaving the
+ * un-attempted users deferred to the next Monday (nothing stamped for them, so
+ * nothing is lost). 60 s leaves ~240 s of the 300 s function budget for the LLM
+ * work and fan-out that precede the digest; override with `opts.maxElapsedMs`.
+ */
+export const DEFAULT_DIGEST_MAX_ELAPSED_MS = 60_000;
 
 /** `true` when `now` is a Monday in UTC — the single allowed digest weekday. */
 export function isMondayUtc(now: Date): boolean {
@@ -436,6 +461,8 @@ export interface WeeklyDigestResult {
   alertsEmailed: number;
   /** Users deferred to the next Monday because the per-pass cap was hit. */
   skippedByCap: number;
+  /** Users deferred to the next Monday because the wall-clock budget was hit. */
+  skippedByBudget: number;
   /**
    * `alert_events` rows the pending-alert read returned. Never more than the
    * row bound (`opts.maxPendingRows`), so `usersConsidered` above is derived
@@ -481,6 +508,20 @@ export interface SendWeeklyDigestsOptions {
    * is bounded. Rows beyond the bound are deferred to the next Monday.
    */
   maxPendingRows?: number;
+  /**
+   * Wall-clock budget in milliseconds for this pass (defaults to
+   * {@link DEFAULT_DIGEST_MAX_ELAPSED_MS}). Same coercion as {@link maxUsers}:
+   * fractional values are floored, and `0` (or a negative / non-finite value)
+   * means no time bound. Checked before each user's claim; once the budget is
+   * spent the loop stops and the remaining users are deferred to the next
+   * Monday (nothing is stamped for them).
+   */
+  maxElapsedMs?: number;
+  /**
+   * Millisecond clock injection for tests (defaults to `Date.now`). Only the
+   * wall-clock budget reads it; the Monday/cadence gates use {@link now}.
+   */
+  nowMs?: () => number;
 }
 
 /**
@@ -604,6 +645,11 @@ export async function releaseDigestClaim(
  * alerts were past the previous bound). User-level selection stays
  * deterministic — given a row set, the same users are served in `user_id` order.
  *
+ * Time-bounded: the pass stops before starting another user's claim once
+ * {@link DEFAULT_DIGEST_MAX_ELAPSED_MS} of wall-clock time has elapsed (override
+ * with `opts.maxElapsedMs`; `0` = no time bound). The un-attempted users keep
+ * their unsent alerts (nothing is stamped for them) and are served next Monday.
+ *
  * Degrades gracefully: returns `{ skipped: "unconfigured" }` (after a log line)
  * when `RESEND_API_KEY`/`DIGEST_FROM` are unset and `{ skipped: "no_client" }`
  * when Supabase service credentials are missing. Neither stamps any state, so
@@ -619,6 +665,7 @@ export async function sendWeeklyDigests(
     failed: 0,
     alertsEmailed: 0,
     skippedByCap: 0,
+    skippedByBudget: 0,
     pendingRowsRead: 0,
     pendingRowsTruncated: 0,
   };
@@ -644,6 +691,30 @@ export async function sendWeeklyDigests(
     }
     supabase = createClient<Database>(url, key, { auth: { persistSession: false } });
   }
+
+  // Wall-clock budget (card t_68c356d3). Coerced exactly like `maxUsers`: a
+  // fractional budget is floored, and `0` / negative / non-finite disables the
+  // time bound. The clock starts here — before the reads — so the budget covers
+  // the whole pass, not just the send loop; the check itself runs before each
+  // user's claim (see the loop). `nowMs` is a monotonic-ish millisecond clock,
+  // injectable for tests, separate from the `now` Date that drives the
+  // Monday/cadence gates.
+  const nowMs = opts.nowMs ?? (() => Date.now());
+  const requestedMaxElapsedMs =
+    opts.maxElapsedMs ?? DEFAULT_DIGEST_MAX_ELAPSED_MS;
+  const maxElapsedMs = Number.isFinite(requestedMaxElapsedMs)
+    ? Math.max(0, Math.floor(requestedMaxElapsedMs))
+    : requestedMaxElapsedMs;
+  if (
+    Number.isFinite(requestedMaxElapsedMs) &&
+    !Number.isInteger(requestedMaxElapsedMs)
+  ) {
+    console.warn(
+      `[alerts] digest: maxElapsedMs=${requestedMaxElapsedMs} is not a non-negative integer; coercing to ${maxElapsedMs}`,
+    );
+  }
+  const timeBounded = Number.isFinite(maxElapsedMs) && maxElapsedMs > 0;
+  const startedAtMs = nowMs();
 
   const nowIso = now.toISOString();
   const lookbackIso = new Date(
@@ -820,8 +891,25 @@ export async function sendWeeklyDigests(
   result.pendingRowsRead = pendingRowsRead;
   result.pendingRowsTruncated = pendingRowsTruncated;
   let newAlertsEmailed = 0;
+  let skippedByBudget = 0;
 
-  for (const userId of processUsers) {
+  for (let i = 0; i < processUsers.length; i++) {
+    const userId = processUsers[i];
+
+    // Wall-clock budget (card t_68c356d3): stop *before* starting another
+    // user's claim once the pass has spent its budget. Breaking here — between
+    // users rather than mid-user — means the user being worked on is either
+    // fully processed or not started at all, so a breach never releases a claim
+    // mid-flight or leaves a partial state. The un-attempted users keep their
+    // unsent alerts (nothing stamped for them) and are served next Monday.
+    if (timeBounded && nowMs() - startedAtMs >= maxElapsedMs) {
+      skippedByBudget = processUsers.length - i;
+      console.warn(
+        `[alerts] digest: stopping early — wall-clock budget of ${maxElapsedMs}ms reached after ${i} of ${processUsers.length} users this pass; ${skippedByBudget} deferred to the next Monday`,
+      );
+      break;
+    }
+
     const alerts = byUser.get(userId) ?? [];
     if (alerts.length === 0) continue;
 
@@ -947,6 +1035,7 @@ export async function sendWeeklyDigests(
   }
 
   result.alertsEmailed = newAlertsEmailed;
+  result.skippedByBudget = skippedByBudget;
 
   if (result.usersConsidered > 0) {
     // Ops signal: when the row bound truncated the read, `usersConsidered` is a
@@ -957,7 +1046,7 @@ export async function sendWeeklyDigests(
         ? ""
         : `, ${pendingRowsTruncated === null ? "at least 1" : pendingRowsTruncated} pending rows truncated by the row bound (${pendingRowsRead} read, maxPendingRows=${maxPendingRows})`;
     console.log(
-      `[alerts] weekly digest pass: ${result.usersConsidered} users considered, ${result.sent} sent, ${result.failed} failed, ${result.skippedByCap} skipped by cap, ${result.alertsEmailed} alerts emailed${truncation}`,
+      `[alerts] weekly digest pass: ${result.usersConsidered} users considered, ${result.sent} sent, ${result.failed} failed, ${result.skippedByCap} skipped by cap, ${result.skippedByBudget} skipped by budget, ${result.alertsEmailed} alerts emailed${truncation}`,
     );
   }
 
