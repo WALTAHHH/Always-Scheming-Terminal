@@ -895,6 +895,40 @@ function EntitiesDashboard() {
     fetchData();
   }, [fetchData]);
 
+  // Extract unique values for filters.
+  // IMPORTANT: every hook must run before the first early return below. On the
+  // first render (loading === true) we return early, so if these useMemo calls
+  // lived after the guards the loaded render would execute more hooks than the
+  // loading render and React would throw error #310 ("rendered more hooks than
+  // during the previous render"). All inputs are available from the initial
+  // state, so compute defensively against `entities ?? []`.
+  const uniqueSegments = useMemo(() => {
+    const segments = (entities ?? []).map(e => e.segment).filter((v): v is string => typeof v === 'string' && v.length > 0);
+    return [...new Set(segments)].sort();
+  }, [entities]);
+
+  const uniqueTypes = useMemo(() => {
+    const types = (entities ?? []).map(e => e.entity_type).filter((v): v is string => typeof v === 'string' && v.length > 0);
+    return [...new Set(types)].sort();
+  }, [entities]);
+
+  // Filtered entities
+  const filteredEntities = useMemo(() => {
+    return (entities ?? []).filter(entity => {
+      // Segment filter
+      if (segmentFilter && entity.segment !== segmentFilter) return false;
+
+      // Type filter
+      if (typeFilter && entity.entity_type !== typeFilter) return false;
+
+      // Visibility filter
+      if (visibilityFilter === "public" && !entity.is_public) return false;
+      if (visibilityFilter === "private" && entity.is_public) return false;
+
+      return true;
+    });
+  }, [entities, segmentFilter, typeFilter, visibilityFilter]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -931,34 +965,6 @@ function EntitiesDashboard() {
     .sort((a, b) => b.tag_count - a.tag_count)
     .slice(0, 10);
   const topFiveEntities = tagTimeSeries.slice(0, 5);
-
-  // Extract unique values for filters
-  const uniqueSegments = useMemo(() => {
-    const segments = entities.map(e => e.segment).filter((v): v is string => typeof v === 'string' && v.length > 0);
-    return [...new Set(segments)].sort();
-  }, [entities]);
-
-  const uniqueTypes = useMemo(() => {
-    const types = entities.map(e => e.entity_type).filter((v): v is string => typeof v === 'string' && v.length > 0);
-    return [...new Set(types)].sort();
-  }, [entities]);
-
-  // Filtered entities
-  const filteredEntities = useMemo(() => {
-    return entities.filter(entity => {
-      // Segment filter
-      if (segmentFilter && entity.segment !== segmentFilter) return false;
-      
-      // Type filter
-      if (typeFilter && entity.entity_type !== typeFilter) return false;
-      
-      // Visibility filter
-      if (visibilityFilter === "public" && !entity.is_public) return false;
-      if (visibilityFilter === "private" && entity.is_public) return false;
-      
-      return true;
-    });
-  }, [entities, segmentFilter, typeFilter, visibilityFilter]);
 
   return (
     <div className="space-y-6">
