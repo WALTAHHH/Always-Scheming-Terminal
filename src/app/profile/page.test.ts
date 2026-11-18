@@ -84,3 +84,64 @@ describe('Profile segments save trigger (issue #112)', () => {
     expect(saveBody).toContain('setSegmentStatus("error")')
   })
 })
+
+describe('Following list rendering (AST t_9e83034c)', () => {
+  const filePath = path.resolve(__dirname, 'page.tsx')
+  const content = fs.readFileSync(filePath, 'utf-8')
+
+  // Isolate the Following section so assertions cannot be satisfied by
+  // unrelated markup elsewhere on the page.
+  const start = content.indexOf('{/* 4. Following (watched companies)')
+  const end = content.indexOf('{/* 5. Notifications')
+  const following = start > -1 && end > start ? content.slice(start, end) : ''
+
+  test('the Following section is locatable', () => {
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+  })
+
+  test('never falls back to the raw entity_id', () => {
+    // The bug: `entity?.canonical_name || entry.entity_id` printed a UUID.
+    expect(following).not.toMatch(/entry\.entity_id\s*\|\|/)
+    expect(following).not.toMatch(/entry\.entity_id\s*\?\?/)
+    expect(following).not.toMatch(/\|\|\s*entry\.entity_id/)
+    expect(following).not.toMatch(/\?\?\s*entry\.entity_id/)
+  })
+
+  test('uses a human fallback label for unresolved entities', () => {
+    expect(content).toContain('const UNKNOWN_COMPANY = "Unknown company"')
+    expect(following).toContain('UNKNOWN_COMPANY')
+  })
+
+  test('shows the company name as primary text', () => {
+    expect(following).toContain('entry.entity?.canonical_name')
+    // Name renders in the primary (bright) text colour, not the muted one.
+    expect(following).toMatch(/font-medium text-ast-text[\s\S]{0,80}\{name\}/)
+  })
+
+  test('shows ticker and exchange as muted secondary text', () => {
+    expect(following).toContain('entry.entity?.ticker')
+    expect(following).toContain('entry.entity?.exchange')
+    expect(following).toContain('.join(" · ")')
+    expect(following).toMatch(/text-xs text-ast-muted[\s\S]{0,80}\{meta\}/)
+  })
+
+  test('renders an optional entity_type chip', () => {
+    expect(following).toContain('entry.entity?.entity_type')
+    expect(following).toMatch(/uppercase[\s\S]{0,200}entity_type\}/)
+  })
+
+  test('unfollow button is labelled with the company name', () => {
+    expect(following).toContain('aria-label={`Unfollow ${name}`}')
+  })
+
+  test('shows an "unfollowing..." pending state', () => {
+    expect(following).toContain('"unfollowing..."')
+    expect(following).toContain('disabled={pending}')
+  })
+
+  test('a failed unfollow surfaces an error instead of silently reverting', () => {
+    expect(content).toContain('setUnwatchError(')
+    expect(content).toContain('role="alert"')
+  })
+})

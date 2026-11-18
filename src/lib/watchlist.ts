@@ -13,7 +13,6 @@ export interface WatchedEntity {
   ticker: string | null;
   exchange: string | null;
   entity_type: string;
-  is_public: boolean | null;
 }
 
 export interface WatchlistEntry {

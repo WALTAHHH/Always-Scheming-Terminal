@@ -90,41 +90,180 @@ describe('GET /api/v1/watchlist', () => {
     });
     expect(mockBuilder.eq).toHaveBeenCalledWith('user_id', 'user-123');
     expect(mockBuilder.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    // Only the caller's own rows are read; no ids to resolve.
+    expect(mockBuilder.select).toHaveBeenCalledWith('id, entity_id, created_at');
+    expect(mockServiceFrom).not.toHaveBeenCalled();
   });
 
-  it('returns watchlist with embedded entity', async () => {
+  // --- Regression: AST t_9e83034c (Following showed a raw UUID) ------------
+  // The entity embed used to run on the auth-scoped client, so an entity the
+  // caller's role could not read (is_public false/NULL, RLS) came back as
+  // `entity: null` and the UI fell back to the raw UUID. Details are now
+  // resolved with the service-role client, keyed by the caller's own rows.
+  it('resolves watched entity details via the service-role client', async () => {
     mockAuthGetSession.mockResolvedValue({
       data: { session: { user: { id: 'user-123' } } },
       error: null,
     });
-    const mockData = [
+    const watchlistBuilder = createMockBuilder({
+      data: [
+        {
+          id: 'watch-1',
+          entity_id: PUBLIC_ENTITY_ID,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      error: null,
+    });
+    const entityBuilder = createMockBuilder({
+      data: [
+        {
+          id: PUBLIC_ENTITY_ID,
+          canonical_name: 'Take-Two Interactive Software, Inc.',
+          ticker: 'TTWO',
+          exchange: 'NASDAQ',
+          entity_type: 'company',
+        },
+      ],
+      error: null,
+    });
+    mockFrom.mockReturnValue(watchlistBuilder);
+    mockServiceFrom.mockReturnValue(entityBuilder);
+
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    expect(body.data).toEqual([
       {
         id: 'watch-1',
         entity_id: PUBLIC_ENTITY_ID,
         created_at: '2026-01-01T00:00:00Z',
         entity: {
           id: PUBLIC_ENTITY_ID,
-          canonical_name: 'Apple Inc.',
-          ticker: 'AAPL',
+          canonical_name: 'Take-Two Interactive Software, Inc.',
+          ticker: 'TTWO',
           exchange: 'NASDAQ',
           entity_type: 'company',
-          is_public: true,
         },
       },
-    ];
-    const mockBuilder = createMockBuilder({ data: mockData, error: null });
-    mockFrom.mockReturnValue(mockBuilder);
+    ]);
+    expect(body.entity_ids).toEqual([PUBLIC_ENTITY_ID]);
+    expect(body.count).toBe(1);
+
+    // The detail lookup runs on the service-role client, only for the watched
+    // ids, and selects display-only columns.
+    expect(mockServiceFrom).toHaveBeenCalledWith('entities');
+    expect(entityBuilder.select).toHaveBeenCalledWith(
+      'id, canonical_name, ticker, exchange, entity_type'
+    );
+    expect(entityBuilder.in).toHaveBeenCalledWith('id', [PUBLIC_ENTITY_ID]);
+    // The auth-scoped client never touches `entities` — RLS on that table can
+    // no longer null out the embed.
+    expect(mockFrom).not.toHaveBeenCalledWith('entities');
+    // No `is_public` filter and no `is_public` column: the name resolves
+    // regardless of the row's visibility.
+    expect(entityBuilder.select).not.toHaveBeenCalledWith(
+      expect.stringContaining('is_public')
+    );
+    expect(entityBuilder.eq).not.toHaveBeenCalledWith('is_public', true);
+  });
+
+  it('ignores is_public: a non-public entity still resolves its name', async () => {
+    mockAuthGetSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-123' } } },
+      error: null,
+    });
+    mockFrom.mockReturnValue(
+      createMockBuilder({
+        data: [
+          {
+            id: 'watch-1',
+            entity_id: PUBLIC_ENTITY_ID,
+            created_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        error: null,
+      })
+    );
+    // The service-role payload carries no is_public column at all; the route
+    // cannot gate on it, so a private/hidden row resolves just the same.
+    mockServiceFrom.mockReturnValue(
+      createMockBuilder({
+        data: [
+          {
+            id: PUBLIC_ENTITY_ID,
+            canonical_name: 'Take-Two Interactive Software, Inc.',
+            ticker: 'TTWO',
+            exchange: 'NASDAQ',
+            entity_type: 'company',
+          },
+        ],
+        error: null,
+      })
+    );
+
+    const body = await (await GET()).json();
+    expect(body.data[0].entity.canonical_name).toBe(
+      'Take-Two Interactive Software, Inc.'
+    );
+  });
+
+  it('returns entity: null (never a UUID) when the entity row is gone', async () => {
+    mockAuthGetSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-123' } } },
+      error: null,
+    });
+    mockFrom.mockReturnValue(
+      createMockBuilder({
+        data: [
+          {
+            id: 'watch-1',
+            entity_id: PUBLIC_ENTITY_ID,
+            created_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        error: null,
+      })
+    );
+    mockServiceFrom.mockReturnValue(createMockBuilder({ data: [], error: null }));
 
     const response = await GET();
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.data).toEqual(mockData);
+    expect(body.data[0].entity).toBeNull();
+    // The row is still listed and therefore still removable.
     expect(body.entity_ids).toEqual([PUBLIC_ENTITY_ID]);
-    expect(body.count).toBe(1);
-    // Verify select includes entity embed
-    expect(mockBuilder.select).toHaveBeenCalledWith(
-      'id, entity_id, created_at, entity:entities(id, canonical_name, ticker, exchange, entity_type, is_public)'
+  });
+
+  it('degrades to entity: null when the detail lookup fails', async () => {
+    mockAuthGetSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-123' } } },
+      error: null,
+    });
+    mockFrom.mockReturnValue(
+      createMockBuilder({
+        data: [
+          {
+            id: 'watch-1',
+            entity_id: PUBLIC_ENTITY_ID,
+            created_at: '2026-01-01T00:00:00Z',
+          },
+        ],
+        error: null,
+      })
     );
+    mockServiceFrom.mockReturnValue(
+      createMockBuilder({ data: null, error: new Error('lookup failed') })
+    );
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.count).toBe(1);
+    expect(body.data[0].entity).toBeNull();
+    consoleError.mockRestore();
   });
 
   it('returns 500 on database error', async () => {
