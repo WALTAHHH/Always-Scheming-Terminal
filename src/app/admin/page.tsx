@@ -661,6 +661,61 @@ function ExtractSignalsButton({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ── Send Test Digest Button ─────────────────────────────────────────
+
+function DigestTestButton() {
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+
+  async function handleSend() {
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/digest-test", { method: "POST" });
+      const data = await res.json();
+      setResult({ http_status: res.status, ...data });
+    } catch (err: unknown) {
+      setResult({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-xs uppercase tracking-wider text-ast-muted font-semibold">
+            Email Digest
+          </h3>
+          <p className="text-[10px] text-ast-muted mt-0.5">
+            Sends one test digest to your own address. No alert or cadence state is changed.
+          </p>
+        </div>
+        <button
+          onClick={handleSend}
+          disabled={sending}
+          className="px-3 py-1.5 text-xs font-medium rounded border border-ast-accent/40 text-ast-accent hover:bg-ast-accent/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+        >
+          {sending ? (
+            <>
+              <span className="inline-block w-3 h-3 border-2 border-ast-accent/30 border-t-ast-accent rounded-full animate-spin" />
+              Sending…
+            </>
+          ) : (
+            "✉ Send test digest"
+          )}
+        </button>
+      </div>
+      {result && (
+        <pre className="mt-2 p-2 rounded bg-ast-bg border border-ast-border text-[10px] text-ast-text overflow-x-auto whitespace-pre-wrap">
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 // ── Bar Chart Component ────────────────────────────────────────────
 
 interface BarChartProps {
@@ -1450,6 +1505,9 @@ function PipelineDashboard() {
           ↻ Refresh
         </button>
       </div>
+
+      {/* Manual digest trigger — sends one test email to the calling admin */}
+      <DigestTestButton />
 
       {/* Coverage Section */}
       <div className="bg-ast-surface border border-ast-border rounded-lg p-4">
