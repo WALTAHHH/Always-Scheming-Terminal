@@ -100,3 +100,34 @@ describe("CompanyDrawer watch star (spec §5.1)", () => {
     expect(source).toContain("{companyData?.id && (");
   });
 });
+
+describe("CompanyDrawer news markers (fixed pixel size)", () => {
+  it("sizes the dots in CSS pixels, not viewBox units", () => {
+    expect(source).toContain("const NEWS_MARKER_IDLE_PX = 6;");
+    expect(source).toContain("const NEWS_MARKER_HOVER_PX = 9;");
+    expect(source).toContain("const NEWS_MARKER_HIT_PX = 16;");
+  });
+
+  it("renders the markers as HTML overlays positioned from x/y percentages", () => {
+    expect(source).toContain("data-news-marker={marker.date}");
+    expect(source).toContain("left: `${(marker.x / width) * 100}%`");
+    expect(source).toContain("top: `${(marker.y / height) * 100}%`");
+    expect(source).toContain("width: NEWS_MARKER_HIT_PX");
+    expect(source).toContain("height: NEWS_MARKER_HIT_PX");
+  });
+
+  it("gives the dot a 1px dark outline via box-shadow (not a scaled stroke)", () => {
+    expect(source).toContain("boxShadow: `0 0 0 1px ${NEWS_MARKER_OUTLINE}`");
+  });
+
+  it("no longer draws a stretched SVG circle marker", () => {
+    // The chart viewBox is stretched with preserveAspectRatio="none", so any SVG
+    // circle would render as an ellipse; the news dots must be HTML overlays.
+    expect(source).not.toContain("<circle");
+  });
+
+  it("keeps the marker interactive (click + hover handlers)", () => {
+    expect(source).toContain("onClick={(e) => handleMarkerClick(marker, e)}");
+    expect(source).toContain("onMouseEnter={() => setHoveredMarkerId(marker.item.id)}");
+  });
+});

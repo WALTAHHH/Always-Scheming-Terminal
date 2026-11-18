@@ -89,6 +89,18 @@ function formatDateShort(dateStr: string): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+// ── News marker sizing (CSS pixels) ──
+// The chart <svg> uses viewBox="0 0 100 100" + preserveAspectRatio="none", so the
+// viewBox is stretched non-uniformly to the container. Anything drawn inside it is
+// scaled by (containerWidth/100, containerHeight/100) — an SVG circle therefore
+// turns into an ellipse whose size depends on the drawer width. The news dots are
+// rendered as HTML overlays (absolutely positioned from x/y percentages) so they
+// stay true circles at a fixed pixel size at every width.
+const NEWS_MARKER_IDLE_PX = 6;
+const NEWS_MARKER_HOVER_PX = 9;
+const NEWS_MARKER_HIT_PX = 16;
+const NEWS_MARKER_OUTLINE = "#0d1117";
+
 // ── News marker type ──
 interface NewsMarker {
   date: string;
@@ -341,35 +353,21 @@ function InteractiveChart({
           className="transition-all duration-500"
         />
 
-        {/* News markers */}
-        {newsMarkers.map((marker, i) => (
-          <g key={marker.item.id} onClick={(e) => handleMarkerClick(marker, e)} style={{ cursor: "pointer" }}>
-            {/* Vertical line from point to bottom */}
-            <line
-              x1={marker.x}
-              y1={marker.y}
-              x2={marker.x}
-              y2={height - padding.bottom}
-              stroke="#fbbf24"
-              strokeWidth="1"
-              strokeDasharray="2,2"
-              vectorEffect="non-scaling-stroke"
-              opacity="0.5"
-            />
-            {/* Marker dot */}
-            <circle
-              cx={marker.x}
-              cy={marker.y}
-              r={hoveredMarkerId === marker.item.id ? 2.5 : 1.5}
-              fill="#fbbf24"
-              stroke="#0d1117"
-              strokeWidth="1.5"
-              vectorEffect="non-scaling-stroke"
-              style={{ transition: "r 0.15s ease" }}
-              onMouseEnter={() => setHoveredMarkerId(marker.item.id)}
-              onMouseLeave={() => setHoveredMarkerId(null)}
-            />
-          </g>
+        {/* News markers — vertical guides only; the dots are HTML overlays below
+            so they cannot be stretched by preserveAspectRatio="none". */}
+        {newsMarkers.map((marker) => (
+          <line
+            key={marker.item.id}
+            x1={marker.x}
+            y1={marker.y}
+            x2={marker.x}
+            y2={height - padding.bottom}
+            stroke="#fbbf24"
+            strokeWidth="1"
+            strokeDasharray="2,2"
+            vectorEffect="non-scaling-stroke"
+            opacity={activeMarker?.item.id === marker.item.id ? 0.9 : 0.5}
+          />
         ))}
 
         {/* Hover vertical line only - dot moved outside SVG */}
@@ -387,6 +385,47 @@ function InteractiveChart({
         )}
       </svg>
       
+      {/* News marker dots — HTML overlays (see NEWS_MARKER_* comment above).
+          Fixed pixel size + a 16px transparent hit area, independent of the
+          stretched SVG viewBox. */}
+      {newsMarkers.map((marker) => {
+        const isHot = hoveredMarkerId === marker.item.id || activeMarker?.item.id === marker.item.id;
+        const dotPx = isHot ? NEWS_MARKER_HOVER_PX : NEWS_MARKER_IDLE_PX;
+        return (
+          <button
+            key={marker.item.id}
+            type="button"
+            data-news-marker={marker.date}
+            aria-label={`News marker: ${marker.item.title} (${formatDateShort(marker.date)})`}
+            aria-pressed={activeMarker?.item.id === marker.item.id}
+            title={marker.item.title}
+            onClick={(e) => handleMarkerClick(marker, e)}
+            onMouseEnter={() => setHoveredMarkerId(marker.item.id)}
+            onMouseLeave={() => setHoveredMarkerId(null)}
+            onFocus={() => setHoveredMarkerId(marker.item.id)}
+            onBlur={() => setHoveredMarkerId(null)}
+            className="absolute z-[5] flex items-center justify-center -translate-x-1/2 -translate-y-1/2 rounded-full bg-transparent p-0 border-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ast-accent"
+            style={{
+              left: `${(marker.x / width) * 100}%`,
+              top: `${(marker.y / height) * 100}%`,
+              width: NEWS_MARKER_HIT_PX,
+              height: NEWS_MARKER_HIT_PX,
+            }}
+          >
+            <span
+              aria-hidden="true"
+              className="block rounded-full transition-all duration-150"
+              style={{
+                width: dotPx,
+                height: dotPx,
+                backgroundColor: "#fbbf24",
+                boxShadow: `0 0 0 1px ${NEWS_MARKER_OUTLINE}`,
+              }}
+            />
+          </button>
+        );
+      })}
+
       {/* Hover dot - HTML element to avoid SVG aspect ratio stretching */}
       {hoverData && hoverX !== null && (
         <div 
