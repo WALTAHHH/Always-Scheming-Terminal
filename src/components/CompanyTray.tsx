@@ -154,7 +154,7 @@ function CompanyCard({
             {isPositive ? "▲" : "▼"}{Math.abs(quote.changePercent).toFixed(1)}%
           </span>
         ) : (
-          <span className="text-xs text-ast-muted/60">unavailable</span>
+          <span className="text-xs text-ast-muted">unavailable</span>
         )}
       </div>
       

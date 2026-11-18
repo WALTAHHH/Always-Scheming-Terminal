@@ -68,7 +68,7 @@ export function ClusterRow({ cluster }: ClusterRowProps) {
               {cluster.related.length === 1 ? "article" : "articles"}
             </span>
             {!expanded && (
-              <span className="text-ast-muted/60">
+              <span className="text-ast-muted">
                 — {cluster.sourceNames.filter((s) => s !== cluster.lead.sources?.name).join(", ")}
               </span>
             )}

@@ -105,3 +105,74 @@ describe("ast-* colour tokens", () => {
     );
   });
 });
+
+// ── 10px/12px meta-text legibility floor ─────────────────────────────────
+//
+// PR #142 switched on the ast-*/alpha utilities. Some 10px meta call sites
+// used translucent muted classes (text-ast-muted/50, /60) that render at
+// 1.9–2.7:1 — well below WCAG AA (4.5:1 for text < 24px). Those sites were
+// moved to opaque text-ast-muted, and the mint row-hover tint in FeedRow got
+// a one-step-darker meta token while the tint is active.
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [
+    number,
+    number,
+    number,
+  ];
+}
+
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  const channel = (c: number) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrastRatio(
+  a: [number, number, number],
+  b: [number, number, number],
+): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  const [hi, lo] = la >= lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+const readSource = (rel: string) =>
+  readFileSync(path.join(ROOT, rel), "utf8");
+
+describe("10px meta-text legibility floor (PR #142 follow-up)", () => {
+  // Regression guard: the translucent muted utilities must not come back on
+  // these specific small-text call sites.
+  const FORBIDDEN: Array<[string, string]> = [
+    ["src/components/Feed.tsx", "text-ast-muted/50"],
+    ["src/app/auth/login/page.tsx", "text-ast-muted/50"],
+    ["src/components/ClusterRow.tsx", "text-ast-muted/60"],
+    ["src/components/CompanyTray.tsx", "text-ast-muted/60"],
+  ];
+
+  it.each(FORBIDDEN)("%s no longer uses %s", (file, cls) => {
+    expect(readSource(file)).not.toContain(cls);
+  });
+
+  it("FeedRow meta steps darker while the mint hover/expanded tint is active", () => {
+    const row = readSource("src/components/FeedRow.tsx");
+    expect(row).toContain("group-hover:text-ast-text/80");
+    expect(row).toContain('"text-ast-text/80"');
+  });
+
+  it.each(THEMES)(
+    "opaque text-ast-muted clears WCAG AA (>=4.5) on bg in %s theme",
+    (selector) => {
+      const tokens = tokensFor(selector);
+      const ratio = contrastRatio(
+        hexToRgb(tokens.muted.hex),
+        hexToRgb(tokens.bg.hex),
+      );
+      expect(ratio).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+});

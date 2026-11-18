@@ -277,7 +277,7 @@ export default function LoginPage() {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[10px] text-ast-muted/50 font-mono mt-6 tracking-wide">
+        <p className="text-center text-[10px] text-ast-muted font-mono mt-6 tracking-wide">
           Private beta · Invite only
         </p>
       </div>
