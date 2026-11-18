@@ -160,6 +160,10 @@ export interface SendEmailResult {
   /** `true` when the send was skipped because Resend is not configured. */
   skipped?: boolean;
   error?: string;
+  /** HTTP status Resend returned when it rejected the send. */
+  status?: number;
+  /** Resend's response body (truncated) for a rejected send. Never the API key. */
+  detail?: string;
 }
 
 export interface SendEmailOptions {
@@ -206,9 +210,9 @@ export async function sendEmail(
     });
 
     if (!res.ok) {
-      const detail = await res.text().catch(() => "");
+      const detail = (await res.text().catch(() => "")).slice(0, 1000);
       console.error(`[email] Resend rejected send to ${redactEmail(input.to)}: ${res.status} ${detail}`);
-      return { ok: false, error: `resend_${res.status}` };
+      return { ok: false, error: `resend_${res.status}`, status: res.status, detail };
     }
 
     const data = (await res.json().catch(() => null)) as { id?: string } | null;
@@ -404,4 +408,109 @@ ${sections}
 </table>
 </body>
 </html>`;
+}
+
+// ── admin "send test digest" helpers ───────────────────────────────────────
+//
+// Used by `POST /api/admin/digest-test` (src/app/api/admin/digest-test/route.ts).
+// They live here rather than in the route file because a Next.js route module
+// may only export its HTTP handlers + route config; any other named export
+// breaks `next build` ("not a valid Route export field"). This module is the
+// natural home since it already owns the digest template, unsubscribe link and
+// footer address.
+
+/** At most 5 test digests per admin per hour. */
+export const DIGEST_TEST_RATE_LIMIT = { windowMs: 60 * 60 * 1000, maxRequests: 5 };
+/** How far back to look for the admin's real unsent alerts. */
+export const DIGEST_TEST_LOOKBACK_DAYS = 7;
+/** Cap on the real alerts rendered into a single test digest. */
+export const DIGEST_TEST_MAX_ALERTS = 20;
+
+export type SetOrMissing = "set" | "missing";
+
+/**
+ * Env-var presence snapshot returned to the caller so a misconfiguration is
+ * visible from the UI without ever echoing a secret value. `siteUrl` is the
+ * resolved public origin (not a secret).
+ */
+export interface DigestTestConfig {
+  apiKey: SetOrMissing;
+  from: SetOrMissing;
+  footerAddress: SetOrMissing;
+  unsubSecret: SetOrMissing;
+  siteUrl: string;
+}
+
+/** `"set"` when the env var holds a non-empty (trimmed) value, else `"missing"`. */
+function envFlag(env: Env, key: string): SetOrMissing {
+  const raw = env[key];
+  return typeof raw === "string" && raw.trim().length > 0 ? "set" : "missing";
+}
+
+/**
+ * Independent presence flags for every env var the digest reads. Deliberately
+ * does **not** go through `getEmailConfig()`, which returns `null` when *either*
+ * `RESEND_API_KEY` or `DIGEST_FROM` is missing — that would report both halves
+ * as `"missing"` when only one is, hiding exactly the misconfiguration this
+ * endpoint exists to surface.
+ */
+export function describeDigestTestConfig(env: Env = process.env): DigestTestConfig {
+  return {
+    apiKey: envFlag(env, "RESEND_API_KEY"),
+    from: envFlag(env, "DIGEST_FROM"),
+    footerAddress: envFlag(env, "DIGEST_FOOTER_ADDRESS"),
+    unsubSecret: envFlag(env, "DIGEST_UNSUB_SECRET"),
+    siteUrl: getSiteUrl(env),
+  };
+}
+
+/** Mask an address for the response body: `m***@example.com`. */
+export function maskEmail(email: string): string {
+  const value = typeof email === "string" ? email.trim() : "";
+  const at = value.lastIndexOf("@");
+  if (at <= 0 || at === value.length - 1) return "***";
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  const head = local.slice(0, 1);
+  return `${head}${"*".repeat(Math.max(3, local.length - 1))}@${domain}`;
+}
+
+/**
+ * Three clearly-labelled fake alerts used when the calling admin has no unsent
+ * `alert_events`, so the digest layout — entity grouping, score, article link,
+ * unsubscribe footer — can be eyeballed without waiting for a real Monday pass.
+ * `url`s point at the configured origin so the links are clickable in the test
+ * email.
+ */
+export function buildSampleDigestAlerts(siteUrl: string): DigestAlert[] {
+  const base = siteUrl.replace(/\/+$/, "");
+  return [
+    {
+      entityName: "Acme Games",
+      signalType: "acquisition",
+      summary:
+        "SAMPLE — Acme Games acquires Pixel Forge for $120M in a cash-and-stock deal.",
+      score: 0.93,
+      url: `${base}/?sample=digest-1`,
+      createdAt: null,
+    },
+    {
+      entityName: "Northstar Interactive",
+      signalType: "fundraising",
+      summary:
+        "SAMPLE — Northstar Interactive raises a $45M Series B led by Horizon Ventures.",
+      score: 0.88,
+      url: `${base}/?sample=digest-2`,
+      createdAt: null,
+    },
+    {
+      entityName: "Cobalt Studios",
+      signalType: "layoffs",
+      summary:
+        "SAMPLE — Cobalt Studios cuts 80 roles as its live-service project winds down.",
+      score: 0.81,
+      url: `${base}/?sample=digest-3`,
+      createdAt: null,
+    },
+  ];
 }

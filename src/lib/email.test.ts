@@ -221,7 +221,7 @@ describe('sendEmail', () => {
     };
     mockFetch.mockResolvedValueOnce(mockResponse);
     const result = await sendEmail({ to: 'test@example.com', subject: 'Test', html: '<p>Hi</p>' });
-    expect(result).toEqual({ ok: false, error: 'resend_400' });
+    expect(result).toEqual({ ok: false, error: 'resend_400', status: 400, detail: 'Bad request' });
   });
 
   it('returns ok false on fetch exception', async () => {
