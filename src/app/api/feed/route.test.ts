@@ -3,11 +3,21 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { GET } from "./route";
 
-// --- Mock the service-role Supabase client (mirrors src/app/page.tsx) ---
+// --- Mock the service-role Supabase client (data query) ---
 let mockFrom = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
   createServerClient: vi.fn(() => ({ from: mockFrom })),
+}));
+
+// --- Mock the auth-scoped client (session gate) ---
+// getSession resolves to whatever `mockSession` currently holds; tests flip it
+// between a valid session and null to exercise the 401/200 paths.
+let mockSession: unknown = { user: { id: "user-1" } };
+const mockGetSession = vi.fn(async () => ({ data: { session: mockSession }, error: null }));
+
+vi.mock("@/lib/supabase-server", () => ({
+  createAuthServerClient: vi.fn(async () => ({ auth: { getSession: mockGetSession } })),
 }));
 
 // --- Neutralise rate limiting so tests are deterministic ---
@@ -36,6 +46,31 @@ function createMockBuilder(result: { data?: unknown; error?: unknown }) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockSession = { user: { id: "user-1" } };
+});
+
+describe("GET /api/feed — auth gate", () => {
+  it("returns 401 Unauthorized for an anonymous caller and never touches content", async () => {
+    mockSession = null;
+
+    const res = await GET(new Request("http://localhost/api/feed"));
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Unauthorized" });
+    // No data access on the unauthenticated path.
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it("serves the feed for an authenticated caller (200)", async () => {
+    const items = [{ id: "a" }, { id: "b" }];
+    mockFrom.mockReturnValue(createMockBuilder({ data: items, error: null }));
+
+    const res = await GET(new Request("http://localhost/api/feed?limit=50"));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toEqual(items);
+  });
 });
 
 describe("GET /api/feed", () => {
@@ -112,17 +147,24 @@ describe("GET /api/feed", () => {
   });
 });
 
-// Regression guard for this card: the LiveFeed client must never call the
-// deleted /api/items route again (it 404'd on every poll cycle). A source scan
-// is the most direct, deterministic way to assert the dead endpoint is gone.
-describe("LiveFeed no longer references the deleted /api/items route", () => {
+// Regression guard for the original card: the LiveFeed client must never call
+// the deleted /api/items route again (it 404'd on every poll cycle).
+describe("LiveFeed client — endpoint + 401 handling", () => {
+  const src = readFileSync(resolve(process.cwd(), "src/components/LiveFeed.tsx"), "utf8");
+
   it("contains no fetch to /api/items", () => {
-    const src = readFileSync(
-      resolve(process.cwd(), "src/components/LiveFeed.tsx"),
-      "utf8"
-    );
     expect(src).not.toMatch(/\/api\/items\b/);
     // And it does call the replacement endpoint.
     expect(src).toMatch(/\/api\/feed\b/);
+  });
+
+  it("handles a 401 from /api/feed quietly (stops polling, no console logging)", () => {
+    // Both fetch call sites (poll + load-more) check for 401.
+    const unauthorizedChecks = src.match(/res\.status === 401/g) ?? [];
+    expect(unauthorizedChecks.length).toBeGreaterThanOrEqual(2);
+    // The poll loop is gated on the unauthorized state so it stops after a 401.
+    expect(src).toMatch(/if \(unauthorized\) return;/);
+    // No console spam for the feed path.
+    expect(src).not.toMatch(/console\.(error|warn|log)/);
   });
 });

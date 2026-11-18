@@ -61,6 +61,11 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   const [loadMoreError, setLoadMoreError] = useState(false);
   const [newCount, setNewCount] = useState(0);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  // Set when /api/feed answers 401 (session expired/absent). The endpoint is
+  // session-gated now, so once we're unauthorized polling would just spam
+  // failing requests — we stop quietly and keep showing the server-rendered
+  // items rather than logging errors every cycle.
+  const [unauthorized, setUnauthorized] = useState(false);
 
   // Filtered items — shared by Feed and SignalPanel so they stay in sync
   const filteredItems = useMemo(
@@ -232,6 +237,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   }, []);
 
   const checkForNew = useCallback(async () => {
+    if (unauthorized) return;
     try {
       // Use the newest known item's published_at as a "since" cursor.
       // Fetch up to 100 to catch bursts; compare by ID to deduplicate.
@@ -239,6 +245,11 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       const params = new URLSearchParams({ limit: "100" });
       if (newest) params.set("since", newest);
       const res = await fetch(`/api/feed?${params}`);
+      // 401 → no session: stop polling quietly, no console output.
+      if (res.status === 401) {
+        setUnauthorized(true);
+        return;
+      }
       if (!res.ok) return;
 
       const data = await res.json();
@@ -254,12 +265,13 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
         setNewCount(newItems.length);
       }
     } catch {}
-  }, [items]);
+  }, [items, unauthorized]);
 
   useEffect(() => {
+    if (unauthorized) return;
     const interval = setInterval(checkForNew, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [checkForNew]);
+  }, [checkForNew, unauthorized]);
 
   const loadNewItems = useCallback(() => {
     if (pendingItems.current.length > 0) {
@@ -300,6 +312,12 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       if (oldest) params.set("before", oldest);
 
       const res = await fetch(`/api/feed?${params}`);
+      // 401 → no session: stop the load-more path quietly (no error banner,
+      // no console spam); also halts the poll loop.
+      if (res.status === 401) {
+        setUnauthorized(true);
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
