@@ -170,6 +170,7 @@ export default function TagPicker({ selected, onChange }: TagPickerProps) {
             id={inputId}
             type="text"
             role="combobox"
+            aria-label="Search interests"
             aria-expanded={open}
             aria-controls={listboxId}
             aria-autocomplete="list"
