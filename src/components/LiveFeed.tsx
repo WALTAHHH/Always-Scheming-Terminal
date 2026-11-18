@@ -238,7 +238,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       const newest = items.length > 0 ? (items[0].published_at || items[0].ingested_at) : null;
       const params = new URLSearchParams({ limit: "100" });
       if (newest) params.set("since", newest);
-      const res = await fetch(`/api/items?${params}`);
+      const res = await fetch(`/api/feed?${params}`);
       if (!res.ok) return;
 
       const data = await res.json();
@@ -299,7 +299,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (oldest) params.set("before", oldest);
 
-      const res = await fetch(`/api/items?${params}`);
+      const res = await fetch(`/api/feed?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
