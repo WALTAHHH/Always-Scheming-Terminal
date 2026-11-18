@@ -39,23 +39,43 @@ export async function GET(req: NextRequest) {
     }
 
     const entityIds = allEntities.map(e => e.id);
-    
-    // 2. Fetch entity aliases
-    console.log("Entities query block 2: fetch entity aliases");
-    const { data: allAliases, error: aliasesError } = await serviceClient
-      .from("entity_aliases")
-      .select("entity_id");
 
-    if (aliasesError) {
-      console.error("Entities query failed: fetch entity aliases", aliasesError);
-      throw aliasesError;
+    // 2. Fetch entity aliases (names, not just counts) so the admin UI can
+    //    render the real list in the expanded row. PostgREST caps a single
+    //    response at 1000 rows, so page through with .range() until a short
+    //    page comes back.
+    console.log("Entities query block 2: fetch entity aliases");
+    const ALIAS_PAGE_SIZE = 1000;
+    const allAliases: { entity_id: string | null; alias: string | null }[] = [];
+    const aliasEntityIds = entityIds.filter((id): id is string => !!id);
+
+    for (let from = 0; ; from += ALIAS_PAGE_SIZE) {
+      const { data: aliasPage, error: aliasesError } = await serviceClient
+        .from("entity_aliases")
+        .select("entity_id, alias")
+        .in("entity_id", aliasEntityIds)
+        .order("id", { ascending: true })
+        .range(from, from + ALIAS_PAGE_SIZE - 1);
+
+      if (aliasesError) {
+        console.error("Entities query failed: fetch entity aliases", aliasesError);
+        throw aliasesError;
+      }
+
+      allAliases.push(...(aliasPage || []));
+      if (!aliasPage || aliasPage.length < ALIAS_PAGE_SIZE) break;
     }
 
-    // Count aliases per entity
-    const aliasCounts: Record<string, number> = {};
-    (allAliases || []).forEach((row: { entity_id: string }) => {
-      aliasCounts[row.entity_id] = (aliasCounts[row.entity_id] || 0) + 1;
+    // Group aliases per entity, sorted case-insensitively for a stable
+    // chip-list order in the UI.
+    const aliasesByEntity: Record<string, string[]> = {};
+    allAliases.forEach((row) => {
+      if (!row.entity_id || !row.alias) return;
+      (aliasesByEntity[row.entity_id] ||= []).push(row.alias);
     });
+    Object.values(aliasesByEntity).forEach((list) =>
+      list.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    );
 
     // 3. Fetch content_tags for company dimension
     console.log("Entities query block 3: fetch content_tags (company)");
@@ -109,7 +129,8 @@ export async function GET(req: NextRequest) {
       segment: entity.segment,
       ticker: entity.ticker,
       is_public: entity.is_public,
-      alias_count: aliasCounts[entity.id] || 0,
+      aliases: aliasesByEntity[entity.id] || [],
+      alias_count: (aliasesByEntity[entity.id] || []).length,
       tag_count: tagCounts[entity.id] || 0,
       signal_count: signalCounts[entity.id] || 0,
     }));
