@@ -22,11 +22,13 @@ describe("login page redirect-after-login", () => {
     expect(source).toContain('new URLSearchParams(window.location.search).get("next")');
   });
 
-  it("only accepts same-origin absolute paths (open-redirect guards)", () => {
-    // Rejects non-absolute, protocol-relative, backslash and scheme paths.
-    expect(source).toContain('if (!next || !next.startsWith("/")) return "/"');
-    expect(source).toContain('if (next.startsWith("//") || next.startsWith("/\\\\")) return "/"');
-    expect(source).toContain('if (next.includes("\\\\")) return "/"');
-    expect(source).toMatch(/if \(\/\^\\\/\[a-zA-Z\]\[a-zA-Z0-9\+\.-\]\*:\/\.test\(next\)\) return "\/";/);
+  it("delegates open-redirect validation to the shared safe-redirect guard", () => {
+    // The guard itself is unit-tested in src/lib/safe-redirect.test.ts; here we
+    // just pin that the login page routes `next` through it rather than trusting
+    // the raw value.
+    expect(source).toContain(
+      'import { safeRedirectTarget } from "@/lib/safe-redirect"'
+    );
+    expect(source).toContain("return safeRedirectTarget(next);");
   });
 });

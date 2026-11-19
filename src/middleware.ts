@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { safeRedirectTarget } from "@/lib/safe-redirect";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -58,9 +59,13 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     // Preserve the deep link the visitor was trying to reach (path + query,
     // e.g. `/?company=Acme%20Games` from a weekly-digest email) so the login
-    // page can return them to it after sign-in. `next` is validated on the way
-    // back (see src/app/auth/login), never trusted blindly.
-    const next = `${pathname}${request.nextUrl.search}`;
+    // page can return them to it after sign-in. The value is validated by the
+    // same shared guard the login page uses before it is echoed back, so a
+    // crafted path can never smuggle a cross-origin target into `next`.
+    const next = safeRedirectTarget(
+      `${pathname}${request.nextUrl.search}`,
+      request.nextUrl.origin
+    );
     url.pathname = "/auth/login";
     url.search = "";
     url.searchParams.set("next", next);

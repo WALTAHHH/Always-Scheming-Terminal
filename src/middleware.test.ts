@@ -64,6 +64,20 @@ describe("middleware public /unsubscribe", () => {
     expect(loc.searchParams.get("next")).toBe("/profile?tab=watchlist");
   });
 
+  it("neutralises a hostile path so the echoed ?next= can never be cross-origin", async () => {
+    // `/%09/evil.com` is what browsers strip into `//evil.com`; the shared guard
+    // must reject it before it is echoed into ?next=.
+    const res = await middleware(
+      new NextRequest("https://terminal.always-scheming.com/%09/evil.com")
+    );
+    expect(res.status).toBe(307);
+    const loc = new URL(res.headers.get("location")!);
+    expect(loc.pathname).toBe("/auth/login");
+    const next = loc.searchParams.get("next");
+    expect(next).not.toContain("\t");
+    expect(next?.startsWith("//")).toBeFalsy();
+  });
+
   it("still redirects a sibling path (does not make /unsubscribe/* public)", async () => {
     const res = await middleware(
       new NextRequest("https://terminal.always-scheming.com/profile")
