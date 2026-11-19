@@ -148,7 +148,7 @@ function DateGroupHeader({
       <span className="text-ast-accent text-xs font-semibold tracking-wide uppercase">
         {label}
       </span>
-      <span className="text-ast-muted/50 text-[10px]">
+      <span className="text-ast-muted text-[10px]">
         {storyCount} {storyCount === 1 ? "story" : "stories"}
         <span className="hidden sm:inline">
           {articleCount > storyCount && (

@@ -134,6 +134,14 @@ export function FeedRow({ item, isRelated = false }: FeedRowProps) {
   const hasMoreContent = fullContent.length > 180;
   const faviconUrl = getFaviconUrl(item.sources?.url);
 
+  // 10–12px meta text sits on the row's mint tint (bg-ast-mint/5) whenever the
+  // row is hovered, and permanently when expanded. Opaque text-ast-muted only
+  // reaches 4.33:1 against that tint in the light theme (WCAG AA needs 4.5:1),
+  // so step the meta one notch darker while the tint is active.
+  const metaColor = expanded
+    ? "text-ast-text/80"
+    : "text-ast-muted group-hover:text-ast-text/80";
+
   // Calculate age client-side only to avoid hydration mismatch
   useEffect(() => {
     setAge(getArticleAge(item.published_at));
@@ -151,7 +159,7 @@ export function FeedRow({ item, isRelated = false }: FeedRowProps) {
         <div className="flex items-start gap-2 sm:gap-3">
           {/* Timestamp — desktop only (separate column) */}
           <div className="hidden sm:block flex-shrink-0 w-[40px] pt-0.5 text-right">
-            <TimeAgo date={item.published_at} className="text-ast-muted text-xs" />
+            <TimeAgo date={item.published_at} className={`${metaColor} text-xs`} />
           </div>
 
           {/* Content */}
@@ -172,10 +180,10 @@ export function FeedRow({ item, isRelated = false }: FeedRowProps) {
               </span>
               {/* Timestamp — mobile only (inline) */}
               <span className="sm:hidden">
-                <TimeAgo date={item.published_at} className="text-ast-muted text-[10px]" />
+                <TimeAgo date={item.published_at} className={`${metaColor} text-[10px]`} />
               </span>
               {item.author && (
-                <span className="text-ast-muted text-xs hidden sm:inline">
+                <span className={`${metaColor} text-xs hidden sm:inline`}>
                   · {item.author}
                 </span>
               )}
@@ -189,7 +197,7 @@ export function FeedRow({ item, isRelated = false }: FeedRowProps) {
               {item.title}
             </h3>
             {item.body && !expanded && (
-              <p className="text-ast-muted text-xs mt-1 leading-relaxed hidden sm:block">
+              <p className={`${metaColor} text-xs mt-1 leading-relaxed hidden sm:block`}>
                 {truncate(item.body, 180)}
               </p>
             )}

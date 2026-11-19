@@ -2,33 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Theme CSS Variables */
+/* Theme CSS Variables
+ *
+ * Each ast colour exists twice: the hex value (used by inline styles,
+ * scrollbars, etc.) and a space-separated RGB channel triplet that
+ * tailwind.config.ts consumes as `rgb(var(--ast-x-rgb) / <alpha-value>)`
+ * so opacity modifiers (bg-ast-bg/95, hover:bg-ast-mint/5, ...) work.
+ * The triplets are derived exactly from the hex values below — if you
+ * change a hex, change its -rgb twin to match.
+ */
 :root, .dark {
   --ast-bg: #0a0a0f;
+  --ast-bg-rgb: 10 10 15;
   --ast-surface: #1e1e1e;
+  --ast-surface-rgb: 30 30 30;
   --ast-border: #2a2a2a;
+  --ast-border-rgb: 42 42 42;
   --ast-text: #d4d4d4;
+  --ast-text-rgb: 212 212 212;
   --ast-muted: #888888;
+  --ast-muted-rgb: 136 136 136;
   --ast-accent: #77c4d9;
+  --ast-accent-rgb: 119 196 217;
   --ast-pink: #dd72dd;
+  --ast-pink-rgb: 221 114 221;
   --ast-mint: #6decb9;
+  --ast-mint-rgb: 109 236 185;
   --ast-gold: #f2cb05;
+  --ast-gold-rgb: 242 203 5;
   --ast-pale: #f3ece9;
+  --ast-pale-rgb: 243 236 233;
   --ast-tag: #1a1a2e;
+  --ast-tag-rgb: 26 26 46;
 }
 
 .light {
   --ast-bg: #f8f9fa;
+  --ast-bg-rgb: 248 249 250;
   --ast-surface: #ffffff;
+  --ast-surface-rgb: 255 255 255;
   --ast-border: #e2e4e7;
+  --ast-border-rgb: 226 228 231;
   --ast-text: #1a1a1a;
+  --ast-text-rgb: 26 26 26;
   --ast-muted: #6b7280;
+  --ast-muted-rgb: 107 114 128;
   --ast-accent: #0891b2;
+  --ast-accent-rgb: 8 145 178;
   --ast-pink: #c026d3;
+  --ast-pink-rgb: 192 38 211;
   --ast-mint: #059669;
+  --ast-mint-rgb: 5 150 105;
   --ast-gold: #d97706;
+  --ast-gold-rgb: 217 119 6;
   --ast-pale: #1a1a1a;
+  --ast-pale-rgb: 26 26 26;
   --ast-tag: #f0f9ff;
+  --ast-tag-rgb: 240 249 255;
 }
 
 /* Scrollbar styling */
