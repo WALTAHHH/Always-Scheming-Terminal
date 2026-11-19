@@ -5,6 +5,34 @@ import { createAuthBrowserClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
+/**
+ * Where to send the user after a successful sign-in.
+ *
+ * The middleware bounces an unauthenticated deep link (e.g. the weekly digest's
+ * `/?company=<name>`) to `/auth/login?next=<path+query>`; this returns to that
+ * path when it is a safe same-origin absolute path, and otherwise to the feed.
+ *
+ * Only same-origin absolute paths are accepted. Anything that could be treated
+ * as a scheme (`javascript:…`), a protocol-relative URL (`//evil.example`), a
+ * backslash path (`/\evil.example`, which some browsers resolve cross-origin)
+ * or an absolute URL is rejected, so `next` can never become an open redirect.
+ * Read from `window.location` at submit time (client-only) so the page needs no
+ * `useSearchParams` boundary.
+ */
+function safeRedirectTarget(next: string | null): string {
+  if (!next || !next.startsWith("/")) return "/";
+  if (next.startsWith("//") || next.startsWith("/\\")) return "/";
+  if (next.includes("\\")) return "/";
+  if (/^\/[a-zA-Z][a-zA-Z0-9+.-]*:/.test(next)) return "/";
+  return next;
+}
+
+function postLoginRedirect(): string {
+  if (typeof window === "undefined") return "/";
+  const next = new URLSearchParams(window.location.search).get("next");
+  return safeRedirectTarget(next);
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -55,7 +83,7 @@ export default function LoginPage() {
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) throw signInError;
-        router.push("/");
+        router.push(postLoginRedirect());
         router.refresh();
       }
     } catch (err: unknown) {

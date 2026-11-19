@@ -56,7 +56,14 @@ export async function middleware(request: NextRequest) {
   // Protected routes: everything except /auth/*
   if (!pathname.startsWith("/auth/") && !user) {
     const url = request.nextUrl.clone();
+    // Preserve the deep link the visitor was trying to reach (path + query,
+    // e.g. `/?company=Acme%20Games` from a weekly-digest email) so the login
+    // page can return them to it after sign-in. `next` is validated on the way
+    // back (see src/app/auth/login), never trusted blindly.
+    const next = `${pathname}${request.nextUrl.search}`;
     url.pathname = "/auth/login";
+    url.search = "";
+    url.searchParams.set("next", next);
     return NextResponse.redirect(url);
   }
 

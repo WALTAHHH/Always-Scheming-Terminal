@@ -44,6 +44,26 @@ describe("middleware public /unsubscribe", () => {
     expect(new URL(res.headers.get("location")!).pathname).toBe("/auth/login");
   });
 
+  it("preserves the requested deep link as ?next= when bouncing to login", async () => {
+    const res = await middleware(
+      new NextRequest("https://terminal.always-scheming.com/?company=Acme%20Games")
+    );
+    expect(res.status).toBe(307);
+    const loc = new URL(res.headers.get("location")!);
+    expect(loc.pathname).toBe("/auth/login");
+    expect(loc.searchParams.get("next")).toBe("/?company=Acme%20Games");
+  });
+
+  it("preserves a nested path + query as ?next= too", async () => {
+    const res = await middleware(
+      new NextRequest("https://terminal.always-scheming.com/profile?tab=watchlist")
+    );
+    expect(res.status).toBe(307);
+    const loc = new URL(res.headers.get("location")!);
+    expect(loc.pathname).toBe("/auth/login");
+    expect(loc.searchParams.get("next")).toBe("/profile?tab=watchlist");
+  });
+
   it("still redirects a sibling path (does not make /unsubscribe/* public)", async () => {
     const res = await middleware(
       new NextRequest("https://terminal.always-scheming.com/profile")
