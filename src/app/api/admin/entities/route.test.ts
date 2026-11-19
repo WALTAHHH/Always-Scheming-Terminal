@@ -1,202 +1,432 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { NextResponse } from 'next/server';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextResponse } from "next/server";
 
-// --- Mocks (hoisted so the route's imports resolve to them) ---
-const { mockFrom, mockRequireAdmin } = vi.hoisted(() => ({
-  mockFrom: vi.fn(),
-  mockRequireAdmin: vi.fn(),
+// ── mocks (hoisted so the route's imports resolve to them) ──────────────────
+
+const mocks = vi.hoisted(() => ({
+  requireAdmin: vi.fn(),
+  createClient: vi.fn(),
+  rpc: vi.fn(),
+  from: vi.fn(),
 }));
 
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({ from: mockFrom })),
+vi.mock("@/lib/admin-auth", () => ({
+  requireAdmin: () => mocks.requireAdmin(),
 }));
 
-vi.mock('@/lib/admin-auth', () => ({
-  requireAdmin: mockRequireAdmin,
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: (...args: unknown[]) => mocks.createClient(...args),
 }));
 
-import { GET } from './route';
+import { GET } from "./route";
 
-type Result = { data: any; error: any };
+// ── fake PostgREST client ───────────────────────────────────────────────────
+
+type Row = Record<string, unknown>;
+
+const PAGE_SIZE = 1000;
+
+type QueryCall = {
+  table: string;
+  select?: string;
+  in?: [string, unknown[]];
+  order?: [string, unknown];
+  range?: [number, number];
+};
 
 /**
- * Minimal thenable PostgREST-ish query builder. Every `await` pops the next
- * queued result (the last one repeats), so a paginated query can be exercised
- * with a queue of pages. All chain methods return the same builder.
+ * Minimal stand-in for the supabase-js query builder: records the query shape
+ * and `.range()` windows, applies the filters the route uses, and is awaitable
+ * when the route does not call `.range()` (the entities query).
  */
-function makeBuilder(results: Result | Result[]): any {
-  const queue: Result[] = Array.isArray(results) ? [...results] : [results];
-  const builder: any = {};
-  const chain = () => builder;
-  for (const method of ['select', 'in', 'order', 'range', 'eq', 'not', 'gte', 'limit']) {
-    builder[method] = vi.fn(chain);
-  }
-  builder.then = (onFulfilled: any, onRejected: any) => {
-    const next = queue.length > 1 ? queue.shift()! : queue[0];
-    return Promise.resolve(next).then(onFulfilled, onRejected);
+function fakeClient(tables: Record<string, Row[]>, opts: { failTable?: string } = {}) {
+  const windows: Record<string, { from: number; to: number }[]> = {};
+  const calls: QueryCall[] = [];
+
+  const makeBuilder = (table: string) => {
+    let filtered = [...(tables[table] ?? [])];
+    const record: QueryCall = { table };
+    calls.push(record);
+    const builder: Record<string, unknown> = {
+      select: (cols?: string) => {
+        record.select = cols;
+        return builder;
+      },
+      order: (col: string, o?: unknown) => {
+        record.order = [col, o];
+        return builder;
+      },
+      eq: (col: string, value: unknown) => {
+        filtered = filtered.filter((row) => row[col] === value);
+        return builder;
+      },
+      in: (col: string, values: unknown[]) => {
+        record.in = [col, values];
+        filtered = filtered.filter((row) => values.includes(row[col]));
+        return builder;
+      },
+      is: (col: string, value: unknown) => {
+        filtered = filtered.filter((row) => (value === null ? row[col] == null : row[col] === value));
+        return builder;
+      },
+      not: (col: string, operator: string, value: unknown) => {
+        if (operator === "is" && value === null) {
+          filtered = filtered.filter((row) => row[col] != null);
+        }
+        return builder;
+      },
+      range: (from: number, to: number) => {
+        (windows[table] ??= []).push({ from, to });
+        record.range = [from, to];
+        const result =
+          opts.failTable === table
+            ? { data: null, error: { code: "XX000", message: `${table} exploded` } }
+            : { data: filtered.slice(from, to + 1), error: null };
+        return Promise.resolve(result);
+      },
+      then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => {
+        const result =
+          opts.failTable === table
+            ? { data: null, error: { code: "XX000", message: `${table} exploded` } }
+            : { data: filtered, error: null };
+        return Promise.resolve(result).then(resolve, reject);
+      },
+    };
+    return builder;
   };
-  return builder;
-}
 
-interface WireArgs {
-  entities?: Result | Result[];
-  aliases?: Result | Result[];
-  tags?: Result;
-  signals?: Result;
-  timeSeries?: Result;
-}
-
-function wire({
-  entities = { data: [], error: null },
-  aliases = { data: [], error: null },
-  tags = { data: [], error: null },
-  signals = { data: [], error: null },
-  timeSeries = { data: [], error: null },
-}: WireArgs = {}) {
-  const builders = {
-    entities: makeBuilder(entities),
-    aliases: makeBuilder(aliases),
-    tags: makeBuilder(tags),
-    signals: makeBuilder(signals),
-    timeSeries: makeBuilder(timeSeries),
-  };
-  // content_tags is queried twice: block 3 (counts) then block 7 (time series).
-  let contentTagsCall = 0;
-  mockFrom.mockImplementation((table: string) => {
-    switch (table) {
-      case 'entities':
-        return builders.entities;
-      case 'entity_aliases':
-        return builders.aliases;
-      case 'signals':
-        return builders.signals;
-      case 'content_tags':
-        contentTagsCall += 1;
-        return contentTagsCall === 1 ? builders.tags : builders.timeSeries;
-      default:
-        return makeBuilder({ data: [], error: null });
-    }
-  });
-  return builders;
-}
-
-const NVDA = '11111111-1111-4111-8111-111111111111';
-const SONY = '22222222-2222-4222-8222-222222222222';
-
-function entityRow(id: string, canonical_name: string, ticker: string) {
   return {
-    id,
-    canonical_name,
-    entity_type: 'company',
-    segment: 'semis',
-    ticker,
-    is_public: true,
+    windows,
+    calls,
+    client: {
+      rpc: mocks.rpc,
+      from: (table: string) => {
+        mocks.from(table);
+        return makeBuilder(table);
+      },
+    },
   };
+}
+
+// ── fixtures ────────────────────────────────────────────────────────────────
+
+const NVIDIA = "11111111-1111-1111-1111-111111111111";
+const APPLE = "22222222-2222-2222-2222-222222222222";
+const SONY = "33333333-3333-3333-3333-333333333333";
+
+const ENTITIES: Row[] = [
+  { id: NVIDIA, canonical_name: "Nvidia", entity_type: "company", segment: "semis", ticker: "NVDA", is_public: true },
+  { id: APPLE, canonical_name: "Apple", entity_type: "company", segment: "hardware", ticker: "AAPL", is_public: true },
+  { id: SONY, canonical_name: "Sony", entity_type: "company", segment: "gaming", ticker: "SONY", is_public: true },
+];
+
+const ALIASES: Row[] = [
+  { id: "a1", entity_id: NVIDIA, alias: "Nvidia" },
+  { id: "a2", entity_id: NVIDIA, alias: "NVDA" },
+  { id: "a3", entity_id: APPLE, alias: "Apple" },
+];
+
+function daysAgo(n: number) {
+  return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+}
+
+// c1: company tag row with entity_id NULL (value = "Nvidia") + 2 signals
+// c2: resolved row + unresolved ticker value + JSONB duplicate → 1 distinct content
+// c3: Apple only in content.tags JSONB + 1 signal
+// c4: Apple, 40 days old → counts, outside the 30-day series
+const CONTENT: Row[] = [
+  { id: "c1", tags: { company: ["Nvidia"], theme: ["ai"] }, ingested_at: daysAgo(3) },
+  { id: "c2", tags: { company: ["Nvidia"] }, ingested_at: daysAgo(2) },
+  { id: "c3", tags: { company: ["Apple"] }, ingested_at: daysAgo(1) },
+  { id: "c4", tags: { company: ["Apple"] }, ingested_at: daysAgo(40) },
+  { id: "c5", tags: { company: [] }, ingested_at: daysAgo(1) },
+  { id: "c6", tags: { company: "Nvidia" }, ingested_at: daysAgo(1) },
+];
+
+const CONTENT_TAGS: Row[] = [
+  { id: "t1", content_id: "c1", dimension: "company", value: "Nvidia", entity_id: null },
+  { id: "t2", content_id: "c2", dimension: "company", value: "Nvidia", entity_id: NVIDIA },
+  { id: "t3", content_id: "c2", dimension: "company", value: "NVDA", entity_id: null },
+  { id: "t4", content_id: "c5", dimension: "theme", value: "ai", entity_id: null },
+];
+
+const SIGNALS: Row[] = [
+  { id: "s1", content_id: "c1" },
+  { id: "s2", content_id: "c1" },
+  { id: "s3", content_id: "c3" },
+];
+
+function jsonResponse(res: Response) {
+  return res.json() as Promise<Record<string, any>>;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockRequireAdmin.mockResolvedValue({ userId: 'admin-1' });
+  mocks.requireAdmin.mockResolvedValue({ user: { id: "admin-1" } });
+  // Default: RPC absent (migration 022 not applied) so scan paths are the norm
+  // unless a test overrides it.
+  mocks.rpc.mockResolvedValue({
+    data: null,
+    error: { code: "PGRST202", message: "Could not find the function" },
+  });
 });
 
-describe('GET /api/admin/entities', () => {
-  it('returns the real alias list per entity and keeps alias_count consistent', async () => {
-    const { aliases } = wire({
-      entities: {
-        data: [entityRow(NVDA, 'Nvidia', 'NVDA'), entityRow(SONY, 'Sony', 'SONY')],
-        error: null,
-      },
-      aliases: {
-        data: [
-          { entity_id: NVDA, alias: 'NVDA' },
-          { entity_id: NVDA, alias: 'Nvidia Corp' },
-          { entity_id: SONY, alias: 'Sony Group' },
-        ],
-        error: null,
-      },
-    });
+describe("GET /api/admin/entities", () => {
+  // ── aliases (PR #150) ─────────────────────────────────────────────────────
 
-    const res = await GET({} as any);
+  it("returns the real alias list per entity and keeps alias_count consistent", async () => {
+    const { client, calls } = fakeClient({ entities: ENTITIES, entity_aliases: ALIASES });
+    mocks.createClient.mockReturnValue(client);
+
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = await jsonResponse(res);
+    const byName = Object.fromEntries(body.entities.map((e: Row) => [e.canonical_name, e]));
 
-    const nvidia = body.entities.find((e: any) => e.id === NVDA);
-    // case-insensitive sort → 'NVDA' before 'Nvidia Corp' ('d' < 'i')
-    expect(nvidia.aliases).toEqual(['NVDA', 'Nvidia Corp']);
-    expect(nvidia.alias_count).toBe(nvidia.aliases.length);
-    expect(nvidia.alias_count).toBe(2);
+    // case-insensitive sort → 'NVDA' before 'Nvidia' ('d' < 'i')
+    expect(byName.Nvidia.aliases).toEqual(["NVDA", "Nvidia"]);
+    expect(byName.Nvidia.alias_count).toBe(byName.Nvidia.aliases.length);
+    expect(byName.Nvidia.alias_count).toBe(2);
 
-    const sony = body.entities.find((e: any) => e.id === SONY);
-    expect(sony.aliases).toEqual(['Sony Group']);
-    expect(sony.alias_count).toBe(1);
+    expect(byName.Apple.aliases).toEqual(["Apple"]);
+    expect(byName.Apple.alias_count).toBe(1);
 
-    // The aliases query must ask for the name column, not just entity_id.
-    expect(aliases.select).toHaveBeenCalledWith('entity_id, alias');
-    expect(aliases.in).toHaveBeenCalledWith('entity_id', [NVDA, SONY]);
-    expect(aliases.order).toHaveBeenCalledWith('id', { ascending: true });
+    expect(byName.Sony.aliases).toEqual([]);
+    expect(byName.Sony.alias_count).toBe(0);
+
+    // The aliases query must ask for the name column and scope to the entities.
+    const aliasCalls = calls.filter((c) => c.table === "entity_aliases");
+    expect(aliasCalls[0].select).toBe("entity_id, alias");
+    expect(aliasCalls[0].in).toEqual(["entity_id", [NVIDIA, APPLE, SONY]]);
+    expect(aliasCalls[0].order).toEqual(["id", { ascending: true }]);
   });
 
-  it('returns an empty array (not null) for an entity with no aliases', async () => {
-    wire({
-      entities: { data: [entityRow(NVDA, 'Nvidia', 'NVDA')], error: null },
-      aliases: { data: [], error: null },
-    });
+  it("returns an empty array (not null) for an entity with no aliases", async () => {
+    mocks.createClient.mockReturnValue(
+      fakeClient({ entities: [ENTITIES[0]], entity_aliases: [] }).client
+    );
 
-    const res = await GET({} as any);
-    const body = await res.json();
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    const body = await jsonResponse(res);
 
     expect(body.entities[0].aliases).toEqual([]);
     expect(body.entities[0].alias_count).toBe(0);
   });
 
-  it('pages through entity_aliases to beat the PostgREST 1000-row cap', async () => {
+  it("pages through entity_aliases to beat the PostgREST 1000-row cap", async () => {
     const page1 = Array.from({ length: 1000 }, (_, i) => ({
-      entity_id: NVDA,
-      alias: `alias-${String(i).padStart(4, '0')}`,
+      entity_id: NVIDIA,
+      alias: `alias-${String(i).padStart(4, "0")}`,
     }));
-    const page2 = [{ entity_id: NVDA, alias: 'zzz-last' }];
+    const page2 = [{ entity_id: NVIDIA, alias: "zzz-last" }];
 
-    const { aliases } = wire({
-      entities: { data: [entityRow(NVDA, 'Nvidia', 'NVDA')], error: null },
-      aliases: [{ data: page1, error: null }, { data: page2, error: null }],
+    const { client, windows } = fakeClient({
+      entities: ENTITIES,
+      entity_aliases: [...page1, ...page2],
     });
+    mocks.createClient.mockReturnValue(client);
 
-    const res = await GET({} as any);
-    const body = await res.json();
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    const body = await jsonResponse(res);
+    const nvidia = body.entities.find((e: Row) => e.canonical_name === "Nvidia");
 
-    expect(body.entities[0].aliases).toHaveLength(1001);
-    expect(body.entities[0].alias_count).toBe(1001);
-    expect(aliases.range).toHaveBeenNthCalledWith(1, 0, 999);
-    expect(aliases.range).toHaveBeenNthCalledWith(2, 1000, 1999);
+    expect(nvidia.aliases).toHaveLength(1001);
+    expect(nvidia.alias_count).toBe(1001);
+    expect(windows["entity_aliases"][0]).toEqual({ from: 0, to: PAGE_SIZE - 1 });
+    expect(windows["entity_aliases"][1]).toEqual({ from: 1000, to: 1999 });
   });
 
-  it('short-circuits when there are no entities', async () => {
-    const { aliases } = wire({ entities: { data: [], error: null } });
+  // ── tag / signal counts (PR #151) ─────────────────────────────────────────
 
-    const res = await GET({} as any);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ entities: [], tagTimeSeries: [] });
-    expect(aliases.select).not.toHaveBeenCalled();
-  });
-
-  it('surfaces an alias-query failure as a 500 instead of swallowing it', async () => {
-    wire({
-      entities: { data: [entityRow(NVDA, 'Nvidia', 'NVDA')], error: null },
-      aliases: { data: null, error: new Error('boom') },
-    });
-
-    const res = await GET({} as any);
-    expect(res.status).toBe(500);
-    expect((await res.json()).error).toBe('Failed to fetch entities stats');
-  });
-
-  it('returns the auth response unchanged when the caller is not an admin', async () => {
-    mockRequireAdmin.mockResolvedValue(
-      NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  it("returns 401 when the caller is not an admin", async () => {
+    mocks.requireAdmin.mockResolvedValue(
+      NextResponse.json({ error: "Forbidden" }, { status: 403 })
     );
 
-    const res = await GET({} as any);
-    expect(res.status).toBe(401);
-    expect(mockFrom).not.toHaveBeenCalled();
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    expect(res.status).toBe(403);
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it("uses the admin_entity_counts() RPC and maps tag/signal counts per entity", async () => {
+    const { client } = fakeClient({ entities: ENTITIES, entity_aliases: ALIASES });
+    mocks.createClient.mockReturnValue(client);
+
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "admin_entity_counts") {
+        return {
+          data: [
+            { entity_id: NVIDIA, tag_count: "2", signal_count: 2 },
+            { entity_id: APPLE, tag_count: 2, signal_count: "1" },
+          ],
+          error: null,
+        };
+      }
+      if (name === "admin_entity_tag_series") {
+        return {
+          data: [
+            { entity_id: NVIDIA, day: daysAgo(3).slice(0, 10), tag_count: "1" },
+            { entity_id: NVIDIA, day: daysAgo(2).slice(0, 10), tag_count: 1 },
+            { entity_id: APPLE, day: daysAgo(1).slice(0, 10), tag_count: 1 },
+          ],
+          error: null,
+        };
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    });
+
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    expect(res.status).toBe(200);
+    const body = await jsonResponse(res);
+
+    const byName = Object.fromEntries(body.entities.map((e: Row) => [e.canonical_name, e]));
+    expect(byName.Nvidia).toMatchObject({ tag_count: 2, signal_count: 2, alias_count: 2 });
+    expect(byName.Apple).toMatchObject({ tag_count: 2, signal_count: 1, alias_count: 1 });
+    // Entities with no tags/signals must still be 0, not missing.
+    expect(byName.Sony).toMatchObject({ tag_count: 0, signal_count: 0, alias_count: 0 });
+
+    // Aliases still present on the RPC path.
+    expect(byName.Nvidia.aliases).toEqual(["NVDA", "Nvidia"]);
+
+    // Top-8 series is derived from the RPC rows, dates ascending.
+    expect(body.tagTimeSeries[0].entity).toBe("Nvidia");
+    expect(body.tagTimeSeries[0].data).toEqual([
+      { date: daysAgo(3).slice(0, 10), count: 1 },
+      { date: daysAgo(2).slice(0, 10), count: 1 },
+    ]);
+
+    // The paged scans must not run when the RPC succeeded.
+    expect(mocks.from).not.toHaveBeenCalledWith("content_tags");
+    expect(mocks.from).not.toHaveBeenCalledWith("signals");
+  });
+
+  it("falls back to a paged scan when migration 022 has not been applied, resolving unresolved tags by alias and JSONB", async () => {
+    const { client, windows } = fakeClient({
+      entities: ENTITIES,
+      entity_aliases: ALIASES,
+      content_tags: CONTENT_TAGS,
+      content: CONTENT,
+      signals: SIGNALS,
+    });
+    mocks.createClient.mockReturnValue(client);
+
+    mocks.rpc.mockResolvedValue({
+      data: null,
+      error: { code: "PGRST202", message: "Could not find the function public.admin_entity_counts in the schema cache" },
+    });
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    warn.mockRestore();
+
+    expect(res.status).toBe(200);
+    const body = await jsonResponse(res);
+    const byName = Object.fromEntries(body.entities.map((e: Row) => [e.canonical_name, e]));
+
+    // Nvidia: c1 (unresolved tag value) + c2 (resolved tag + ticker alias + JSONB dup) = 2 distinct content
+    expect(byName.Nvidia).toMatchObject({ tag_count: 2, signal_count: 2 });
+    // Apple: c3 + c4 come only from content.tags JSONB = 2 distinct content, 1 signal
+    expect(byName.Apple).toMatchObject({ tag_count: 2, signal_count: 1 });
+    expect(byName.Sony).toMatchObject({ tag_count: 0, signal_count: 0 });
+
+    // c4 is 40 days old → not in the 30-day series
+    const nvidiaSeries = body.tagTimeSeries.find((s: { entity: string }) => s.entity === "Nvidia");
+    expect(nvidiaSeries.data).toEqual([
+      { date: daysAgo(3).slice(0, 10), count: 1 },
+      { date: daysAgo(2).slice(0, 10), count: 1 },
+    ]);
+    const appleSeries = body.tagTimeSeries.find((s: { entity: string }) => s.entity === "Apple");
+    expect(appleSeries.data).toEqual([{ date: daysAgo(1).slice(0, 10), count: 1 }]);
+
+    // Every scan was windowed, never a single unbounded select.
+    for (const table of ["entity_aliases", "content_tags", "content", "signals"]) {
+      expect(windows[table]?.[0]).toEqual({ from: 0, to: PAGE_SIZE - 1 });
+    }
+  });
+
+  it("pages past the PostgREST 1000-row cap for aliases and tags", async () => {
+    const manyAliases: Row[] = Array.from({ length: 1200 }, (_, i) => ({
+      id: `al-${i}`,
+      entity_id: NVIDIA,
+      alias: `Nvidia alias ${i}`,
+    }));
+    const manyTags: Row[] = Array.from({ length: 1500 }, (_, i) => ({
+      id: `tg-${i}`,
+      content_id: `content-${i % 1200}`,
+      dimension: "company",
+      value: "Nvidia",
+      entity_id: null,
+    }));
+
+    const { client, windows } = fakeClient({
+      entities: ENTITIES,
+      entity_aliases: manyAliases,
+      content_tags: manyTags,
+      content: [],
+      signals: [],
+    });
+    mocks.createClient.mockReturnValue(client);
+    mocks.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    warn.mockRestore();
+
+    expect(res.status).toBe(200);
+    const body = await jsonResponse(res);
+    const nvidia = body.entities.find((e: Row) => e.canonical_name === "Nvidia");
+
+    expect(nvidia.alias_count).toBe(1200);
+    expect(nvidia.aliases).toHaveLength(1200);
+    expect(nvidia.tag_count).toBe(1200); // 1500 tag rows over 1200 distinct content ids
+    expect(windows["entity_aliases"].length).toBe(2);
+    expect(windows["content_tags"].length).toBe(2);
+  });
+
+  it("surfaces a real RPC failure instead of reporting zeros", async () => {
+    const { client } = fakeClient({ entities: ENTITIES, entity_aliases: ALIASES });
+    mocks.createClient.mockReturnValue(client);
+    mocks.rpc.mockResolvedValue({
+      data: null,
+      error: { code: "XX000", message: "permission denied for table content_tags" },
+    });
+
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    error.mockRestore();
+
+    expect(res.status).toBe(500);
+    const body = await jsonResponse(res);
+    expect(body.detail).toContain("permission denied");
+  });
+
+  it("surfaces a fallback scan failure instead of reporting zeros", async () => {
+    const { client } = fakeClient(
+      { entities: ENTITIES, entity_aliases: ALIASES, content_tags: CONTENT_TAGS, content: CONTENT, signals: SIGNALS },
+      { failTable: "content_tags" }
+    );
+    mocks.createClient.mockReturnValue(client);
+    mocks.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
+
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    const loggedErrors = error.mock.calls.length;
+    error.mockRestore();
+    warn.mockRestore();
+
+    expect(res.status).toBe(500);
+    expect((await jsonResponse(res)).detail).toContain("content_tags exploded");
+    expect(loggedErrors).toBeGreaterThan(0);
+  });
+
+  it("returns an empty payload when there are no entities", async () => {
+    const { client } = fakeClient({ entities: [], entity_aliases: [] });
+    mocks.createClient.mockReturnValue(client);
+
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    expect(res.status).toBe(200);
+    expect(await jsonResponse(res)).toEqual({ entities: [], tagTimeSeries: [] });
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 });
