@@ -189,3 +189,24 @@ describe('Profile interests picker (card t_5ba5480e)', () => {
     expect(content).toContain('Saving…')
   })
 })
+
+// Card t_e690b33d: prod renamed entity 'Niantic' to 'Scopely Explore' (parent
+// Scopely, 'Niantic' kept as former_name) and added a new 'Niantic Spatial'
+// entity under Infrastructure / Middleware. The segment-picker descriptions
+// are hard-coded copy and must match the DB.
+describe('Profile segment descriptions — Niantic rename', () => {
+  const filePath = path.resolve(__dirname, 'page.tsx')
+  const content = fs.readFileSync(filePath, 'utf-8')
+
+  test('Mobile-First / F2P lists Scopely Explore, not bare Niantic', () => {
+    expect(content).toContain('Scopely Explore')
+    expect(content).not.toMatch(/Scopely,\s*Dream Games,\s*Niantic\b/)
+    // Former standalone 'Niantic' entry in the mobile segment is gone.
+    expect(content).not.toMatch(/Dream Games,\s*Niantic,\s*Voodoo/)
+  })
+
+  test('Infrastructure / Middleware lists Niantic Spatial', () => {
+    expect(content).toMatch(/ironSource,\s*Twitch,\s*Niantic Spatial/)
+  })
+})
+

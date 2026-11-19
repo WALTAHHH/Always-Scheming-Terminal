@@ -17,10 +17,10 @@ const SEGMENTS = [
   { name: 'Platform Holders & Big Tech', description: 'Microsoft (Xbox), Sony (PlayStation), Nintendo, Apple, Google, Meta, Valve, Epic, Roblox' },
   { name: 'Major Western Publishers', description: 'EA, Take-Two, Ubisoft, Embracer, CD Projekt, Devolver' },
   { name: 'Major Asian Publishers', description: 'Tencent, NetEase, Nexon, Krafton, Bandai Namco, Capcom, Square Enix, Sega, miHoYo, Sea Limited' },
-  { name: 'Mobile-First / F2P Specialists', description: 'Supercell, AppLovin, Scopely, Dream Games, Niantic, Voodoo' },
+  { name: 'Mobile-First / F2P Specialists', description: 'Supercell, AppLovin, Scopely, Scopely Explore, Dream Games, Voodoo' },
   { name: 'PC/Console Studios & Indies', description: 'Larian, Annapurna, Riot, FromSoftware, Activision Blizzard, Bethesda, Bungie' },
   { name: 'Mid-Market / European Publishers', description: 'Paradox, Keywords Studios, Team17, Warner Bros Games, Frontier, Embracer labels' },
-  { name: 'Infrastructure / Middleware / Services', description: 'Unity, Discord, Xsolla, Overwolf, ironSource, Twitch' },
+  { name: 'Infrastructure / Middleware / Services', description: 'Unity, Discord, Xsolla, Overwolf, ironSource, Twitch, Niantic Spatial' },
   { name: 'Investment / Holding / Corporate', description: 'Savvy Games Group, Kadokawa, tencent holding stakes, private equity' },
 ];
 
