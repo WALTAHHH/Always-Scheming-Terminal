@@ -7,6 +7,16 @@ import { scoreCluster, getClusterScoreBreakdown, type ScoreBreakdown } from "@/l
 import { CompanyTag } from "./CompanyTag";
 import { SourceFavicon } from "./SourceFavicon";
 import { TimeAgo } from "./TimeAgo";
+import {
+  DEFAULT_EXPANSION,
+  getHiddenCount,
+  readExpansion,
+  sliceVisible,
+  toggleSection,
+  writeExpansion,
+  type ExpansionState,
+  type SectionId,
+} from "@/lib/sectionExpansion";
 
 interface SignalPanelProps {
   items: FeedItem[];
@@ -164,13 +174,64 @@ interface WatchlistApiEntry {
   entity?: { canonical_name?: string | null; ticker?: string | null } | null;
 }
 
+/**
+ * Inline "Show N more" / "Show less" control for a capped section. Renders
+ * nothing when the section fits inside the collapsed cap. `aria-expanded`
+ * conveys the state and the button is a plain toggle, so expanding never
+ * remounts the scroll container (the panel keeps its scroll position and the
+ * content below simply grows).
+ */
+function SectionToggle({
+  hidden,
+  expanded,
+  onToggle,
+  accentClass,
+}: {
+  hidden: number;
+  expanded: boolean;
+  onToggle: () => void;
+  accentClass: string;
+}) {
+  if (!expanded && hidden <= 0) return null;
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      className={`text-[11px] font-medium px-2 py-1 rounded border border-transparent hover:border-ast-border transition-colors ${accentClass}`}
+    >
+      {expanded ? "Show less" : `Show ${hidden} more`}
+    </button>
+  );
+}
+
 export function SignalPanel({ items }: SignalPanelProps) {
   const [expandedStory] = useState<string | null>(null); // kept for future use
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [signals, setSignals] = useState<DbSignal[]>([]);
   // Lowercased canonical names + tickers of the companies the user watches.
   const [watchedNames, setWatchedNames] = useState<Set<string>>(new Set());
-  
+  // Per-section collapsed/expanded state for the capped signals/deals lists.
+  // Starts collapsed so first render matches the server output; the persisted
+  // choice is applied after mount to stay SSR/hydration safe.
+  const [expansion, setExpansion] = useState<ExpansionState>(DEFAULT_EXPANSION);
+
+  // Restore the remembered expansion state. Read after mount so the initial
+  // render (and any server-rendered HTML) is deterministic.
+  useEffect(() => {
+    const storage = typeof window !== "undefined" ? window.sessionStorage : null;
+    setExpansion(readExpansion(storage));
+  }, []);
+
+  const handleToggleSection = (section: SectionId) => {
+    setExpansion((prev) => {
+      const next = toggleSection(prev, section);
+      const storage = typeof window !== "undefined" ? window.sessionStorage : null;
+      writeExpansion(storage, next);
+      return next;
+    });
+  };
+
   // Fetch DB signals
   useEffect(() => {
     fetch("/api/v1/signals")
@@ -314,6 +375,20 @@ export function SignalPanel({ items }: SignalPanelProps) {
     );
   }, [visibleSignals]);
 
+  // Capped views: each section renders the top N (collapsed) or every item
+  // (expanded). The signals fetch already returns up to the API's default
+  // limit, so expanding never triggers another request.
+  const shownSignals = useMemo(
+    () => sliceVisible(visibleSignals, expansion.signals),
+    [visibleSignals, expansion.signals]
+  );
+  const shownDeals = useMemo(
+    () => sliceVisible(dealSignals, expansion.deals),
+    [dealSignals, expansion.deals]
+  );
+  const hiddenSignals = getHiddenCount(visibleSignals.length, expansion.signals);
+  const hiddenDeals = getHiddenCount(dealSignals.length, expansion.deals);
+
   // Stats
   const stats = useMemo(() => {
     const sources = new Set(filteredItems.map((i) => i.sources?.name).filter(Boolean));
@@ -335,7 +410,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
           <div className="border-b border-ast-border">
             <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50 flex items-center gap-1.5 flex-wrap">
               <span className="text-ast-accent text-xs font-semibold tracking-wide mr-1">
-                ⚡ SIGNALS
+                ⚡ SIGNALS · {visibleSignals.length}
               </span>
               {FILTER_CHIPS.map(({ value, label }) => {
                 const active = sourceFilter === value;
@@ -364,7 +439,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                     : "No signals extracted yet"}
                 </p>
               ) : (
-                visibleSignals.map((signal) => {
+                shownSignals.map((signal) => {
                   const badge = getSignalBadge(signal.signal_type);
                   const scoreColor = signal.investment_relevance_score >= 0.8 
                     ? "text-ast-mint" 
@@ -435,6 +510,12 @@ export function SignalPanel({ items }: SignalPanelProps) {
                   );
                 })
               )}
+              <SectionToggle
+                hidden={hiddenSignals}
+                expanded={expansion.signals}
+                onToggle={() => handleToggleSection("signals")}
+                accentClass="text-ast-accent"
+              />
 
 
             </div>
@@ -444,17 +525,14 @@ export function SignalPanel({ items }: SignalPanelProps) {
           <div className="border-b border-ast-border">
             <div className="sticky top-0 px-4 py-2 bg-ast-bg/95 backdrop-blur-sm border-b border-ast-border/50">
               <span className="text-ast-gold text-xs font-semibold tracking-wide">
-                💰 DEALS
-                {dealSignals.length > 0 && (
-                  <span className="ml-1 text-[10px] text-ast-gold/70">({dealSignals.length})</span>
-                )}
+                💰 DEALS · {dealSignals.length}
               </span>
             </div>
             <div className="px-4 py-3 space-y-3">
               {dealSignals.length === 0 ? (
                 <p className="text-ast-muted text-xs">No deals or earnings yet</p>
               ) : (
-                dealSignals.map((deal) => (
+                shownDeals.map((deal) => (
                   <div
                     key={deal.id}
                     onClick={() => window.open(deal.url, '_blank', 'noopener,noreferrer')}
@@ -491,6 +569,12 @@ export function SignalPanel({ items }: SignalPanelProps) {
                   </div>
                 ))
               )}
+              <SectionToggle
+                hidden={hiddenDeals}
+                expanded={expansion.deals}
+                onToggle={() => handleToggleSection("deals")}
+                accentClass="text-ast-gold"
+              />
             </div>
           </div>
         </div>
