@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextResponse } from "next/server";
 
-// ── mocks (hoisted) ────────────────────────────────────────────────────────
+// ── mocks (hoisted so the route's imports resolve to them) ──────────────────
 
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
@@ -20,30 +20,48 @@ vi.mock("@supabase/supabase-js", () => ({
 
 import { GET } from "./route";
 
-// ── fake PostgREST client ──────────────────────────────────────────────────
+// ── fake PostgREST client ───────────────────────────────────────────────────
 
 type Row = Record<string, unknown>;
 
 const PAGE_SIZE = 1000;
 
+type QueryCall = {
+  table: string;
+  select?: string;
+  in?: [string, unknown[]];
+  order?: [string, unknown];
+  range?: [number, number];
+};
+
 /**
- * Minimal stand-in for the supabase-js query builder: records `.range()`
- * windows, applies the filters the route uses, and is awaitable when the route
- * does not call `.range()` (the entities query).
+ * Minimal stand-in for the supabase-js query builder: records the query shape
+ * and `.range()` windows, applies the filters the route uses, and is awaitable
+ * when the route does not call `.range()` (the entities query).
  */
 function fakeClient(tables: Record<string, Row[]>, opts: { failTable?: string } = {}) {
   const windows: Record<string, { from: number; to: number }[]> = {};
+  const calls: QueryCall[] = [];
 
   const makeBuilder = (table: string) => {
     let filtered = [...(tables[table] ?? [])];
+    const record: QueryCall = { table };
+    calls.push(record);
     const builder: Record<string, unknown> = {
-      select: () => builder,
-      order: () => builder,
+      select: (cols?: string) => {
+        record.select = cols;
+        return builder;
+      },
+      order: (col: string, o?: unknown) => {
+        record.order = [col, o];
+        return builder;
+      },
       eq: (col: string, value: unknown) => {
         filtered = filtered.filter((row) => row[col] === value);
         return builder;
       },
       in: (col: string, values: unknown[]) => {
+        record.in = [col, values];
         filtered = filtered.filter((row) => values.includes(row[col]));
         return builder;
       },
@@ -59,6 +77,7 @@ function fakeClient(tables: Record<string, Row[]>, opts: { failTable?: string } 
       },
       range: (from: number, to: number) => {
         (windows[table] ??= []).push({ from, to });
+        record.range = [from, to];
         const result =
           opts.failTable === table
             ? { data: null, error: { code: "XX000", message: `${table} exploded` } }
@@ -78,6 +97,7 @@ function fakeClient(tables: Record<string, Row[]>, opts: { failTable?: string } 
 
   return {
     windows,
+    calls,
     client: {
       rpc: mocks.rpc,
       from: (table: string) => {
@@ -88,7 +108,7 @@ function fakeClient(tables: Record<string, Row[]>, opts: { failTable?: string } 
   };
 }
 
-// ── fixture ────────────────────────────────────────────────────────────────
+// ── fixtures ────────────────────────────────────────────────────────────────
 
 const NVIDIA = "11111111-1111-1111-1111-111111111111";
 const APPLE = "22222222-2222-2222-2222-222222222222";
@@ -143,9 +163,81 @@ function jsonResponse(res: Response) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireAdmin.mockResolvedValue({ user: { id: "admin-1" } });
+  // Default: RPC absent (migration 022 not applied) so scan paths are the norm
+  // unless a test overrides it.
+  mocks.rpc.mockResolvedValue({
+    data: null,
+    error: { code: "PGRST202", message: "Could not find the function" },
+  });
 });
 
 describe("GET /api/admin/entities", () => {
+  // ── aliases (PR #150) ─────────────────────────────────────────────────────
+
+  it("returns the real alias list per entity and keeps alias_count consistent", async () => {
+    const { client, calls } = fakeClient({ entities: ENTITIES, entity_aliases: ALIASES });
+    mocks.createClient.mockReturnValue(client);
+
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    expect(res.status).toBe(200);
+    const body = await jsonResponse(res);
+    const byName = Object.fromEntries(body.entities.map((e: Row) => [e.canonical_name, e]));
+
+    // case-insensitive sort → 'NVDA' before 'Nvidia' ('d' < 'i')
+    expect(byName.Nvidia.aliases).toEqual(["NVDA", "Nvidia"]);
+    expect(byName.Nvidia.alias_count).toBe(byName.Nvidia.aliases.length);
+    expect(byName.Nvidia.alias_count).toBe(2);
+
+    expect(byName.Apple.aliases).toEqual(["Apple"]);
+    expect(byName.Apple.alias_count).toBe(1);
+
+    expect(byName.Sony.aliases).toEqual([]);
+    expect(byName.Sony.alias_count).toBe(0);
+
+    // The aliases query must ask for the name column and scope to the entities.
+    const aliasCalls = calls.filter((c) => c.table === "entity_aliases");
+    expect(aliasCalls[0].select).toBe("entity_id, alias");
+    expect(aliasCalls[0].in).toEqual(["entity_id", [NVIDIA, APPLE, SONY]]);
+    expect(aliasCalls[0].order).toEqual(["id", { ascending: true }]);
+  });
+
+  it("returns an empty array (not null) for an entity with no aliases", async () => {
+    mocks.createClient.mockReturnValue(
+      fakeClient({ entities: [ENTITIES[0]], entity_aliases: [] }).client
+    );
+
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    const body = await jsonResponse(res);
+
+    expect(body.entities[0].aliases).toEqual([]);
+    expect(body.entities[0].alias_count).toBe(0);
+  });
+
+  it("pages through entity_aliases to beat the PostgREST 1000-row cap", async () => {
+    const page1 = Array.from({ length: 1000 }, (_, i) => ({
+      entity_id: NVIDIA,
+      alias: `alias-${String(i).padStart(4, "0")}`,
+    }));
+    const page2 = [{ entity_id: NVIDIA, alias: "zzz-last" }];
+
+    const { client, windows } = fakeClient({
+      entities: ENTITIES,
+      entity_aliases: [...page1, ...page2],
+    });
+    mocks.createClient.mockReturnValue(client);
+
+    const res = await GET(new Request("http://localhost/api/admin/entities") as never);
+    const body = await jsonResponse(res);
+    const nvidia = body.entities.find((e: Row) => e.canonical_name === "Nvidia");
+
+    expect(nvidia.aliases).toHaveLength(1001);
+    expect(nvidia.alias_count).toBe(1001);
+    expect(windows["entity_aliases"][0]).toEqual({ from: 0, to: PAGE_SIZE - 1 });
+    expect(windows["entity_aliases"][1]).toEqual({ from: 1000, to: 1999 });
+  });
+
+  // ── tag / signal counts (PR #151) ─────────────────────────────────────────
+
   it("returns 401 when the caller is not an admin", async () => {
     mocks.requireAdmin.mockResolvedValue(
       NextResponse.json({ error: "Forbidden" }, { status: 403 })
@@ -192,6 +284,9 @@ describe("GET /api/admin/entities", () => {
     expect(byName.Apple).toMatchObject({ tag_count: 2, signal_count: 1, alias_count: 1 });
     // Entities with no tags/signals must still be 0, not missing.
     expect(byName.Sony).toMatchObject({ tag_count: 0, signal_count: 0, alias_count: 0 });
+
+    // Aliases still present on the RPC path.
+    expect(byName.Nvidia.aliases).toEqual(["NVDA", "Nvidia"]);
 
     // Top-8 series is derived from the RPC rows, dates ascending.
     expect(body.tagTimeSeries[0].entity).toBe("Nvidia");
@@ -282,6 +377,7 @@ describe("GET /api/admin/entities", () => {
     const nvidia = body.entities.find((e: Row) => e.canonical_name === "Nvidia");
 
     expect(nvidia.alias_count).toBe(1200);
+    expect(nvidia.aliases).toHaveLength(1200);
     expect(nvidia.tag_count).toBe(1200); // 1500 tag rows over 1200 distinct content ids
     expect(windows["entity_aliases"].length).toBe(2);
     expect(windows["content_tags"].length).toBe(2);

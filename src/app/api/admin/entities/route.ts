@@ -28,6 +28,11 @@ export const runtime = "nodejs";
  * If the migration has not run yet (function missing), the route falls back to
  * paged `.range()` scans with the identical aggregation in JS. Every failure is
  * logged and surfaced — no more silent zeros.
+ *
+ * The response also carries the real per-entity alias list (`aliases: string[]`)
+ * alongside a consistent `alias_count`, so the Admin → Entities expanded row can
+ * render the actual names as chips. The alias query is `.range()`-paged too, so
+ * neither the list nor the count is capped at 1000 rows.
  */
 
 const PAGE_SIZE = 1000;
@@ -323,22 +328,34 @@ export async function GET(_req: NextRequest) {
       return NextResponse.json({ entities: [], tagTimeSeries: [] });
     }
 
-    // 2. Aliases — paged, so alias counts are not capped at 1000 rows either.
+    const entityIds = allEntities
+      .map((e) => e.id)
+      .filter((id): id is string => !!id);
+
+    // 2. Aliases — the real names (not just counts) so the admin UI can render
+    //    the list in the expanded row, scoped to the known entities and paged so
+    //    the PostgREST 1000-row cap cannot truncate the list or the count.
     const allAliases = await fetchAllRows<{ entity_id: string; alias: string }>(
       "entity_aliases scan",
       (from, to) =>
         serviceClient
           .from("entity_aliases")
           .select("entity_id, alias")
+          .in("entity_id", entityIds)
           .order("id", { ascending: true })
           .range(from, to)
     );
 
-    const aliasCounts: Record<string, number> = {};
+    // Group aliases per entity, sorted case-insensitively for a stable
+    // chip-list order in the UI.
+    const aliasesByEntity: Record<string, string[]> = {};
     for (const row of allAliases) {
-      if (!row?.entity_id) continue;
-      aliasCounts[row.entity_id] = (aliasCounts[row.entity_id] || 0) + 1;
+      if (!row?.entity_id || !row.alias) continue;
+      (aliasesByEntity[row.entity_id] ||= []).push(row.alias);
     }
+    Object.values(aliasesByEntity).forEach((list) =>
+      list.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    );
 
     // 3. Tag + signal counts (RPC first, paged scan as fallback).
     let stats = await loadStatsViaRpc(serviceClient, SERIES_DAYS);
@@ -351,17 +368,21 @@ export async function GET(_req: NextRequest) {
     }
 
     // 4. Enrich entities.
-    const entities = allEntities.map((entity) => ({
-      id: entity.id,
-      canonical_name: entity.canonical_name,
-      entity_type: entity.entity_type,
-      segment: entity.segment,
-      ticker: entity.ticker,
-      is_public: entity.is_public,
-      alias_count: aliasCounts[entity.id] || 0,
-      tag_count: stats.tagCounts.get(entity.id) ?? 0,
-      signal_count: stats.signalCounts.get(entity.id) ?? 0,
-    }));
+    const entities = allEntities.map((entity) => {
+      const aliases = aliasesByEntity[entity.id] || [];
+      return {
+        id: entity.id,
+        canonical_name: entity.canonical_name,
+        entity_type: entity.entity_type,
+        segment: entity.segment,
+        ticker: entity.ticker,
+        is_public: entity.is_public,
+        aliases,
+        alias_count: aliases.length,
+        tag_count: stats.tagCounts.get(entity.id) ?? 0,
+        signal_count: stats.signalCounts.get(entity.id) ?? 0,
+      };
+    });
 
     // 5. Time series for the 8 most-tagged entities.
     const topEntities = [...entities]

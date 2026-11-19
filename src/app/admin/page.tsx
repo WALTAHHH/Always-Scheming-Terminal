@@ -1161,8 +1161,21 @@ function EntitiesDashboard() {
 
               {expandedRow === entity.id && (
                 <div className="px-3 py-2 bg-ast-bg/30 border-t border-ast-border">
-                  <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1">Aliases</div>
-                  <p className="text-xs text-ast-muted">Aliases list would appear here (fetch from entity_aliases).</p>
+                  <div className="text-[10px] text-ast-muted uppercase tracking-wider mb-1.5">Aliases</div>
+                  {Array.isArray(entity.aliases) && entity.aliases.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {entity.aliases.map((alias: string) => (
+                        <span
+                          key={alias}
+                          className="text-[11px] px-2 py-0.5 rounded bg-ast-surface border border-ast-border text-ast-text"
+                        >
+                          {alias}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-ast-muted">No aliases</p>
+                  )}
                 </div>
               )}
             </div>
