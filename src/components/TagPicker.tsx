@@ -239,7 +239,12 @@ export default function TagPicker({ selected, onChange }: TagPickerProps) {
                   }
                 >
                   <span>{tag.value}</span>
-                  <span className="text-xs text-ast-muted">{tag.count}</span>
+                  <span
+                    className="text-xs text-ast-muted"
+                    title={`Used in ${tag.count} articles`}
+                  >
+                    {tag.count}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -331,14 +336,18 @@ export default function TagPicker({ selected, onChange }: TagPickerProps) {
                   </span>
                 )}
               </h3>
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={() => setBrowseOpen(false)}
-                className="text-xl leading-none text-ast-muted hover:text-ast-text"
-              >
-                ×
-              </button>
+              <div className="flex items-center gap-3">
+                {/* Column hint for the per-row usage count. */}
+                <span className="text-xs text-ast-muted">articles</span>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setBrowseOpen(false)}
+                  className="text-xl leading-none text-ast-muted hover:text-ast-text"
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
             <input
@@ -348,7 +357,7 @@ export default function TagPicker({ selected, onChange }: TagPickerProps) {
               placeholder="Search tags..."
               autoFocus
               aria-label="Search tags"
-              className="mb-3 w-full rounded border border-ast-border bg-ast-bg px-3 py-2 text-ast-text focus:outline-none focus:ring-2 focus:ring-ast-accent"
+              className="mb-3 w-full rounded border border-ast-muted bg-ast-bg px-3 py-2 text-ast-text placeholder:text-ast-muted focus:outline-none focus:ring-2 focus:ring-ast-accent"
             />
 
             <div className="mb-3 flex gap-2" role="group" aria-label="Sort tags">
@@ -360,7 +369,7 @@ export default function TagPicker({ selected, onChange }: TagPickerProps) {
                   "rounded border px-3 py-1 text-sm " +
                   (browseSort === "alpha"
                     ? "border-ast-accent bg-ast-tag text-ast-accent"
-                    : "border-ast-border text-ast-muted")
+                    : "border-ast-muted text-ast-muted")
                 }
               >
                 A–Z
@@ -373,10 +382,10 @@ export default function TagPicker({ selected, onChange }: TagPickerProps) {
                   "rounded border px-3 py-1 text-sm " +
                   (browseSort === "popular"
                     ? "border-ast-accent bg-ast-tag text-ast-accent"
-                    : "border-ast-border text-ast-muted")
+                    : "border-ast-muted text-ast-muted")
                 }
               >
-                Popular
+                Most used
               </button>
             </div>
 
@@ -406,7 +415,10 @@ export default function TagPicker({ selected, onChange }: TagPickerProps) {
                           {isSelected ? "✓ " : ""}
                           {tag.value}
                         </span>
-                        <span className="text-xs text-ast-muted">
+                        <span
+                          className="text-xs text-ast-muted"
+                          title={`Used in ${tag.count} articles`}
+                        >
                           {tag.count}
                         </span>
                       </button>

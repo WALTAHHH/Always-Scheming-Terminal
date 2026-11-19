@@ -93,6 +93,14 @@ describe("TagPicker — source-asserted behaviours", () => {
     expect(source).toContain("browseSort");
     expect(source).toContain('aria-pressed');
     expect(source).toContain("Show more");
+    // Sort labels read "A–Z" / "Most used" — the count is an article-usage
+    // count, so "Popular" was misleading.
+    expect(source).toContain("A–Z");
+    expect(source).toContain("Most used");
+    expect(source).not.toContain(">Popular<");
+    // Counts are self-explanatory: title tooltip + muted column hint.
+    expect(source).toContain("Used in ${tag.count} articles");
+    expect(source).toContain(">articles<");
   });
 
   it("does not rely on Tailwind /opacity colour utilities (theme tokens only)", () => {
