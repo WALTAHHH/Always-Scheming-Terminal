@@ -96,8 +96,12 @@ export function getClientIP(request: Request): string {
 export const RATE_LIMITS = {
   // Public API routes - generous limits
   public: { windowMs: 60_000, maxRequests: 60 },  // 60 req/min
-  // Stock API - more restrictive (external API calls)
-  stock: { windowMs: 60_000, maxRequests: 30 },   // 30 req/min
+  // Stock API - generous enough for the ticker bar's fan-out. The header TickerBar
+  // fires one request per public ticker on mount (~45 today) and repeats every
+  // 5 minutes, so a 30/min budget rejected a third of the bar with HTTP 429 on
+  // every load. Responses are cached per ticker for 2 minutes, so this still
+  // bounds upstream Yahoo calls.
+  stock: { windowMs: 60_000, maxRequests: 120 },
   // Admin routes - less restrictive
   admin: { windowMs: 60_000, maxRequests: 120 },  // 120 req/min
 };
