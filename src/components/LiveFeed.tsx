@@ -34,6 +34,42 @@ interface PanelVisibility {
   signal: boolean;
 }
 
+// Desktop layout is a deliberate three-state model. The tab bar shows one pill
+// per state and the active pill always reflects the true state — there is no
+// "fallback to feed" guess. `split` (both panes side by side) is the default and
+// matches the pre-existing first-load view.
+export type LayoutMode = "feed" | "signal" | "split";
+export const LAYOUT_STORAGE_KEY = "ast.layout";
+export const DEFAULT_LAYOUT: LayoutMode = "split";
+
+// Coerce a persisted value into a valid LayoutMode (anything unknown → default).
+export function parseLayout(value: string | null): LayoutMode {
+  return value === "feed" || value === "signal" || value === "split"
+    ? value
+    : DEFAULT_LAYOUT;
+}
+
+// Derive which panes are visible for a given layout. Kept pure so it can be
+// unit-tested without a DOM.
+export function layoutToPanels(layout: LayoutMode): PanelVisibility {
+  return { feed: layout !== "signal", signal: layout !== "feed" };
+}
+
+// Map the legacy `ast-panel-visibility` blob ({feed,signal}) onto the new
+// three-state model so returning users keep their last choice.
+export function migrateLegacyLayout(raw: string | null): LayoutMode | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.feed && parsed.signal) return "split";
+    if (parsed && parsed.feed && !parsed.signal) return "feed";
+    if (parsed && parsed.signal && !parsed.feed) return "signal";
+  } catch {
+    // ignore malformed legacy value
+  }
+  return null;
+}
+
 // Detect mobile/PWA for single-panel mode
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
@@ -83,7 +119,10 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   const [isDraggingV, setIsDraggingV] = useState(false);
   const leftWidthRef = useRef(50);
   const topHeightRef = useRef(60);
-  const [panels, setPanels] = useState<PanelVisibility>({ feed: true, signal: true });
+  // Desktop layout: 'feed' | 'signal' | 'split' (default). Panes are derived
+  // from this single source of truth so the tab bar can never disagree with it.
+  const [layout, setLayout] = useState<LayoutMode>(DEFAULT_LAYOUT);
+  const { feed: showFeed, signal: showSignal } = layoutToPanels(layout);
   
   // Company tray modal state
   const [trayOpen, setTrayOpen] = useState(false);
@@ -118,28 +157,15 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       }
     }
 
-    const savedPanels = localStorage.getItem(STORAGE_KEY_PANELS);
-    if (savedPanels) {
-      try {
-        const parsed = JSON.parse(savedPanels);
-        setPanels({ feed: true, signal: true, ...parsed });
-      } catch {}
+    const savedLayout = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (savedLayout !== null) {
+      setLayout(parseLayout(savedLayout));
+    } else {
+      // Migrate the legacy panel-visibility blob, if present.
+      const migrated = migrateLegacyLayout(localStorage.getItem(STORAGE_KEY_PANELS));
+      if (migrated) setLayout(migrated);
     }
   }, []);
-
-  // Enforce single-panel mode on mobile/PWA
-  useEffect(() => {
-    if (isMobile) {
-      // On mobile, ensure only one panel is active
-      setPanels((prev) => {
-        const activeCount = [prev.feed, prev.signal].filter(Boolean).length;
-        if (activeCount !== 1) {
-          return { feed: true, signal: false };
-        }
-        return prev;
-      });
-    }
-  }, [isMobile]);
 
   // Horizontal drag (left/right split)
   const handleMouseDownH = useCallback((e: React.MouseEvent) => {
@@ -206,13 +232,15 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
 
   
 
-  // Select a single panel (tab bar)
-  const selectPanel = useCallback((panel: keyof PanelVisibility) => {
-    setPanels((prev) => {
-      const next = { feed: false, signal: false, [panel]: true } as PanelVisibility;
-      localStorage.setItem(STORAGE_KEY_PANELS, JSON.stringify(next));
-      return next;
-    });
+  // Select a layout from the desktop tab bar and persist the choice.
+  const selectLayout = useCallback((next: LayoutMode) => {
+    setLayout(next);
+    try {
+      localStorage.setItem(LAYOUT_STORAGE_KEY, next);
+    } catch {
+      // localStorage may be unavailable (private mode / SSR) — layout still
+      // applies for this session.
+    }
   }, []);
 
   
@@ -347,14 +375,13 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     loadMore();
   }, [loadMore]);
 
-  // Calculate layout
-  const showRightPane = panels.signal;
+  // Calculate layout. Panes are derived from the single `layout` state above.
   const showBothRight = false;
   
-  // If only feed is visible, it takes full width
-  // If feed is hidden, right pane takes full width
-  const effectiveLeftWidth = !panels.feed ? 0 : !showRightPane ? 100 : leftWidth;
-  const effectiveRightWidth = !showRightPane ? 0 : !panels.feed ? 100 : (100 - leftWidth);
+  // If only feed is visible, it takes full width.
+  // If feed is hidden, the right pane takes full width.
+  const effectiveLeftWidth = !showFeed ? 0 : !showSignal ? 100 : leftWidth;
+  const effectiveRightWidth = !showSignal ? 0 : !showFeed ? 100 : (100 - leftWidth);
 
   // Global stats
   const stats = useMemo(() => {
@@ -405,8 +432,9 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
     },
   ], [items, sources, hasMore, loadingMore, loadMore]);
 
-  // Active tab for tab bar
-  const activeTab = panels.feed && !panels.signal ? 'feed' : panels.signal && !panels.feed ? 'signal' : 'feed';
+  // Active tab for the tab bar — always reflects the true layout, never a
+  // fallback guess (the old code highlighted 'feed' whenever both panes showed).
+  const activeTab = layout;
 
   // Mobile view
   if (isMobile) {
@@ -431,28 +459,24 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       <NewItemsBanner count={newCount} onClick={loadNewItems} />
 
       <div className="hidden sm:flex h-9 border-b border-ast-border bg-ast-bg/95 backdrop-blur-sm">
-        <button
-          onClick={() => selectPanel('feed')}
-          aria-pressed={activeTab === 'feed'}
-          className={`flex-1 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
-            activeTab === 'feed'
-              ? 'bg-ast-accent/15 text-ast-accent border-b-2 border-ast-accent'
-              : 'text-ast-muted hover:text-ast-text hover:bg-ast-surface/50'
-          }`}
-        >
-          FEED
-        </button>
-        <button
-          onClick={() => selectPanel('signal')}
-          aria-pressed={activeTab === 'signal'}
-          className={`flex-1 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
-            activeTab === 'signal'
-              ? 'bg-ast-accent/15 text-ast-accent border-b-2 border-ast-accent'
-              : 'text-ast-muted hover:text-ast-text hover:bg-ast-surface/50'
-          }`}
-        >
-          SIGNALS
-        </button>
+        {([
+          { id: "feed", label: "FEED" },
+          { id: "signal", label: "SIGNALS" },
+          { id: "split", label: "SPLIT" },
+        ] as const).map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => selectLayout(id)}
+            aria-pressed={activeTab === id}
+            className={`flex-1 py-2 text-[11px] font-semibold tracking-widest uppercase transition-colors ${
+              activeTab === id
+                ? 'bg-ast-accent/15 text-ast-accent border-b-2 border-ast-accent'
+                : 'text-ast-muted hover:text-ast-text hover:bg-ast-surface/50'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div 
@@ -460,7 +484,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
         className={`flex h-[calc(100vh-6.5rem)] sm:h-[calc(100vh-7rem)] ${isDraggingH || isDraggingV ? "select-none" : ""}`}
       >
         {/* Left pane: Feed */}
-        {panels.feed && (
+        {showFeed && (
           <>
             <div 
               className="overflow-y-auto"
@@ -480,7 +504,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
             </div>
             
             {/* Horizontal divider (desktop only) */}
-            {showRightPane && !isMobile && (
+            {showSignal && !isMobile && (
               <div
                 onMouseDown={handleMouseDownH}
                 className={`w-1 flex-shrink-0 cursor-col-resize border-x border-ast-border hover:bg-ast-accent/30 transition-colors ${
@@ -492,14 +516,14 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
         )}
         
         {/* Right pane: Signal + Companies */}
-        {showRightPane && (
+        {showSignal && (
           <div 
             ref={rightPaneRef}
             className="flex flex-col"
             style={{ width: isMobile ? "100%" : `${effectiveRightWidth}%` }}
           >
             {/* Top: Signal */}
-            {panels.signal && (
+            {showSignal && (
               <>
                 <div 
                   className="overflow-y-auto"
