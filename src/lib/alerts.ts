@@ -26,6 +26,7 @@ import type { Database } from "./database.types";
 import {
   buildDigestUnsubHeaders,
   buildDigestUnsubUrl,
+  digestRelevance,
   generateDigestUnsubToken,
   getDigestFooterAddress,
   getEmailConfig,
@@ -535,11 +536,22 @@ export interface SendWeeklyDigestsOptions {
  */
 export function buildDigestAlerts(
   alerts: PendingAlertRow[],
-  entities: { id: string; canonical_name: string }[],
+  entities: {
+    id: string;
+    canonical_name: string;
+    ticker?: string | null;
+    is_public?: boolean | null;
+  }[],
   signals: { id: string; summary: string; content_id: string }[],
-  content: { id: string; url: string; source_name?: string | null }[],
+  content: {
+    id: string;
+    url: string;
+    title?: string | null;
+    published_at?: string | null;
+    source_name?: string | null;
+  }[],
 ): DigestAlert[] {
-  const entityName = new Map(entities.map((e) => [e.id, e.canonical_name]));
+  const entityById = new Map(entities.map((e) => [e.id, e]));
   const signalById = new Map(signals.map((s) => [s.id, s]));
   const contentById = new Map(content.map((c) => [c.id, c]));
 
@@ -547,14 +559,21 @@ export function buildDigestAlerts(
   for (const a of alerts) {
     const signal = signalById.get(a.signal_id);
     const contentRow = signal ? contentById.get(signal.content_id) : undefined;
+    const entity = a.entity_id ? entityById.get(a.entity_id) : undefined;
+    const score = typeof a.score === "number" ? a.score : 0;
     out.push({
-      entityName: (a.entity_id && entityName.get(a.entity_id)) || "Unknown company",
+      entityName: entity?.canonical_name || "Unknown company",
       signalType: a.signal_type,
       summary: signal?.summary ?? "Signal details unavailable",
-      score: typeof a.score === "number" ? a.score : 0,
+      score,
+      relevance: digestRelevance(score),
       url: contentRow?.url ?? "",
       sourceName: contentRow?.source_name ?? null,
+      title: contentRow?.title ?? null,
+      publishedAt: contentRow?.published_at ?? null,
       createdAt: a.created_at,
+      ticker: entity?.ticker ?? null,
+      isPublic: entity?.is_public ?? null,
     });
   }
   return out;
@@ -859,14 +878,22 @@ export async function sendWeeklyDigests(
 
   const [entityRes, signalRes] = await Promise.all([
     entityIds.length
-      ? supabase.from("entities").select("id, canonical_name").in("id", entityIds)
+      ? supabase
+          .from("entities")
+          .select("id, canonical_name, ticker, is_public")
+          .in("id", entityIds)
       : Promise.resolve({ data: [], error: null }),
     signalIds.length
       ? supabase.from("signals").select("id, summary, content_id").in("id", signalIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  const entities = (entityRes.data ?? []) as { id: string; canonical_name: string }[];
+  const entities = (entityRes.data ?? []) as {
+    id: string;
+    canonical_name: string;
+    ticker: string | null;
+    is_public: boolean | null;
+  }[];
   const signals = (signalRes.data ?? []) as {
     id: string;
     summary: string;
@@ -875,11 +902,24 @@ export async function sendWeeklyDigests(
 
   const contentIds = Array.from(new Set(signals.map((s) => s.content_id)));
   const { data: contentData } = contentIds.length
-    ? await supabase.from("content").select("id, url, source_id").in("id", contentIds)
-    : { data: [] as { id: string; url: string; source_id: string | null }[] };
+    ? await supabase
+        .from("content")
+        .select("id, url, title, published_at, source_id")
+        .in("id", contentIds)
+    : {
+        data: [] as {
+          id: string;
+          url: string;
+          title: string | null;
+          published_at: string | null;
+          source_id: string | null;
+        }[],
+      };
   const contentRows = (contentData ?? []) as {
     id: string;
     url: string;
+    title: string | null;
+    published_at: string | null;
     source_id: string | null;
   }[];
 
@@ -898,6 +938,8 @@ export async function sendWeeklyDigests(
   const content = contentRows.map((c) => ({
     id: c.id,
     url: c.url,
+    title: c.title,
+    published_at: c.published_at,
     source_name: (c.source_id && sourceNameById.get(c.source_id)) || null,
   }));
 
