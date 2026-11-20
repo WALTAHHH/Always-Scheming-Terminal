@@ -4,21 +4,20 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
-import { createWordBoundaryRegex } from "./utils";
+import {
+  resolveAliasMatches,
+  type AliasCandidate,
+  type EntityMatch,
+} from "./entity-alias-match";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
-interface EntityMatch {
-  entity_id: string;
-  canonical_name: string;
-  entity_type: string;
-}
-
 interface AliasRow {
   alias: string;
   entity_id: string;
+  alias_type: string | null;
   entities: {
     canonical_name: string;
     entity_type: string;
@@ -42,6 +41,7 @@ async function getAliases(): Promise<AliasRow[]> {
       .select(`
         alias,
         entity_id,
+        alias_type,
         entities!inner (
           canonical_name,
           entity_type
@@ -65,30 +65,24 @@ async function getAliases(): Promise<AliasRow[]> {
  * Resolve company/entity names from text to canonical entities.
  * Uses cached entity_aliases to avoid per-item DB queries.
  * Returns array of resolved entities with their IDs.
+ *
+ * Matching is longest-match-wins with word boundaries (see entity-alias-match):
+ * a longer alias consumes its span, so a shorter overlapping alias (e.g. a
+ * former_name like "Niantic" vs "Niantic Spatial") cannot also fire on it.
  */
 export async function resolveEntitiesFromText(text: string): Promise<EntityMatch[]> {
   // Get cached aliases (refreshes if stale)
   const aliases = await getAliases();
 
-  // Match aliases against text using word boundaries
-  const matched = new Set<string>();
-  const results: EntityMatch[] = [];
+  const candidates: AliasCandidate[] = aliases.map((row) => ({
+    alias: row.alias,
+    entity_id: row.entity_id,
+    canonical_name: row.entities.canonical_name,
+    entity_type: row.entities.entity_type,
+    alias_type: row.alias_type ?? null,
+  }));
 
-  for (const row of aliases) {
-    const alias = row.alias.toLowerCase();
-    const re = createWordBoundaryRegex(alias);
-    
-    if (re.test(text) && !matched.has(row.entity_id)) {
-      matched.add(row.entity_id);
-      results.push({
-        entity_id: row.entity_id,
-        canonical_name: row.entities.canonical_name,
-        entity_type: row.entities.entity_type,
-      });
-    }
-  }
-
-  return results;
+  return resolveAliasMatches(text, candidates);
 }
 
 /**
