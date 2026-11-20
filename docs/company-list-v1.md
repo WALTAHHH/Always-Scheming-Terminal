@@ -1,6 +1,6 @@
 # AST Company List — V1 Draft
 
-> 76 companies across 9 segments. These are the companies most likely to appear in gaming industry news — the ones AST should recognize and tag.
+> 77 companies across 9 segments. These are the companies most likely to appear in gaming industry news — the ones AST should recognize and tag.
 
 ---
 
@@ -66,7 +66,7 @@
 | Habby | Private | Archero, Survivor.io, China hyper-casual |
 | Jam City | Private | Harry Potter, Disney games |
 | Rovio | Sega subsidiary | Angry Birds franchise |
-| Niantic | Private | Pokémon GO, AR gaming |
+| Scopely Explore | Private (Scopely) | Formerly Niantic; Pokémon GO, AR gaming |
 | Miniclip | Private (Tencent) | 8 Ball Pool, casual mobile |
 | Voodoo | Private | Hyper-casual pioneer, shifting to hybrid casual |
 | Tripledot Studios | Private | Solitaire, casual games, UK-based |
@@ -110,6 +110,7 @@
 | Overwolf | Private | Modding platform, CurseForge |
 | Discord | Private | Voice/text platform, gaming community backbone |
 | Twitch | AMZN subsidiary | Live streaming, creator economy |
+| Niantic Spatial | Private | Geospatial / spatial-computing platform (spun out of Niantic, formerly part of Scopely Explore) |
 
 ## 8. Investment / Holding / Corporate
 
@@ -132,9 +133,9 @@
 | Mobile-First / F2P | 13 |
 | PC/Console Studios & Indies | 8 |
 | Mid-Market / European Publishers | 11 |
-| Infrastructure / Middleware | 6 |
+| Infrastructure / Middleware | 7 |
 | Investment / Holding | 4 |
-| **Total** | **76** |
+| **Total** | **77** |
 
 ## Notes for AST Implementation
 
