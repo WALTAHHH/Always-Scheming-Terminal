@@ -526,27 +526,34 @@ export interface SendWeeklyDigestsOptions {
 
 /**
  * Build the digest's `DigestAlert[]` for one user from raw rows, resolving the
- * entity display name and the article URL. Pure so it can be unit-tested.
+ * entity display name, the article URL and the source (publication) name.
+ * Pure so it can be unit-tested.
+ *
+ * `content` rows may carry an optional `source_name` (the joined
+ * `sources.name`); when absent the per-item meta line simply omits the source
+ * half (the article date is still shown).
  */
 export function buildDigestAlerts(
   alerts: PendingAlertRow[],
   entities: { id: string; canonical_name: string }[],
   signals: { id: string; summary: string; content_id: string }[],
-  content: { id: string; url: string }[],
+  content: { id: string; url: string; source_name?: string | null }[],
 ): DigestAlert[] {
   const entityName = new Map(entities.map((e) => [e.id, e.canonical_name]));
   const signalById = new Map(signals.map((s) => [s.id, s]));
-  const urlByContent = new Map(content.map((c) => [c.id, c.url]));
+  const contentById = new Map(content.map((c) => [c.id, c]));
 
   const out: DigestAlert[] = [];
   for (const a of alerts) {
     const signal = signalById.get(a.signal_id);
+    const contentRow = signal ? contentById.get(signal.content_id) : undefined;
     out.push({
       entityName: (a.entity_id && entityName.get(a.entity_id)) || "Unknown company",
       signalType: a.signal_type,
       summary: signal?.summary ?? "Signal details unavailable",
       score: typeof a.score === "number" ? a.score : 0,
-      url: (signal && urlByContent.get(signal.content_id)) || "",
+      url: contentRow?.url ?? "",
+      sourceName: contentRow?.source_name ?? null,
       createdAt: a.created_at,
     });
   }
@@ -868,9 +875,31 @@ export async function sendWeeklyDigests(
 
   const contentIds = Array.from(new Set(signals.map((s) => s.content_id)));
   const { data: contentData } = contentIds.length
-    ? await supabase.from("content").select("id, url").in("id", contentIds)
-    : { data: [] as { id: string; url: string }[] };
-  const content = (contentData ?? []) as { id: string; url: string }[];
+    ? await supabase.from("content").select("id, url, source_id").in("id", contentIds)
+    : { data: [] as { id: string; url: string; source_id: string | null }[] };
+  const contentRows = (contentData ?? []) as {
+    id: string;
+    url: string;
+    source_id: string | null;
+  }[];
+
+  // Resolve the publication name for the per-item meta line ("<source> · <date>").
+  // `content.source_id` is nullable, so content without a source simply renders
+  // a date-only meta line.
+  const sourceIds = Array.from(
+    new Set(contentRows.map((c) => c.source_id).filter((id): id is string => !!id)),
+  );
+  const { data: sourceData } = sourceIds.length
+    ? await supabase.from("sources").select("id, name").in("id", sourceIds)
+    : { data: [] as { id: string; name: string }[] };
+  const sourceNameById = new Map(
+    ((sourceData ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name]),
+  );
+  const content = contentRows.map((c) => ({
+    id: c.id,
+    url: c.url,
+    source_name: (c.source_id && sourceNameById.get(c.source_id)) || null,
+  }));
 
   const send = opts.sendEmailImpl ?? sendEmail;
   const footerAddress = opts.footerAddress ?? getDigestFooterAddress();

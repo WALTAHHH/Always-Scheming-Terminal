@@ -324,7 +324,8 @@ describe('POST /api/admin/digest-test — real alerts', () => {
       data: [{ id: 'sig-1', summary: 'Real Target Co is acquired by BigCo.', content_id: 'c-1' }],
       error: null,
     });
-    queueFrom({ data: [{ id: 'c-1', url: 'https://news.example.com/story' }], error: null });
+    queueFrom({ data: [{ id: 'c-1', url: 'https://news.example.com/story', source_id: 's-1' }], error: null });
+    queueFrom({ data: [{ id: 's-1', name: 'The Game Business' }], error: null });
     queueFrom({ data: { digest_unsub_token: null }, error: null });
 
     const res = await post();
@@ -338,6 +339,9 @@ describe('POST /api/admin/digest-test — real alerts', () => {
     const sent = mockSendEmail.mock.calls[0][0] as { html: string };
     expect(sent.html).toContain('Real Target Co');
     expect(sent.html).toContain('https://news.example.com/story');
+    // Real-alert path renders the same source · date meta line as the sample path.
+    expect(sent.html).toContain('The Game Business · Nov 17');
+    expect(sent.html).toContain('https://terminal.example.com/?company=Real%20Target%20Co');
     expect(sent.html).not.toContain('Acme Games'); // no sample bleed-through
   });
 

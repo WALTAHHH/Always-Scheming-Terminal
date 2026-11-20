@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import React from "react";
 import { readFileSync } from "fs";
 import { renderToString } from "react-dom/server";
-import { DrawerContent } from "./CompanyDrawer";
+import { DrawerContent, parseCompanyDeepLink } from "./CompanyDrawer";
 import type { EntityData } from "@/lib/entity-client";
 
 // Source-assertion + renderToString patterns only (no jsdom/RTL) per repo convention.
@@ -129,5 +129,32 @@ describe("CompanyDrawer news markers (fixed pixel size)", () => {
   it("keeps the marker interactive (click + hover handlers)", () => {
     expect(source).toContain("onClick={(e) => handleMarkerClick(marker, e)}");
     expect(source).toContain("onMouseEnter={() => setHoveredMarkerId(marker.item.id)}");
+  });
+});
+
+describe("CompanyDrawer deep link (?company=)", () => {
+  it("parses the entity name out of the query string", () => {
+    expect(parseCompanyDeepLink("?company=Acme%20Games")).toBe("Acme Games");
+    expect(parseCompanyDeepLink("?foo=1&company=Cobalt%20Studios")).toBe(
+      "Cobalt Studios"
+    );
+    // decoded percent-encoded reserved characters come back intact
+    expect(parseCompanyDeepLink("?company=A%20%26%20B")).toBe("A & B");
+    // a `+` is a space in a query value, matching what the digest link emits
+    expect(parseCompanyDeepLink("?company=Acme+Games")).toBe("Acme Games");
+  });
+
+  it("returns null when the param is absent or blank", () => {
+    expect(parseCompanyDeepLink("")).toBeNull();
+    expect(parseCompanyDeepLink("?company=")).toBeNull();
+    expect(parseCompanyDeepLink("?company=%20%20")).toBeNull();
+    expect(parseCompanyDeepLink("?other=1")).toBeNull();
+  });
+
+  it("opens the drawer from the query param on mount", () => {
+    // Source assertion (no jsdom in this repo): the portal reads the deep link
+    // once on mount and routes it through the same setter the drawer uses.
+    expect(source).toContain("parseCompanyDeepLink(window.location.search)");
+    expect(source).toContain("if (name) setSelectedCompany(name)");
   });
 });

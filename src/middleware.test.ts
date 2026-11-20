@@ -44,6 +44,40 @@ describe("middleware public /unsubscribe", () => {
     expect(new URL(res.headers.get("location")!).pathname).toBe("/auth/login");
   });
 
+  it("preserves the requested deep link as ?next= when bouncing to login", async () => {
+    const res = await middleware(
+      new NextRequest("https://terminal.always-scheming.com/?company=Acme%20Games")
+    );
+    expect(res.status).toBe(307);
+    const loc = new URL(res.headers.get("location")!);
+    expect(loc.pathname).toBe("/auth/login");
+    expect(loc.searchParams.get("next")).toBe("/?company=Acme%20Games");
+  });
+
+  it("preserves a nested path + query as ?next= too", async () => {
+    const res = await middleware(
+      new NextRequest("https://terminal.always-scheming.com/profile?tab=watchlist")
+    );
+    expect(res.status).toBe(307);
+    const loc = new URL(res.headers.get("location")!);
+    expect(loc.pathname).toBe("/auth/login");
+    expect(loc.searchParams.get("next")).toBe("/profile?tab=watchlist");
+  });
+
+  it("neutralises a hostile path so the echoed ?next= can never be cross-origin", async () => {
+    // `/%09/evil.com` is what browsers strip into `//evil.com`; the shared guard
+    // must reject it before it is echoed into ?next=.
+    const res = await middleware(
+      new NextRequest("https://terminal.always-scheming.com/%09/evil.com")
+    );
+    expect(res.status).toBe(307);
+    const loc = new URL(res.headers.get("location")!);
+    expect(loc.pathname).toBe("/auth/login");
+    const next = loc.searchParams.get("next");
+    expect(next).not.toContain("\t");
+    expect(next?.startsWith("//")).toBeFalsy();
+  });
+
   it("still redirects a sibling path (does not make /unsubscribe/* public)", async () => {
     const res = await middleware(
       new NextRequest("https://terminal.always-scheming.com/profile")

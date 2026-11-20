@@ -10,11 +10,13 @@ import {
   isDigestDue,
   isDigestEnabled,
   sendWeeklyDigests,
+  buildDigestAlerts,
   type SignalRow,
   type ContentTagRow,
   type WatchlistRow,
   type PrefRow,
   type AlertCandidate,
+  type PendingAlertRow,
 } from './alerts';
 import {
   getEmailConfig,
@@ -2127,5 +2129,44 @@ describe('sendWeeklyDigests — wall-clock budget', () => {
 
     warn.mockRestore();
     log.mockRestore();
+  });
+});
+
+describe('buildDigestAlerts', () => {
+  const alert: PendingAlertRow = {
+    id: 'al-1',
+    user_id: 'u1',
+    signal_id: 'sig-1',
+    entity_id: 'ent-1',
+    signal_type: 'acquisition',
+    score: 0.9,
+    created_at: '2026-11-17T09:00:00.000Z',
+  };
+
+  it('resolves the entity name, article url and source name', () => {
+    const out = buildDigestAlerts(
+      [alert],
+      [{ id: 'ent-1', canonical_name: 'Acme Games' }],
+      [{ id: 'sig-1', summary: 'Acme acquires Pixel Forge.', content_id: 'c-1' }],
+      [{ id: 'c-1', url: 'https://news.example.com/story', source_name: 'The Game Business' }],
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      entityName: 'Acme Games',
+      summary: 'Acme acquires Pixel Forge.',
+      url: 'https://news.example.com/story',
+      sourceName: 'The Game Business',
+      createdAt: '2026-11-17T09:00:00.000Z',
+    });
+  });
+
+  it('leaves sourceName null when the content row has no source name', () => {
+    const out = buildDigestAlerts(
+      [alert],
+      [{ id: 'ent-1', canonical_name: 'Acme Games' }],
+      [{ id: 'sig-1', summary: 'Acme acquires Pixel Forge.', content_id: 'c-1' }],
+      [{ id: 'c-1', url: 'https://news.example.com/story' }],
+    );
+    expect(out[0].sourceName).toBeNull();
   });
 });

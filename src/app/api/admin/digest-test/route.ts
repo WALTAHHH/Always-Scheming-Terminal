@@ -195,9 +195,30 @@ export async function POST(_req: NextRequest) {
 
     const contentIds = Array.from(new Set(signals.map((s) => s.content_id)));
     const { data: contentData } = contentIds.length
-      ? await supabase.from("content").select("id, url").in("id", contentIds)
-      : { data: [] as { id: string; url: string }[] };
-    const content = (contentData ?? []) as { id: string; url: string }[];
+      ? await supabase.from("content").select("id, url, source_id").in("id", contentIds)
+      : { data: [] as { id: string; url: string; source_id: string | null }[] };
+    const contentRows = (contentData ?? []) as {
+      id: string;
+      url: string;
+      source_id: string | null;
+    }[];
+
+    // Resolve publication names so the test email's real-alert path renders the
+    // same "source · date" meta line as the sample path (and production).
+    const sourceIds = Array.from(
+      new Set(contentRows.map((c) => c.source_id).filter((id): id is string => !!id)),
+    );
+    const { data: sourceData } = sourceIds.length
+      ? await supabase.from("sources").select("id, name").in("id", sourceIds)
+      : { data: [] as { id: string; name: string }[] };
+    const sourceNameById = new Map(
+      ((sourceData ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name]),
+    );
+    const content = contentRows.map((c) => ({
+      id: c.id,
+      url: c.url,
+      source_name: (c.source_id && sourceNameById.get(c.source_id)) || null,
+    }));
 
     digestAlerts = buildDigestAlerts(pending, entities, signals, content);
   }

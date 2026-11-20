@@ -14,6 +14,10 @@ import {
   renderDigestHtml,
   groupDigestAlerts,
   safeDigestUrl,
+  buildDigestCompanyUrl,
+  formatDigestDate,
+  digestMetaLine,
+  buildSampleDigestAlerts,
   type DigestAlert,
   type DigestRenderInput,
 } from './email';
@@ -527,5 +531,104 @@ describe('digest URL scheme allowlist', () => {
     expect(html).not.toContain('javascript:');
     expect(html).toContain('Hostile article');
     expect(html).toContain('(link unavailable)');
+  });
+});
+
+describe('digest item deep links + source/date meta line', () => {
+  const alert: DigestAlert = {
+    entityName: 'Acme Games',
+    signalType: 'acquisition',
+    summary: 'Acme Games acquires Pixel Forge.',
+    score: 0.93,
+    url: 'https://news.example.com/story',
+    createdAt: '2026-11-17T09:00:00.000Z',
+    sourceName: 'The Game Business',
+  };
+
+  const input: DigestRenderInput = {
+    alerts: [alert],
+    unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+    footerAddress: '',
+    siteUrl: 'https://example.com',
+  };
+
+  it('buildDigestCompanyUrl encodes the entity name and pins the scheme to https', () => {
+    expect(buildDigestCompanyUrl('Acme Games', 'https://example.com')).toBe(
+      'https://example.com/?company=Acme%20Games',
+    );
+    // trailing slash on the origin is normalised away
+    expect(buildDigestCompanyUrl('Acme Games', 'https://example.com/')).toBe(
+      'https://example.com/?company=Acme%20Games',
+    );
+    // reserved characters are URI-encoded, not emitted raw
+    expect(buildDigestCompanyUrl('A & B/C?"#<x>', 'https://example.com')).toBe(
+      'https://example.com/?company=A%20%26%20B%2FC%3F%22%23%3Cx%3E',
+    );
+    // a non-https origin yields no link rather than an insecure one
+    expect(buildDigestCompanyUrl('Acme Games', 'http://example.com')).toBeNull();
+    expect(buildDigestCompanyUrl('Acme Games', 'ftp://example.com')).toBeNull();
+  });
+
+  it('formatDigestDate renders a stable UTC short date', () => {
+    expect(formatDigestDate('2026-11-17T23:30:00.000Z')).toBe('Nov 17');
+    expect(formatDigestDate('2026-01-02T00:00:00.000Z')).toBe('Jan 2');
+    expect(formatDigestDate(null)).toBeNull();
+    expect(formatDigestDate('not-a-date')).toBeNull();
+  });
+
+  it('digestMetaLine joins source and date, tolerating a missing half', () => {
+    expect(digestMetaLine(alert)).toBe('The Game Business · Nov 17');
+    expect(digestMetaLine({ ...alert, sourceName: null })).toBe('Nov 17');
+    expect(digestMetaLine({ ...alert, createdAt: null })).toBe('The Game Business');
+    expect(digestMetaLine({ ...alert, sourceName: '  ', createdAt: null })).toBeNull();
+  });
+
+  it('links the company heading to the drawer deep link', () => {
+    const html = renderDigestHtml(input);
+    expect(html).toContain(
+      '<a href="https://example.com/?company=Acme%20Games" style="color:#e7e9ee;text-decoration:none;">Acme Games</a>',
+    );
+  });
+
+  it('links the summary to the article URL in a new tab', () => {
+    const html = renderDigestHtml(input);
+    expect(html).toContain(
+      'href="https://news.example.com/story" target="_blank" rel="noopener noreferrer"',
+    );
+  });
+
+  it('renders the muted source · date meta line', () => {
+    const html = renderDigestHtml(input);
+    expect(html).toContain('The Game Business · Nov 17');
+    expect(html).toContain('color:#6b7280;font-size:12px');
+  });
+
+  it('escapes a hostile entity name inside the deep link and the heading', () => {
+    const html = renderDigestHtml({
+      ...input,
+      alerts: [{ ...alert, entityName: '<img src=x onerror=alert(1)>' }],
+    });
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('onerror=alert(1)>');
+    // raw angle brackets are percent-encoded in the href, escaped in the text
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+
+  it('renders the deep link and meta line in the text part too', () => {
+    const text = renderDigestText(input);
+    expect(text).toContain('https://example.com/?company=Acme%20Games');
+    expect(text).toContain('The Game Business · Nov 17');
+    expect(text).toContain('https://news.example.com/story');
+  });
+
+  it('sample alerts carry a source/date meta line and point their links at the site root', () => {
+    const samples = buildSampleDigestAlerts('https://terminal.example.com/');
+    expect(samples).toHaveLength(3);
+    for (const s of samples) {
+      expect(s.sourceName).toBeTruthy();
+      expect(s.url.startsWith('https://terminal.example.com/')).toBe(true);
+      expect(digestMetaLine(s)).toMatch(/· Nov \d+/);
+    }
+    expect(digestMetaLine(samples[0])).toBe('The Game Business · Nov 17');
   });
 });

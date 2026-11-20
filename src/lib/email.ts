@@ -235,6 +235,12 @@ export interface DigestAlert {
   /** Link to the source article / signal. */
   url: string;
   createdAt: string | null;
+  /**
+   * Publication / source display name for the muted meta line (e.g.
+   * `The Game Business`). Optional — an alert rendered without it simply
+   * omits the source half of the meta line.
+   */
+  sourceName?: string | null;
 }
 
 export interface DigestRenderInput {
@@ -291,6 +297,56 @@ export function safeDigestUrl(url: unknown): string | null {
 }
 
 /**
+ * Absolute app deep link that opens the CompanyDrawer for an entity, e.g.
+ * `https://site/?company=Acme%20Games`. Built from the trusted site origin
+ * (see {@link getSiteUrl}) with the entity name URI-encoded as the `company`
+ * query value — the same `?company=<canonical name>` param `LiveFeed`'s drawer
+ * reads (see `parseCompanyDeepLink`). Returns `null` when the resulting URL is
+ * not absolute https, so a misconfigured (non-https) origin can never emit an
+ * insecure link; callers then render the entity name as plain text.
+ */
+export function buildDigestCompanyUrl(
+  entityName: string,
+  baseUrl?: string,
+): string | null {
+  const base = (baseUrl ?? getSiteUrl()).replace(/\/+$/, "");
+  const url = `${base}/?company=${encodeURIComponent(entityName)}`;
+  try {
+    return new URL(url).protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Short "Nov 17" style label (UTC) for a digest timestamp, or `null` when the
+ * value is missing/unparseable. UTC is fixed so the rendered date is stable
+ * regardless of the server's timezone.
+ */
+export function formatDigestDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
+ * Muted per-item meta line: `"<source> · <date>"` (e.g. `The Game Business ·
+ * Nov 17`). Returns the half that is present when only one is known, or `null`
+ * when neither is — in which case the digest omits the line entirely.
+ */
+export function digestMetaLine(alert: DigestAlert): string | null {
+  const source = alert.sourceName?.trim();
+  const date = formatDigestDate(alert.createdAt);
+  if (source && date) return `${source} · ${date}`;
+  return source || date || null;
+}
+
+/**
  * Group alerts by entity name, entities sorted alphabetically and alerts
  * newest-first inside each group. Pure — this is the "grouped by entity" shape
  * the digest renders.
@@ -324,24 +380,31 @@ export function renderDigestSubject(alertCount: number): string {
 
 /** Plain-text alternative part (deliverability + text-only clients). */
 export function renderDigestText(input: DigestRenderInput): string {
+  const site = (input.siteUrl ?? getSiteUrl()).replace(/\/+$/, "");
   const out: string[] = [];
   for (const [entity, alerts] of groupDigestAlerts(input.alerts)) {
     out.push(`${entity}`);
     out.push("=".repeat(entity.length));
+    // App deep link for the entity (opens the drawer via `?company=`), then the
+    // per-item article link + muted source/date meta line. Only absolute https
+    // links are emitted; anything disallowed is omitted while the rest of the
+    // digest still goes out.
+    const companyUrl = buildDigestCompanyUrl(entity, site);
+    if (companyUrl) out.push(companyUrl);
     for (const a of alerts) {
       out.push(
         `- [${humanSignalType(a.signalType)}] ${a.summary} (score ${a.score.toFixed(2)})`,
       );
-      // Only absolute http(s) URLs are printed; a disallowed scheme is omitted
-      // entirely while the rest of the digest still goes out.
       const link = safeDigestUrl(a.url);
       if (link) out.push(`  ${link}`);
+      const meta = digestMetaLine(a);
+      if (meta) out.push(`  ${meta}`);
     }
     out.push("");
   }
   out.push("—");
   out.push("You receive this because you watch companies on Always Scheming Terminal.");
-  out.push(`Manage your watchlist: ${input.siteUrl ?? getSiteUrl()}/profile`);
+  out.push(`Manage your watchlist: ${site}/profile`);
   out.push(`Unsubscribe: ${input.unsubscribeUrl}`);
   if (input.footerAddress) out.push(input.footerAddress);
   return out.join("\n");
@@ -354,30 +417,42 @@ export function renderDigestHtml(input: DigestRenderInput): string {
 
   const sections = groups
     .map(([entity, alerts]) => {
+      // Company heading links to the in-app CompanyDrawer (`?company=<name>`);
+      // without a valid https deep link it degrades to plain text.
+      const companyUrl = buildDigestCompanyUrl(entity, site);
+      const heading = companyUrl
+        ? `<a href="${escapeHtml(companyUrl)}" style="color:#e7e9ee;text-decoration:none;">${escapeHtml(entity)}</a>`
+        : escapeHtml(entity);
+
       const rows = alerts
         .map((a) => {
           const type = escapeHtml(humanSignalType(a.signalType));
           const summary = escapeHtml(a.summary);
           // Reject non-http(s) schemes before they reach an href; a rejected
-          // article degrades to plain text with an "invalid link" note.
+          // article degrades to plain text with an "invalid link" note. A valid
+          // article link opens in a new tab.
           const safeUrl = safeDigestUrl(a.url);
           const title = safeUrl
-            ? `<a href="${escapeHtml(safeUrl)}" style="color:#e7e9ee;text-decoration:none;font-size:15px;line-height:1.45;">${summary}</a>`
+            ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" style="color:#e7e9ee;text-decoration:none;font-size:15px;line-height:1.45;">${summary}</a>`
             : `<span style="color:#e7e9ee;font-size:15px;line-height:1.45;">${summary}</span>
       <span style="color:#6b7280;font-size:12px;"> (link unavailable)</span>`;
+          const meta = digestMetaLine(a);
+          const metaLine = meta
+            ? `\n    <div style="color:#6b7280;font-size:12px;margin-top:4px;">${escapeHtml(meta)}</div>`
+            : "";
           return `<tr>
   <td style="padding:10px 0;border-bottom:1px solid #232831;">
     <div style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#7cc4ff;margin-bottom:4px;">
       ${type} · score ${a.score.toFixed(2)}
     </div>
-    ${title}
+    ${title}${metaLine}
   </td>
 </tr>`;
         })
         .join("\n");
 
       return `<tr>
-  <td style="padding:20px 0 4px;font-size:16px;font-weight:700;color:#e7e9ee;">${escapeHtml(entity)}</td>
+  <td style="padding:20px 0 4px;font-size:16px;font-weight:700;color:#e7e9ee;">${heading}</td>
 </tr>
 <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table></td></tr>`;
     })
@@ -477,10 +552,12 @@ export function maskEmail(email: string): string {
 
 /**
  * Three clearly-labelled fake alerts used when the calling admin has no unsent
- * `alert_events`, so the digest layout — entity grouping, score, article link,
+ * `alert_events`, so the digest layout — entity grouping, score, the entity
+ * deep link, the article (summary) link, the source/date meta line and the
  * unsubscribe footer — can be eyeballed without waiting for a real Monday pass.
  * `url`s point at the configured origin so the links are clickable in the test
- * email.
+ * email; the `sourceName`/`createdAt` values render a representative meta line
+ * (e.g. `The Game Business · Nov 17`).
  */
 export function buildSampleDigestAlerts(siteUrl: string): DigestAlert[] {
   const base = siteUrl.replace(/\/+$/, "");
@@ -492,7 +569,8 @@ export function buildSampleDigestAlerts(siteUrl: string): DigestAlert[] {
         "SAMPLE — Acme Games acquires Pixel Forge for $120M in a cash-and-stock deal.",
       score: 0.93,
       url: `${base}/?sample=digest-1`,
-      createdAt: null,
+      createdAt: "2026-11-17T09:00:00.000Z",
+      sourceName: "The Game Business",
     },
     {
       entityName: "Northstar Interactive",
@@ -501,7 +579,8 @@ export function buildSampleDigestAlerts(siteUrl: string): DigestAlert[] {
         "SAMPLE — Northstar Interactive raises a $45M Series B led by Horizon Ventures.",
       score: 0.88,
       url: `${base}/?sample=digest-2`,
-      createdAt: null,
+      createdAt: "2026-11-16T09:00:00.000Z",
+      sourceName: "PocketGamer.biz",
     },
     {
       entityName: "Cobalt Studios",
@@ -510,7 +589,8 @@ export function buildSampleDigestAlerts(siteUrl: string): DigestAlert[] {
         "SAMPLE — Cobalt Studios cuts 80 roles as its live-service project winds down.",
       score: 0.81,
       url: `${base}/?sample=digest-3`,
-      createdAt: null,
+      createdAt: "2026-11-15T09:00:00.000Z",
+      sourceName: "GamesIndustry.biz",
     },
   ];
 }

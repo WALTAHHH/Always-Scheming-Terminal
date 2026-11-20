@@ -57,6 +57,18 @@ export function openCompanyDrawer(name: string) {
   }
 }
 
+/**
+ * Read the entity name out of a `?company=<canonical name>` deep link — the
+ * shape the weekly digest email links to (`https://site/?company=Acme%20Games`).
+ * Returns `null` when the param is absent or blank. Pure so it can be
+ * unit-tested without a DOM.
+ */
+export function parseCompanyDeepLink(search: string): string | null {
+  const value = new URLSearchParams(search).get("company");
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 type ChartRange = "1d" | "1w" | "1mo" | "3mo" | "ytd" | "1y" | "all";
 
 const RANGE_CONFIG: Record<ChartRange, { range: string; label: string }> = {
@@ -852,6 +864,15 @@ export function CompanyDrawerPortal() {
     return () => {
       globalOpenCompany = null;
     };
+  }, []);
+
+  // Deep link (weekly digest email → `/?company=<canonical name>`): open the
+  // drawer for that entity once on load. Read once and ignore the param
+  // afterwards, so closing the drawer does not immediately reopen it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const name = parseCompanyDeepLink(window.location.search);
+    if (name) setSelectedCompany(name);
   }, []);
 
   useEffect(() => {

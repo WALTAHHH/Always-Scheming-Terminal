@@ -2,8 +2,30 @@
 
 import { useState } from "react";
 import { createAuthBrowserClient } from "@/lib/supabase";
+import { safeRedirectTarget } from "@/lib/safe-redirect";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+
+/**
+ * Where to send the user after a successful sign-in.
+ *
+ * The middleware bounces an unauthenticated deep link (e.g. the weekly digest's
+ * `/?company=<name>`) to `/auth/login?next=<path+query>`; this returns to that
+ * path when it is a safe same-origin absolute path, and otherwise to the feed.
+ *
+ * Validation lives in `@/lib/safe-redirect` (shared with the middleware): it
+ * rejects scheme (`javascript:…`), protocol-relative (`//evil.example`),
+ * backslash (`/\evil.example`) and absolute URLs, plus any tab/LF/CR (raw or
+ * percent-encoded) that a browser would strip into a protocol-relative URL, and
+ * parses the result against `window.location.origin` as the authoritative check.
+ * Read from `window.location` at submit time (client-only) so the page needs no
+ * `useSearchParams` boundary.
+ */
+function postLoginRedirect(): string {
+  if (typeof window === "undefined") return "/";
+  const next = new URLSearchParams(window.location.search).get("next");
+  return safeRedirectTarget(next);
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -55,7 +77,7 @@ export default function LoginPage() {
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) throw signInError;
-        router.push("/");
+        router.push(postLoginRedirect());
         router.refresh();
       }
     } catch (err: unknown) {

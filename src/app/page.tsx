@@ -1,5 +1,6 @@
 import { createServerClient } from "@/lib/supabase";
 import { LiveFeed } from "@/components/LiveFeed";
+import { CompanyDrawerPortal } from "@/components/CompanyDrawer";
 import { Header } from "@/components/Header";
 import type { FeedItem } from "@/lib/database.types";
 
@@ -62,6 +63,10 @@ export default async function Home() {
       ) : (
         <LiveFeed initialItems={items} initialHasMore={hasMore} sources={sources} />
       )}
+      {/* Mounted outside LiveFeed too, so a weekly-digest deep link
+          (`/?company=<name>`) still opens the drawer when the feed is empty
+          (the empty-state branch above renders no LiveFeed). */}
+      {items.length === 0 && <CompanyDrawerPortal />}
     </main>
   );
 }
