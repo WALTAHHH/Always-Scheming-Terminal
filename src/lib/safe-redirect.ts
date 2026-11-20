@@ -25,12 +25,22 @@
  *   4. rejects a backslash anywhere in the raw or decoded value, because some
  *      browsers normalise `\` to `/` (`/%5cevil.com` must not survive);
  *   5. as the *authoritative* check, resolves the value against the trusted
- *      origin with `new URL()` and requires the resulting `origin` to match, then
+ *      origin with `new URL()` and requires the resulting `origin` to match,
+ *      then — crucially — validates the **post-normalisation** result, not the
+ *      input. URL parsing collapses dot segments (`/.//evil.com`,
+ *      `/a/..//evil.com`, `/%2e//evil.com`, `/./\evil.com`, …) into a pathname
+ *      that starts with `//`, which `router.push()`/`redirect()` treats as a
+ *      protocol-relative URL. So the guard rejects any resolved pathname that
+ *      is not exactly one leading `/` (i.e. starts with `//` or `/\`), and
  *      returns the parsed `pathname + search + hash` — never the raw string.
+ *   6. runs the resolution to a fixed point: the output is re-validated once
+ *      more, so a value that only becomes unsafe after one normalisation pass
+ *      can never be returned.
  *
  * Interior spaces are deliberately allowed: the digest's deep links carry
  * percent-encoded query data (`/?company=Acme%20Games`) that decodes to a space,
- * and a space cannot produce a cross-origin navigation once (3) and (5) hold.
+ * and a space cannot produce a cross-origin navigation once (3), (5) and (6)
+ * hold.
  *
  * @param next   the untrusted `next` query value (already URL-decoded by the
  *               caller's `URLSearchParams`/`nextUrl` in the common case).
@@ -39,12 +49,44 @@
  *               the server (middleware), where `window` does not exist.
  * @returns a safe same-origin absolute path, or `/` when the value is unsafe.
  */
+
+const FALLBACK = "/";
+
+/**
+ * A navigable target must be an absolute path with exactly one leading slash.
+ * `//host` and `/\host` are protocol-relative/backslash-relative to browsers,
+ * so both are rejected after normalisation.
+ */
+function isUnsafePath(target: string): boolean {
+  return (
+    !target.startsWith("/") ||
+    target.startsWith("//") ||
+    target.startsWith("/\\")
+  );
+}
+
+/**
+ * Resolve `value` against `origin` and return the normalised same-origin
+ * `pathname + search + hash`, or `null` when the result leaves the origin or
+ * normalises to a protocol-relative path.
+ */
+function resolveOnce(value: string, origin: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value, origin);
+  } catch {
+    return null;
+  }
+  if (url.origin !== origin) return null;
+
+  const target = `${url.pathname}${url.search}${url.hash}`;
+  return isUnsafePath(target) ? null : target;
+}
+
 export function safeRedirectTarget(
   next: string | null | undefined,
   origin?: string
 ): string {
-  const FALLBACK = "/";
-
   // (1) must be a non-empty string with no leading/trailing whitespace.
   if (typeof next !== "string") return FALLBACK;
   if (next !== next.trim()) return FALLBACK;
@@ -71,19 +113,28 @@ export function safeRedirectTarget(
   // (4) no backslash anywhere.
   if (next.includes("\\") || decoded.includes("\\")) return FALLBACK;
 
-  // (5) authoritative origin check against the trusted base.
-  const base =
+  // (5) authoritative origin check against the trusted base. Normalise the
+  // base to a bare origin first so a trailing slash in `origin` cannot make a
+  // valid target look cross-origin.
+  const rawBase =
     origin ?? (typeof window !== "undefined" ? window.location.origin : undefined);
-  if (!base) return FALLBACK;
+  if (!rawBase) return FALLBACK;
 
-  let url: URL;
+  let base: string;
   try {
-    url = new URL(decoded, base);
+    base = new URL(rawBase).origin;
   } catch {
     return FALLBACK;
   }
-  if (url.origin !== base) return FALLBACK;
 
-  const target = `${url.pathname}${url.search}${url.hash}`;
-  return target || FALLBACK;
+  // Validate the POST-normalisation result (dot segments, encoded dots and
+  // backslashes all collapse during parsing), then re-validate the output to a
+  // fixed point so nothing unsafe can survive a second pass.
+  const first = resolveOnce(decoded, base);
+  if (first === null) return FALLBACK;
+
+  const second = resolveOnce(first, base);
+  if (second === null) return FALLBACK;
+
+  return second || FALLBACK;
 }

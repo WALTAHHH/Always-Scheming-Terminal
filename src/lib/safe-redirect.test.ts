@@ -15,10 +15,28 @@ describe("safeRedirectTarget", () => {
     // Percent-encoded query data that decodes to an interior space stays valid
     // (this is the digest deep link: /?company=Acme%20Games).
     ["/?company=Acme%20Games", "/?company=Acme%20Games"],
+    // Interior dot segments are normalised by URL parsing, not rejected.
+    ["/a/../b", "/b"],
+    ["/feed/../profile?tab=watchlist", "/profile?tab=watchlist"],
 
     // --- rejected: protocol-relative / backslash-relative ------------------
     ["//evil.com", "/"],
     ["/\\evil.com", "/"],
+
+    // --- rejected: dot segments that normalise to a protocol-relative path -
+    // The raw string starts with a single '/', so only the post-normalisation
+    // check catches these; `new URL()` collapses them to pathname "//evil.com".
+    ["/.//evil.com", "/"],
+    ["/./\\evil.com", "/"],
+    ["/a/..//evil.com", "/"],
+    ["/..//evil.com", "/"],
+    ["/././/evil.com", "/"],
+    ["/%2e//evil.com", "/"],
+    ["/%2E//evil.com", "/"],
+    ["/%2e%2e//evil.com", "/"],
+    ["/%2E%2E//evil.com", "/"],
+    ["/%2e%2e%2f%2fevil.com", "/"],
+    ["/%252e//evil.com", "/"],
 
     // --- rejected: tab / LF / CR that browsers strip (raw form) ------------
     ["/\t/evil.com", "/"],
