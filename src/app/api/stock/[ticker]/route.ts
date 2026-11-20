@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import YahooFinance from "yahoo-finance2";
 import { rateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
+import {
+  buildQuoteFromChartMeta,
+  isUnavailableSymbolMessage,
+  quoteHasPrice,
+  type ChartMeta,
+} from "@/lib/stock-quote";
 
 const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
@@ -33,6 +39,7 @@ interface YahooChartQuote {
 
 interface YahooChart {
   quotes?: YahooChartQuote[];
+  meta?: ChartMeta;
 }
 
 export interface StockQuote {
@@ -88,6 +95,12 @@ export interface StockResponse {
   history: StockHistory[];
   fundamentals?: StockFundamentals | null;
   error?: string;
+  /**
+   * True when the symbol has no data (delisted / renamed / unknown). This is
+   * NOT an error: the UI renders a placeholder quietly instead of surfacing a
+   * failed fetch. Distinct from `error`, which is reserved for genuine faults.
+   */
+  unavailable?: boolean;
   cached?: boolean;
 }
 
@@ -271,8 +284,10 @@ export async function GET(
   }
 
   try {
-    // Fetch quote and historical data using yahoo-finance2
-    const [quoteData, chartData] = await Promise.all([
+    // Fetch quote and historical data in parallel. allSettled (not all) so a
+    // throw from one endpoint — which is what Yahoo does for a delisted symbol —
+    // does not discard the data the other endpoint returned.
+    const [quoteResult, chartResult] = await Promise.allSettled([
       yahooFinance.quote(ticker),
       yahooFinance.chart(ticker, {
         period1: RANGE_MAP[range]?.period1 || RANGE_MAP["1mo"].period1,
@@ -280,27 +295,11 @@ export async function GET(
       }),
     ]);
 
-    if (!quoteData) {
-      return NextResponse.json({ quote: null, history: [], error: "No quote data" });
-    }
+    const chart =
+      chartResult.status === "fulfilled" ? (chartResult.value as YahooChart) : null;
 
-    const q = quoteData as YahooQuote;
-    const quote: StockQuote = {
-      ticker: q.symbol || ticker,
-      price: q.regularMarketPrice || 0,
-      change: q.regularMarketChange || 0,
-      changePercent: q.regularMarketChangePercent || 0,
-      marketCap: q.marketCap || 0,
-      previousClose: q.regularMarketPreviousClose || 0,
-      fiftyTwoWeekHigh: q.fiftyTwoWeekHigh || 0,
-      fiftyTwoWeekLow: q.fiftyTwoWeekLow || 0,
-      currency: q.currency || "USD",
-      exchange: q.exchange || "",
-    };
-
-    const chart = chartData as YahooChart;
-    const history: StockHistory[] = (chart.quotes || [])
-      .filter((item): item is YahooChartQuote & { close: number } => 
+    const history: StockHistory[] = (chart?.quotes || [])
+      .filter((item): item is YahooChartQuote & { close: number } =>
         item.close !== null && item.close !== undefined
       )
       .map((item) => ({
@@ -308,8 +307,46 @@ export async function GET(
         close: item.close,
       }));
 
+    // Prefer the quote endpoint, but only when it actually carries a price: for
+    // symbols Yahoo no longer covers it resolves to `{}` (see quoteHasPrice).
+    // In that case — and when it throws — recover a quote from the chart meta
+    // instead of bailing with "No quote data".
+    let quote: StockQuote | null = null;
+    if (quoteResult.status === "fulfilled" && quoteHasPrice(quoteResult.value)) {
+      const q = quoteResult.value as YahooQuote;
+      quote = {
+        ticker: q.symbol || ticker,
+        price: q.regularMarketPrice || 0,
+        change: q.regularMarketChange || 0,
+        changePercent: q.regularMarketChangePercent || 0,
+        marketCap: q.marketCap || 0,
+        previousClose: q.regularMarketPreviousClose || 0,
+        fiftyTwoWeekHigh: q.fiftyTwoWeekHigh || 0,
+        fiftyTwoWeekLow: q.fiftyTwoWeekLow || 0,
+        currency: q.currency || "USD",
+        exchange: q.exchange || "",
+      };
+    } else {
+      quote = buildQuoteFromChartMeta(ticker, chart?.meta);
+    }
+
+    if (!quote) {
+      // No usable price anywhere. If BOTH endpoints failed outright we cannot
+      // tell *why* from here — re-throw so the catch below classifies it
+      // (delisted symbol → `unavailable`, genuine fault → `error`). Only when
+      // at least one endpoint answered and simply had no price is the symbol
+      // definitively unavailable.
+      if (quoteResult.status === "rejected" && chartResult.status === "rejected") {
+        throw quoteResult.reason ?? new Error("Stock endpoints returned no data");
+      }
+
+      // Report `unavailable` (not `error`) so the UI shows a placeholder without
+      // logging a failed fetch, and don't cache it so it recovers if it returns.
+      return NextResponse.json({ quote: null, history, unavailable: true });
+    }
+
     const response: StockResponse = { quote, history };
-    
+
     // Cache successful responses
     setCache(cacheKey, response);
 
@@ -327,11 +364,19 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+
+    // A thrown delisted/unknown-symbol error from either endpoint is expected
+    // for stale tickers — report it as unavailable, not as a fault.
+    if (isUnavailableSymbolMessage(message)) {
+      return NextResponse.json({ quote: null, history: [], unavailable: true });
+    }
+
     console.error(`Stock API error for ${ticker}:`, error);
     return NextResponse.json({
       quote: null,
       history: [],
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: message,
     });
   }
 }
