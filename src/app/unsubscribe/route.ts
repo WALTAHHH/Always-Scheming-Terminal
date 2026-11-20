@@ -81,12 +81,32 @@ function successPage(): string {
   );
 }
 
-function invalidPage(): string {
+/**
+ * Malformed token — the shape is wrong (e.g. a mail client truncated the URL
+ * or the query string was mangled). Distinct from a well-formed token we simply
+ * don't recognise, so the user gets an actionable message.
+ */
+function malformedPage(): string {
   return page(
-    "Link invalid",
-    `<h1>This unsubscribe link isn't valid</h1>
-     <p>It may have expired or been truncated. You can manage email
-        preferences from your <a href="/profile">profile settings</a>.</p>`
+    "Link incomplete",
+    `<h1>This link looks incomplete</h1>
+     <p>It may have been cut off — try opening the unsubscribe link again
+        straight from the email, or manage email preferences from your
+        <a href="/profile">profile settings</a>.</p>`
+  );
+}
+
+/**
+ * Well-formed token we hold no record of (never stored, or the account it
+ * belonged to is gone). The copy is deliberately identical for every unknown
+ * token — it never confirms or denies that a given account exists.
+ */
+function unknownTokenPage(): string {
+  return page(
+    "Link not recognised",
+    `<h1>We don't recognise this link</h1>
+     <p>If you've already unsubscribed you're all set; otherwise manage email
+        preferences in your <a href="/profile">profile settings</a>.</p>`
   );
 }
 
@@ -122,7 +142,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const token = req.nextUrl.searchParams.get("token");
 
   if (!token || !isValidUnsubscribeTokenShape(token)) {
-    return html(invalidPage(), 400);
+    return html(malformedPage(), 400);
   }
 
   const supabase = createServiceClient();
@@ -132,7 +152,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   }
 
   const exists = await unsubscribeTokenExists(supabase, token);
-  if (!exists) return html(invalidPage(), 404);
+  if (!exists) return html(unknownTokenPage(), 404);
 
   return html(confirmPage(token), 200);
 }
@@ -160,7 +180,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const token = readBodyToken(req) ?? bodyToken;
   if (!token || !isValidUnsubscribeTokenShape(token)) {
-    return html(invalidPage(), 400);
+    return html(malformedPage(), 400);
   }
 
   const supabase = createServiceClient();
@@ -171,7 +191,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const result = await unsubscribeByToken(supabase, token);
   if (result.ok) return html(successPage(), 200);
-  if (result.reason === "invalid_token") return html(invalidPage(), 400);
-  if (result.reason === "not_found") return html(invalidPage(), 404);
+  if (result.reason === "invalid_token") return html(malformedPage(), 400);
+  if (result.reason === "not_found") return html(unknownTokenPage(), 404);
   return html(errorPage(), 500);
 }

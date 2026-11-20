@@ -143,6 +143,10 @@ beforeEach(() => {
   mockGetUserById = vi.fn();
   mockFrom = vi.fn();
   vi.clearAllMocks();
+  // Fallback for any `supabase.from()` call a test did not explicitly queue: an
+  // empty, error-free result. Tests that assert on a specific call still queue
+  // it with `queueFrom` — once-values are consumed before this implementation.
+  mockFrom.mockImplementation(() => createBuilder({ data: null, error: null }));
 });
 
 afterEach(() => {
@@ -276,7 +280,7 @@ describe('POST /api/admin/digest-test — sample fallback', () => {
     expect(sent.text).toContain('1 Test Way, Neo Baku, AZ 1000');
   });
 
-  it('reuses the admin’s stored unsubscribe token when one exists', async () => {
+  it('reuses the admin’s stored unsubscribe token when one exists — and writes nothing', async () => {
     configureEnv();
     armHappyPath('admin-sample-token');
     queueFrom({ data: [], error: null });
@@ -287,6 +291,53 @@ describe('POST /api/admin/digest-test — sample fallback', () => {
     expect(body.unsubscribe_token_reused).toBe(true);
     const sent = mockSendEmail.mock.calls[0][0] as { headers: Record<string, string> };
     expect(sent.headers['List-Unsubscribe']).toContain(`token=${'a'.repeat(64)}`);
+    // A stored token needs no persistence — no upsert anywhere.
+    expect(builders.filter((b) => b.upsert.mock.calls.length > 0)).toHaveLength(0);
+  });
+
+  it('mints and persists a token when none is stored, and the emailed link uses that token', async () => {
+    configureEnv();
+    armHappyPath('admin-no-token');
+    queueFrom({ data: [], error: null });
+    queueFrom({ data: { digest_unsub_token: null }, error: null });
+    const upsertBuilder = queueFrom({ data: null, error: null });
+
+    const res = await post();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.sent).toBe(true);
+    expect(body.unsubscribe_token_reused).toBe(false);
+
+    // The freshly-minted token is written to this admin's row.
+    expect(upsertBuilder.upsert).toHaveBeenCalledTimes(1);
+    const [payload] = upsertBuilder.upsert.mock.calls[0] as [Record<string, unknown>];
+    expect(payload.user_id).toBe('admin-no-token');
+    const persisted = payload.digest_unsub_token as string;
+    expect(persisted).toMatch(/^[a-f0-9]{64}$/);
+
+    // …and it is exactly the token the recipient can actually click: the same
+    // value appears in the List-Unsubscribe header and the rendered HTML body.
+    const sent = mockSendEmail.mock.calls[0][0] as {
+      html: string;
+      headers: Record<string, string>;
+    };
+    expect(sent.headers['List-Unsubscribe']).toContain(`token=${persisted}`);
+    expect(sent.html).toContain(`unsubscribe?token=${persisted}`);
+  });
+
+  it('fails closed (500) when the token cannot be persisted — never mails a dead link', async () => {
+    configureEnv();
+    armHappyPath('admin-persist-fail');
+    queueFrom({ data: [], error: null });
+    queueFrom({ data: { digest_unsub_token: null }, error: null });
+    queueFrom({ data: null, error: { message: 'boom' } });
+
+    const res = await post();
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.sent).toBe(false);
+    expect(body.error).toBe('token_persist_failed');
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   it('buildSampleDigestAlerts returns exactly 3 SAMPLE-labelled alerts on the site origin', () => {
@@ -400,11 +451,12 @@ describe('POST /api/admin/digest-test — real alerts', () => {
 // ── no side effects ────────────────────────────────────────────────────────
 
 describe('POST /api/admin/digest-test — no side effects', () => {
-  it('performs no writes: no update/insert/upsert/delete on any table', async () => {
+  it('writes only the calling admin’s digest_unsub_token — no update/insert/delete anywhere', async () => {
     configureEnv();
     armHappyPath('admin-nowrite');
     queueFrom({ data: [], error: null });
     queueFrom({ data: { digest_unsub_token: null }, error: null });
+    const upsertBuilder = queueFrom({ data: null, error: null });
 
     const res = await post();
     expect(res.status).toBe(200);
@@ -412,9 +464,17 @@ describe('POST /api/admin/digest-test — no side effects', () => {
     for (const builder of builders) {
       expect(builder.update).not.toHaveBeenCalled();
       expect(builder.insert).not.toHaveBeenCalled();
-      expect(builder.upsert).not.toHaveBeenCalled();
       expect(builder.delete).not.toHaveBeenCalled();
     }
+
+    // The single permitted write: an upsert carrying ONLY the user id and the
+    // freshly-minted token — never watchlist_email, last_digest_sent_at, etc.
+    const upserts = builders.filter((b) => b.upsert.mock.calls.length > 0);
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0]).toBe(upsertBuilder);
+    const [payload] = upsertBuilder.upsert.mock.calls[0] as [Record<string, unknown>];
+    expect(Object.keys(payload).sort()).toEqual(['digest_unsub_token', 'user_id']);
+    expect(payload.user_id).toBe('admin-nowrite');
   });
 
   it('does not stamp email_sent_at even with real pending alerts', async () => {

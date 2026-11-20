@@ -90,15 +90,25 @@ describe("token helpers", () => {
 });
 
 describe("GET route", () => {
-  it("400 on malformed token", async () => {
+  it("400 on malformed token with incomplete-link copy", async () => {
     const res = await GET(new NextRequest("http://x/unsubscribe?token=bad"));
     expect(res.status).toBe(400);
-    expect(await res.text()).not.toContain("@"); // leaks nothing
+    const body = await res.text();
+    expect(body).toContain("This link looks incomplete");
+    expect(body).toContain("cut off");
+    expect(body).not.toContain("We don't recognise this link");
+    expect(body).not.toContain("@"); // leaks nothing
   });
-  it("404 when token unknown", async () => {
+  it("404 when token unknown with not-recognised copy", async () => {
     row = null;
     const res = await GET(new NextRequest(`http://x/unsubscribe?token=${VALID}`));
     expect(res.status).toBe(404);
+    const body = await res.text();
+    expect(body).toContain("We don't recognise this link");
+    expect(body).toContain("already unsubscribed");
+    expect(body).toContain('href="/profile"');
+    expect(body).not.toContain("This link looks incomplete");
+    expect(body).not.toContain("@"); // leaks nothing about users
   });
   it("200 confirmation page on valid token, no mutation", async () => {
     row = { user_id: "u1", notification_prefs: { watchlist_email: true } }; rowToken = VALID;
