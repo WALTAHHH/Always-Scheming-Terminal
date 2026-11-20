@@ -17,6 +17,7 @@ import {
   type ExpansionState,
   type SectionId,
 } from "@/lib/sectionExpansion";
+import { getSignalChip, getSignalStripeClass } from "@/lib/chip-styles";
 
 interface SignalPanelProps {
   items: FeedItem[];
@@ -65,34 +66,14 @@ function getHoursAgo(dateStr: string | null): number {
   return Math.floor(diff / (1000 * 60 * 60));
 }
 
-function getSignalBadge(signalType: string): { label: string; color: string } {
-  const map: Record<string, { label: string; color: string }> = {
-    acquisition: { label: "ACQ", color: "ast-mint" },
-    fundraising: { label: "RAISE", color: "ast-gold" },
-    earnings: { label: "EARN", color: "ast-gold" },
-    layoffs: { label: "LAYOFF", color: "ast-pink" },
-    leadership: { label: "LEAD", color: "ast-muted" },
-    product_launch: { label: "LAUNCH", color: "ast-mint" },
-    regulatory: { label: "REG", color: "ast-pink" },
-    platform_change: { label: "PLATFORM", color: "ast-muted" },
-    macro: { label: "MACRO", color: "ast-muted" },
-  };
-  return map[signalType] || { label: signalType.toUpperCase().slice(0, 6), color: "ast-muted" };
+// Chip label + class for a signal type come from the shared literal map so the
+// Signals list and the Deals section render the same chip (see chip-styles.ts).
+function getSignalBadge(signalType: string): { label: string; className: string } {
+  return getSignalChip(signalType);
 }
 
 function getSignalBorderColor(signalType: string): string {
-  const map: Record<string, string> = {
-    acquisition: "border-l-ast-pink",
-    fundraising: "border-l-ast-gold",
-    earnings: "border-l-ast-gold",
-    product_launch: "border-l-ast-mint",
-    layoffs: "border-l-ast-pink",
-    leadership: "border-l-ast-muted",
-    regulatory: "border-l-ast-muted",
-    platform_change: "border-l-ast-accent",
-    macro: "border-l-ast-accent",
-  };
-  return map[signalType] || "border-l-ast-accent";
+  return getSignalStripeClass(signalType);
 }
 
 function formatSignalType(signalType: string): string {
@@ -452,7 +433,7 @@ export function SignalPanel({ items }: SignalPanelProps) {
                       className={`block group rounded hover:bg-ast-mint/5 cursor-pointer transition-colors -mx-2 px-2 border-l-2 ${getSignalBorderColor(signal.signal_type)}`}
                     >
                       <div className="flex items-start gap-2">
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 bg-${badge.color}/20 text-${badge.color}`}>
+                        <span className={badge.className}>
                           {badge.label}
                         </span>
                         <div className="flex-1 min-w-0">
@@ -532,21 +513,17 @@ export function SignalPanel({ items }: SignalPanelProps) {
               {dealSignals.length === 0 ? (
                 <p className="text-ast-muted text-xs">No deals or earnings yet</p>
               ) : (
-                shownDeals.map((deal) => (
+                shownDeals.map((deal) => {
+                  const chip = getSignalChip(deal.signal_type);
+                  return (
                   <div
                     key={deal.id}
                     onClick={() => window.open(deal.url, '_blank', 'noopener,noreferrer')}
                     className={`block group border-l-2 cursor-pointer ${getSignalBorderColor(deal.signal_type)}`}
                   >
                     <div className="flex items-start gap-2">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${
-                        deal.signal_type === "fundraising"
-                          ? "bg-ast-mint/20 text-ast-mint"
-                          : deal.signal_type === "acquisition"
-                          ? "bg-ast-pink/20 text-ast-pink"
-                          : "bg-ast-gold/20 text-ast-gold"
-                      }`}>
-                        {deal.signal_type === "acquisition" ? "M&A" : deal.signal_type === "fundraising" ? "RAISE" : "EARN"}
+                      <span className={chip.className}>
+                        {chip.label}
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="text-ast-text text-sm font-medium leading-snug line-clamp-2 group-hover:text-ast-accent transition-colors">
@@ -567,7 +544,8 @@ export function SignalPanel({ items }: SignalPanelProps) {
                       </div>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
               <SectionToggle
                 hidden={hiddenDeals}
