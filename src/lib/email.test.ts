@@ -29,6 +29,9 @@ import {
   digestMetaLine,
   digestRelevance,
   buildSampleDigestAlerts,
+  clampStoryCount,
+  DIGEST_TEST_DEFAULT_STORIES,
+  DIGEST_TEST_MAX_STORIES,
   type DigestAlert,
   type DigestRenderInput,
 } from './email';
@@ -991,5 +994,135 @@ describe('digest no-underline affordances + link contrast', () => {
     for (const [label, fg, bg] of cases) {
       expect(contrast(fg, bg), label).toBeGreaterThanOrEqual(4.5);
     }
+  });
+});
+
+describe('buildSampleDigestAlerts — larger, varied sets (admin digest test)', () => {
+  const SITE = 'https://terminal.example.com';
+
+  it('defaults to 3 and clamps the requested count to 1..40', () => {
+    expect(buildSampleDigestAlerts(SITE)).toHaveLength(DIGEST_TEST_DEFAULT_STORIES);
+    expect(buildSampleDigestAlerts(SITE)).toHaveLength(3);
+
+    for (const [input, expected] of [
+      [0, 1],
+      [1, 1],
+      [3, 3],
+      [8, 8],
+      [9, 9],
+      [15, 15],
+      [25, 25],
+      [40, 40],
+      [41, 40],
+      [999, 40],
+      [-5, 1],
+      [3.7, 3],
+      ['25', 25],
+      ['abc', 3],
+    ] as [unknown, number][]) {
+      expect(buildSampleDigestAlerts(SITE, input as number)).toHaveLength(expected);
+    }
+  });
+
+  it('clampStoryCount handles garbage and defaults', () => {
+    expect(clampStoryCount(undefined)).toBe(3);
+    expect(clampStoryCount(null)).toBe(3);
+    expect(clampStoryCount('')).toBe(3);
+    expect(clampStoryCount('nope')).toBe(3);
+    expect(clampStoryCount(Number.NaN)).toBe(3);
+    expect(clampStoryCount('12')).toBe(12);
+    expect(clampStoryCount('12abc')).toBe(3);
+    expect(clampStoryCount(40.9)).toBe(40);
+    expect(clampStoryCount(DIGEST_TEST_MAX_STORIES + 50)).toBe(DIGEST_TEST_MAX_STORIES);
+  });
+
+  it('is deterministic — the same request renders byte-identical stories', () => {
+    expect(buildSampleDigestAlerts(SITE, 25)).toEqual(buildSampleDigestAlerts(SITE, 25));
+    // …and a larger set shares the exact prefix of the smaller one.
+    const small = buildSampleDigestAlerts(SITE, 8);
+    const big = buildSampleDigestAlerts(SITE, 25);
+    expect(big.slice(0, 8)).toEqual(small);
+  });
+
+  it('labels every story SAMPLE, with links at the site root and a meta source/date', () => {
+    for (const a of buildSampleDigestAlerts(SITE, 40)) {
+      expect(a.summary).toContain('SAMPLE');
+      expect(a.url).toContain('https://terminal.example.com/');
+      expect(a.sourceName).toBeTruthy();
+      expect(formatDigestDate(a.publishedAt)).not.toBeNull();
+      expect(Number.isInteger(a.relevance)).toBe(true);
+    }
+  });
+
+  it('mixes public (ticker) and private companies and spans all signal types (incl. unknown/other)', () => {
+    const samples = buildSampleDigestAlerts(SITE, 40);
+    expect(samples.some((s) => s.isPublic === true && !!s.ticker)).toBe(true);
+    expect(samples.some((s) => s.isPublic === false)).toBe(true);
+    const types = new Set(samples.map((s) => s.signalType));
+    expect(types.has('unknown')).toBe(true);
+    expect(types.has('other')).toBe(true);
+    expect(types.size).toBeGreaterThanOrEqual(8);
+  });
+
+  it('includes long (>110 char), short, and nasty (quotes/&/angles/emoji/non-latin) headlines', () => {
+    const samples = buildSampleDigestAlerts(SITE, 40);
+    const raw = samples.map((s) => s.summary);
+    expect(raw.some((s) => s.length > DIGEST_HEADLINE_MAX)).toBe(true);
+    expect(raw.some((s) => s.length <= 40)).toBe(true);
+    expect(raw.some((s) => s.includes('&') && s.includes('<') && s.includes('"'))).toBe(true);
+    expect(raw.some((s) => /[\u{1F300}-\u{1FAFF}]/u.test(s))).toBe(true);
+    expect(raw.some((s) => /[^\x00-\x7F]/.test(s))).toBe(true);
+  });
+
+  it('selects Variant A at 8 stories and Variant B at 9 (via the sample set)', () => {
+    const inputOf = (alerts: DigestAlert[]): DigestRenderInput => ({
+      alerts,
+      unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+      footerAddress: '',
+      siteUrl: 'https://example.com',
+    });
+    expect(renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com', 8)))).not.toContain(
+      'RANKED BY RELEVANCE',
+    );
+    expect(renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com', 9)))).toContain(
+      'RANKED BY RELEVANCE',
+    );
+  });
+
+  it('drives the 3-per-company cap + "+N more" at 8 stories (Variant A)', () => {
+    const html = renderDigestHtml({
+      alerts: buildSampleDigestAlerts('https://example.com', 8),
+      unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+      footerAddress: '',
+      siteUrl: 'https://example.com',
+    });
+    expect(html).toMatch(/\+1 more Acme Games update in Terminal/);
+  });
+
+  it('drives the 15-story cap + "See all N" at 25 and 40 (Variant B)', () => {
+    const inputOf = (n: number): DigestRenderInput => ({
+      alerts: buildSampleDigestAlerts('https://example.com', n),
+      unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+      footerAddress: '',
+      siteUrl: 'https://example.com',
+    });
+    expect(renderDigestHtml(inputOf(25))).toContain('See all 25 in Terminal');
+    expect(renderDigestHtml(inputOf(40))).toContain('See all 40 in Terminal');
+  });
+
+  it('escapes the nasty sample headlines (no raw markup reaches the HTML)', () => {
+    const html = renderDigestHtml({
+      alerts: buildSampleDigestAlerts('https://example.com', 40),
+      unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+      footerAddress: '',
+      siteUrl: 'https://example.com',
+    });
+    expect(html).toContain('&lt;non-binding&gt;');
+    expect(html).toContain('&amp;');
+    expect(html).not.toContain('<non-binding>');
+    // The `&`-bearing + non-latin company names are escaped / preserved safely.
+    expect(html).toContain('Kite &amp; Reel');
+    expect(html).toContain('九龍互動');
+    expect(html).not.toMatch(/<script/i);
   });
 });
