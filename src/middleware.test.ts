@@ -93,3 +93,44 @@ describe("middleware public /unsubscribe", () => {
     expect(res.status).toBe(307);
   });
 });
+
+describe("middleware public PWA manifest", () => {
+  it("lets GET /manifest.json through when logged out (no 307 to /auth/login)", async () => {
+    const res = await middleware(
+      new NextRequest("https://terminal.always-scheming.com/manifest.json")
+    );
+    expect(res.status).not.toBe(307);
+    expect(res.headers.get("location")).toBeNull();
+    expect(isPassThrough(res)).toBe(true);
+  });
+
+  it("lets GET /.well-known/assetlinks.json through when logged out", async () => {
+    const res = await middleware(
+      new NextRequest(
+        "https://terminal.always-scheming.com/.well-known/assetlinks.json"
+      )
+    );
+    expect(res.status).not.toBe(307);
+    expect(isPassThrough(res)).toBe(true);
+  });
+
+  it("still gates deep links used by the digest (e.g. /signals?topic=ai)", async () => {
+    const res = await middleware(
+      new NextRequest("https://terminal.always-scheming.com/signals?topic=ai")
+    );
+    expect(res.status).toBe(307);
+    const loc = new URL(res.headers.get("location")!);
+    expect(loc.pathname).toBe("/auth/login");
+    expect(loc.searchParams.get("next")).toBe("/signals?topic=ai");
+  });
+
+  it("does not make a manifest look-alike path public (/manifest.json.bak)", async () => {
+    const res = await middleware(
+      new NextRequest(
+        "https://terminal.always-scheming.com/manifest.json.bak"
+      )
+    );
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/auth/login");
+  });
+});

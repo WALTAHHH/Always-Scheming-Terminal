@@ -1,9 +1,16 @@
 {
+  "id": "/",
   "name": "Always Scheming Terminal",
   "short_name": "AST",
   "description": "Gaming industry intelligence, real-time.",
   "start_url": "/?utm_source=pwa&utm_medium=installed",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+  "handle_links": "preferred",
   "background_color": "#0d1117",
   "theme_color": "#00d4aa",
   "orientation": "portrait-primary",
