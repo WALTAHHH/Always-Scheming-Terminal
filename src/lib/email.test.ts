@@ -346,10 +346,10 @@ describe('digest rendering', () => {
     expect(groups).toHaveLength(0);
   });
 
-  it('renderDigestSubject pluralizes', () => {
-    expect(renderDigestSubject(0)).toBe('Weekly AST watchlist digest — 0 updates');
-    expect(renderDigestSubject(1)).toBe('Weekly AST watchlist digest — 1 update');
-    expect(renderDigestSubject(5)).toBe('Weekly AST watchlist digest — 5 updates');
+  it('renderDigestSubject pluralizes without the AST abbreviation', () => {
+    expect(renderDigestSubject(0)).toBe('Your weekly watchlist digest — 0 updates');
+    expect(renderDigestSubject(1)).toBe('Your weekly watchlist digest — 1 update');
+    expect(renderDigestSubject(5)).toBe('Your weekly watchlist digest — 5 updates');
   });
 
   it('renderDigestText includes footer address when present', () => {
@@ -610,12 +610,12 @@ describe('digest item deep links + source/date meta line', () => {
     );
   });
 
-  it('renders the muted relevance · source · date meta line', () => {
+  it('renders the muted source · date meta line without a relevance figure', () => {
     const html = renderDigestHtml(input);
     expect(html).toContain('The Game Business · Nov 17');
     expect(html).toContain('font-size:12px;line-height:16px;color:#9ca3af');
-    expect(html).toContain('Relevance');
-    expect(html).toContain('>93</span>');
+    expect(html).not.toContain('Relevance');
+    expect(html).not.toContain('>93</span>');
   });
 
   it('escapes a hostile entity name inside the deep link and the heading', () => {
@@ -730,15 +730,48 @@ describe('digest redesign v2 — layout, truncation, escaping', () => {
 
   const noopenerCount = (html: string) => (html.match(/rel="noopener noreferrer"/g) ?? []).length;
 
+  it('uses the full product name as the header wordmark and never the bare AST', () => {
+    const html = renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com')));
+    expect(html).toContain(
+      '<span class="c-brand" style="color:#6decb9;font-weight:700;">Always Scheming Terminal</span>',
+    );
+    expect(html).toContain('WEEKLY DIGEST');
+    expect(html).not.toMatch(/>\s*AST\s*</);
+    expect(html).not.toContain('AST weekly');
+    expect(renderDigestText(inputOf(buildSampleDigestAlerts('https://example.com')))).not.toContain(
+      'AST',
+    );
+  });
+
+  it('moves the signal chip to the bottom-right of each story row (Variant A)', () => {
+    const html = renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com')));
+    // Chip is no longer inline before the headline.
+    expect(html).not.toMatch(/<p style="margin:0;font-size:16px;line-height:22px;"><span class="chip-/);
+    // It sits in a right-aligned, nowrap cell on the meta row.
+    expect(html).toMatch(
+      /<td align="right" style="padding-left:8px;white-space:nowrap;vertical-align:middle;"><span class="chip-/,
+    );
+    expect(html).toContain('The Game Business · Nov 17');
+  });
+
+  it('moves the signal chip to the bottom-right of each story row (Variant B)', () => {
+    const html = renderDigestHtml(inputOf(tenStories()));
+    expect(html).not.toMatch(/<p style="margin:0;font-size:16px;line-height:22px;"><span class="chip-/);
+    expect(html).toMatch(
+      /<td align="right" style="padding-left:8px;white-space:nowrap;vertical-align:middle;"><span class="chip-/,
+    );
+    expect(html).not.toContain('Relevance');
+  });
+
   it('HTML snapshot — 3-story sample renders Variant A (grouped)', () => {
     const html = renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com')));
-    expect(html).not.toContain('RANKED BY RELEVANCE');
+    expect(html).not.toContain('MOST RELEVANT FIRST');
     expect(html).toMatchSnapshot();
   });
 
   it('HTML snapshot — 10-story sample renders Variant B (flat)', () => {
     const html = renderDigestHtml(inputOf(tenStories()));
-    expect(html).toContain('RANKED BY RELEVANCE');
+    expect(html).toContain('MOST RELEVANT FIRST');
     expect(html).toMatchSnapshot();
   });
 
@@ -749,14 +782,14 @@ describe('digest redesign v2 — layout, truncation, escaping', () => {
     const nine = Array.from({ length: DIGEST_VARIANT_A_MAX + 1 }, (_, i) =>
       mk({ entityName: `Co ${i}`, relevance: 90 - i, url: `https://example.com/${i}` }),
     );
-    expect(renderDigestHtml(inputOf(eight))).not.toContain('RANKED BY RELEVANCE');
-    expect(renderDigestHtml(inputOf(nine))).toContain('RANKED BY RELEVANCE');
+    expect(renderDigestHtml(inputOf(eight))).not.toContain('MOST RELEVANT FIRST');
+    expect(renderDigestHtml(inputOf(nine))).toContain('MOST RELEVANT FIRST');
   });
 
   it('computes the hero line and the week label', () => {
     const html = renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com')));
     expect(html).toContain('3 updates across 3 companies this week');
-    expect(html).toContain('Week of Nov 16 &middot; sorted by relevance');
+    expect(html).toContain('Week of Nov 16 &middot; most relevant first');
     expect(digestHeroTitle(1, 1)).toBe('1 update across 1 company this week');
   });
 
@@ -954,11 +987,20 @@ describe('digest no-underline affordances + link contrast', () => {
     );
   });
 
-  it('wraps the footer postal address to resist client auto-link underlining', () => {
+  it('keeps the footer postal address quiet, last and resistant to auto-link styling', () => {
     const html = renderDigestHtml(aInput(buildSampleDigestAlerts('https://example.com')));
-    expect(html).toContain('class="c-mut c-addr"');
+    expect(html).toContain('class="c-addr gmail-hide"');
+    expect(html).toContain('font-size:11px;line-height:15px;color:#4a4a55');
     expect(html).toContain('x-apple-data-detectors="false"');
     expect(html).toContain('a[x-apple-data-detectors]{color:inherit !important;text-decoration:none !important;');
+    expect(html).toContain('.gmail-hide{color:inherit !important;text-decoration:none !important;}');
+    // Light-theme override stays deliberately low contrast.
+    expect(html).toContain('.c-addr{color:#9a9aa5 !important;}');
+    // Address is the final line, after the Manage/Unsubscribe links.
+    const addressAt = html.indexOf('1 Terminal Way, Neo Baku');
+    const linksAt = html.indexOf('Manage watchlist');
+    expect(addressAt).toBeGreaterThan(linksAt);
+    expect(html.slice(addressAt)).toContain('</td></tr>');
   });
 
   // WCAG 2.x relative-luminance contrast helper.
