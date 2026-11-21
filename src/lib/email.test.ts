@@ -13,6 +13,16 @@ import {
   renderDigestText,
   renderDigestHtml,
   groupDigestAlerts,
+  sortDigestAlerts,
+  groupSortedDigestAlerts,
+  digestItemMetaLine,
+  digestHeroTitle,
+  renderDigestPreheader,
+  clampHeadline,
+  DIGEST_HEADLINE_MAX,
+  DIGEST_PER_COMPANY_MAX,
+  DIGEST_TOTAL_MAX,
+  DIGEST_VARIANT_A_MAX,
   safeDigestUrl,
   buildDigestCompanyUrl,
   formatDigestDate,
@@ -479,9 +489,10 @@ describe('digest URL scheme allowlist', () => {
     ]) {
       expect(lowered).not.toContain(marker);
     }
-    // Degrades gracefully: alert text survives, link is rendered as plain text.
-    expect(html).toContain('(link unavailable)');
+    // Quiet fallback: the headline survives as plain text, with no anchor and no
+    // "(link unavailable)" note leaking an internal failure to the reader.
     expect(html).toContain('Acme beats estimates');
+    expect(html).not.toContain('(link unavailable)');
     expect(html).toContain('Unsubscribe');
   });
 
@@ -531,7 +542,8 @@ describe('digest URL scheme allowlist', () => {
     expect(html).toContain('href="https://example.com/good"');
     expect(html).not.toContain('javascript:');
     expect(html).toContain('Hostile article');
-    expect(html).toContain('(link unavailable)');
+    expect(html).not.toContain('href="javascript:');
+    expect(html).not.toContain('(link unavailable)');
   });
 });
 
@@ -587,7 +599,7 @@ describe('digest item deep links + source/date meta line', () => {
   it('links the company heading to the drawer deep link', () => {
     const html = renderDigestHtml(input);
     expect(html).toContain(
-      '<a href="https://example.com/?company=Acme%20Games" style="color:#e7e9ee;text-decoration:none;">Acme Games</a>',
+      '<a href="https://example.com/?company=Acme%20Games" class="c-txt" style="color:#d4d4d4;text-decoration:underline;">Acme Games</a>',
     );
   });
 
@@ -598,10 +610,12 @@ describe('digest item deep links + source/date meta line', () => {
     );
   });
 
-  it('renders the muted source · date meta line', () => {
+  it('renders the muted relevance · source · date meta line', () => {
     const html = renderDigestHtml(input);
     expect(html).toContain('The Game Business · Nov 17');
-    expect(html).toContain('color:#6b7280;font-size:12px');
+    expect(html).toContain('font-size:12px;line-height:16px;color:#9ca3af');
+    expect(html).toContain('Relevance');
+    expect(html).toContain('>93</span>');
   });
 
   it('escapes a hostile entity name inside the deep link and the heading', () => {
@@ -678,5 +692,173 @@ describe('digestRelevance', () => {
     expect(digestRelevance(-0.2)).toBe(0);
     expect(digestRelevance(Number.NaN)).toBe(0);
     expect(digestRelevance(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe('digest redesign v2 — layout, truncation, escaping', () => {
+  const mk = (over: Partial<DigestAlert> & { entityName: string }): DigestAlert => ({
+    signalType: 'acquisition',
+    summary: 'A headline',
+    score: 0.9,
+    url: 'https://example.com/a',
+    createdAt: '2026-11-17T09:00:00.000Z',
+    sourceName: 'The Verge',
+    ...over,
+  });
+
+  const inputOf = (alerts: DigestAlert[]): DigestRenderInput => ({
+    alerts,
+    unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+    footerAddress: '',
+    siteUrl: 'https://example.com',
+  });
+
+  // Ten stories across five companies, mixed signal types, mirroring the
+  // 10-story Variant B mockup.
+  const tenStories = (): DigestAlert[] => [
+    mk({ entityName: 'Acme Games', signalType: 'acquisition', relevance: 93, summary: 'Acme Games acquires Pixel Forge for $120M in a cash-and-stock deal.', createdAt: '2026-11-17T09:00:00.000Z', sourceName: 'The Game Business', isPublic: false }),
+    mk({ entityName: 'Northstar Interactive', signalType: 'fundraising', relevance: 88, summary: 'Northstar Interactive raises a $45M Series B led by Horizon Ventures.', createdAt: '2026-11-16T09:00:00.000Z', sourceName: 'PocketGamer.biz', isPublic: false }),
+    mk({ entityName: 'Acme Games', signalType: 'product_launch', relevance: 84, summary: 'Acme Games opens its Pixel Forge studio pipeline with a first-party title slated for spring 2027 and more to follow.', createdAt: '2026-11-18T09:00:00.000Z', sourceName: 'GamesIndustry.biz', isPublic: false }),
+    mk({ entityName: 'Cobalt Studios', signalType: 'layoffs', relevance: 81, summary: 'Cobalt Studios cuts 80 roles as its live-service project winds down.', createdAt: '2026-11-15T09:00:00.000Z', sourceName: 'GamesIndustry.biz', isPublic: false }),
+    mk({ entityName: 'Kestrel Games', signalType: 'earnings', relevance: 79, summary: 'Kestrel Games reports Q3 bookings up 12% year on year and raises full-year guidance.', createdAt: '2026-11-17T10:00:00.000Z', sourceName: 'Business Wire', ticker: 'KSTR', isPublic: true }),
+    mk({ entityName: 'Acme Games', signalType: 'leadership', relevance: 71, summary: 'Acme Games names a new CFO from Vector Entertainment.', createdAt: '2026-11-14T09:00:00.000Z', sourceName: 'The Game Business', isPublic: false }),
+    mk({ entityName: 'Acme Games', signalType: 'regulatory', relevance: 66, summary: 'Regulators open a review of Acme Games loot-box disclosures in two EU markets.', createdAt: '2026-11-13T09:00:00.000Z', sourceName: 'Eurogamer', isPublic: false }),
+    mk({ entityName: 'Halcyon Digital', signalType: 'product_launch', relevance: 62, summary: 'Halcyon Digital ships cloud saves to its three top titles.', createdAt: '2026-11-10T09:00:00.000Z', sourceName: 'Pocket Gamer', isPublic: false }),
+    mk({ entityName: 'Northstar Interactive', signalType: 'platform_change', relevance: 58, summary: 'Northstars storefront partner changes revenue-share terms for mid-size publishers from January.', createdAt: '2026-11-12T09:00:00.000Z', sourceName: 'PocketGamer.biz', isPublic: false }),
+    mk({ entityName: 'Halcyon Digital', signalType: 'macro', relevance: 52, summary: 'Halcyon Digital flags currency headwinds in its European revenue outlook.', createdAt: '2026-11-11T09:00:00.000Z', sourceName: 'Financial Times', isPublic: false }),
+  ];
+
+  const noopenerCount = (html: string) => (html.match(/rel="noopener noreferrer"/g) ?? []).length;
+
+  it('HTML snapshot — 3-story sample renders Variant A (grouped)', () => {
+    const html = renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com')));
+    expect(html).not.toContain('RANKED BY RELEVANCE');
+    expect(html).toMatchSnapshot();
+  });
+
+  it('HTML snapshot — 10-story sample renders Variant B (flat)', () => {
+    const html = renderDigestHtml(inputOf(tenStories()));
+    expect(html).toContain('RANKED BY RELEVANCE');
+    expect(html).toMatchSnapshot();
+  });
+
+  it('selects Variant A at <= 8 stories and Variant B above 8', () => {
+    const eight = Array.from({ length: DIGEST_VARIANT_A_MAX }, (_, i) =>
+      mk({ entityName: `Co ${i}`, relevance: 90 - i, url: `https://example.com/${i}` }),
+    );
+    const nine = Array.from({ length: DIGEST_VARIANT_A_MAX + 1 }, (_, i) =>
+      mk({ entityName: `Co ${i}`, relevance: 90 - i, url: `https://example.com/${i}` }),
+    );
+    expect(renderDigestHtml(inputOf(eight))).not.toContain('RANKED BY RELEVANCE');
+    expect(renderDigestHtml(inputOf(nine))).toContain('RANKED BY RELEVANCE');
+  });
+
+  it('computes the hero line and the week label', () => {
+    const html = renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com')));
+    expect(html).toContain('3 updates across 3 companies this week');
+    expect(html).toContain('Week of Nov 16 &middot; sorted by relevance');
+    expect(digestHeroTitle(1, 1)).toBe('1 update across 1 company this week');
+  });
+
+  it('orders stories by relevance desc, then newest, then company name', () => {
+    const alerts = [
+      mk({ entityName: 'Zeta', relevance: 50, createdAt: '2026-01-01T00:00:00.000Z' }),
+      mk({ entityName: 'Alpha', relevance: 50, createdAt: '2026-01-02T00:00:00.000Z' }),
+      mk({ entityName: 'Alpha', relevance: 50, createdAt: '2026-01-01T00:00:00.000Z' }),
+      mk({ entityName: 'Beta', relevance: 99, createdAt: '2026-01-01T00:00:00.000Z' }),
+    ];
+    const order = sortDigestAlerts(alerts).map((a) => `${a.entityName}:${a.createdAt}`);
+    expect(order[0]).toBe('Beta:2026-01-01T00:00:00.000Z');
+    // same relevance -> newest first, then company name asc
+    expect(order[1]).toBe('Alpha:2026-01-02T00:00:00.000Z');
+    expect(order[2]).toBe('Alpha:2026-01-01T00:00:00.000Z');
+    expect(order[3]).toBe('Zeta:2026-01-01T00:00:00.000Z');
+    // grouping preserves the flat order: Beta's top story, then Alpha, then Zeta
+    expect(groupSortedDigestAlerts(alerts).map(([e]) => e)).toEqual(['Beta', 'Alpha', 'Zeta']);
+  });
+
+  it('clamps a headline over 110 chars on a word boundary', () => {
+    const long = 'Word '.repeat(40).trim(); // 199 chars
+    const clamped = clampHeadline(long);
+    expect(clamped.length).toBeLessThanOrEqual(DIGEST_HEADLINE_MAX);
+    expect(clamped.endsWith('…')).toBe(true);
+    expect(clamped).not.toContain('  ');
+    // short input is untouched, no ellipsis
+    expect(clampHeadline('Short headline')).toBe('Short headline');
+    expect(clampHeadline('x'.repeat(DIGEST_HEADLINE_MAX))).toBe('x'.repeat(DIGEST_HEADLINE_MAX));
+  });
+
+  it('caps a company at 3 stories then links the overflow (Variant A)', () => {
+    const five = Array.from({ length: 5 }, (_, i) =>
+      mk({ entityName: 'Acme Games', relevance: 90 - i, url: `https://example.com/${i}`, createdAt: `2026-11-1${i}T09:00:00.000Z` }),
+    );
+    const html = renderDigestHtml(inputOf(five));
+    expect(noopenerCount(html)).toBe(DIGEST_PER_COMPANY_MAX);
+    expect(html).toContain('+2 more Acme Games updates in Terminal');
+  });
+
+  it('caps the whole digest at 15 stories then links See all N (Variant B)', () => {
+    const twenty = Array.from({ length: 20 }, (_, i) =>
+      mk({ entityName: `Co ${i}`, relevance: 100 - i, url: `https://example.com/${i}` }),
+    );
+    const html = renderDigestHtml(inputOf(twenty));
+    expect(noopenerCount(html)).toBe(DIGEST_TOTAL_MAX);
+    expect(html).toContain('See all 20 in Terminal');
+  });
+
+  it('renders the preheader from the top story', () => {
+    const pre = renderDigestPreheader(buildSampleDigestAlerts('https://example.com'));
+    expect(pre).toContain('Acme Games acquires Pixel Forge');
+    expect(pre).toContain('Also:');
+  });
+
+  it('escapes <script>, quotes and & in summary, entity and source', () => {
+    const html = renderDigestHtml(
+      inputOf([
+        mk({
+          entityName: '<script>Acme</script>',
+          summary: 'A & B <script>alert(1)</script> "quoted"',
+          sourceName: 'Q"uote & <b>bold</b>',
+        }),
+      ]),
+    );
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('</script>');
+    expect(html).toContain('&lt;script&gt;Acme&lt;/script&gt;');
+    expect(html).toContain('A &amp; B &lt;script&gt;alert(1)&lt;/script&gt; &quot;quoted&quot;');
+    expect(html).toContain('Q&quot;uote &amp; &lt;b&gt;bold&lt;/b&gt;');
+  });
+
+  it('never puts javascript:, data: or http: article URLs in an href', () => {
+    for (const url of [
+      'javascript:alert(1)',
+      'data:text/html;base64,PHNjcmlwdD4=',
+      'http://insecure.example/article',
+    ]) {
+      const html = renderDigestHtml(inputOf([mk({ entityName: 'Acme', url })]));
+      expect(html).not.toMatch(/href="(?:javascript:|data:|http:\/\/)/i);
+      expect(html).toContain('A headline');
+    }
+  });
+
+  it('keeps both layouts under the ~102KB Gmail clip', () => {
+    const longSummary = `${'long headline text '.repeat(12)}`;
+    const eight = Array.from({ length: 8 }, (_, i) =>
+      mk({ entityName: `Company ${i}`, summary: longSummary, relevance: 90 - i, url: `https://example.com/${i}` }),
+    );
+    const twenty = Array.from({ length: 20 }, (_, i) =>
+      mk({ entityName: `Company ${i % 6}`, summary: longSummary, relevance: 100 - i, url: `https://example.com/${i}` }),
+    );
+    expect(renderDigestHtml(inputOf(eight)).length).toBeLessThan(100 * 1024);
+    expect(renderDigestHtml(inputOf(twenty)).length).toBeLessThan(100 * 1024);
+  });
+
+  it('keeps the unsubscribe URL and RFC 8058 headers unchanged', () => {
+    expect(buildDigestUnsubHeaders('tok', 'https://example.com')).toEqual({
+      'List-Unsubscribe': '<https://example.com/unsubscribe?token=tok>',
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    });
+    const html = renderDigestHtml(inputOf([mk({ entityName: 'Acme' })]));
+    expect(html).toContain('href="https://example.com/unsubscribe?token=xyz"');
   });
 });
