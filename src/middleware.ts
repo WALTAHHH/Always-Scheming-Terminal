@@ -10,8 +10,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Skip discovery paths (robots.txt, llms.txt, .well-known/mcp.json, openapi.json)
-  const discoveryPaths = ['/robots.txt', '/llms.txt', '/.well-known/mcp.json', '/openapi.json'];
+  // Skip discovery / public metadata paths (robots.txt, llms.txt,
+  // .well-known/mcp.json, openapi.json) plus the PWA manifest. The manifest is
+  // fetched by the browser itself, without the visitor's session cookie, so it
+  // must never be gated behind the auth redirect below — otherwise a logged-out
+  // install/update silently returns a 307 to /auth/login. /.well-known/assetlinks.json
+  // is listed pre-emptively for a future Android TWA (a Digital Asset Links
+  // file is also fetched anonymously by the platform).
+  const discoveryPaths = [
+    '/robots.txt',
+    '/llms.txt',
+    '/.well-known/mcp.json',
+    '/openapi.json',
+    '/manifest.json',
+    '/.well-known/assetlinks.json',
+  ];
   if (discoveryPaths.includes(pathname)) {
     return NextResponse.next();
   }
