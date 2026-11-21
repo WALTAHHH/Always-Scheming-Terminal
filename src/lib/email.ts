@@ -36,6 +36,8 @@
 
 import { createHash, createHmac, randomBytes } from "crypto";
 
+import { getEmailChip } from "./email-chip-map";
+
 /** Resend's send endpoint. */
 export const RESEND_API_URL = "https://api.resend.com/emails";
 
@@ -449,75 +451,391 @@ export function renderDigestText(input: DigestRenderInput): string {
   return out.join("\n");
 }
 
+// ── digest layout (revision 2) ─────────────────────────────────────────────
+//
+// Two layouts selected by story count (spec "Revision 2"): Variant A (grouped
+// list) for a week with `<= DIGEST_VARIANT_A_MAX` stories, Variant B (flat,
+// relevance-ranked list) above it. Both share the header, hero, single top CTA
+// and footer. All colours are precomputed hex (dark inline default) with
+// `prefers-color-scheme: light` overrides in the <style> block; the chip palette
+// comes from `email-chip-map.ts` (card 1). No JS, remote images, web fonts or
+// external CSS.
+
+/** Email-safe font stacks — no web fonts. */
+const SANS_STACK =
+  "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const MONO_STACK =
+  "'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,'Courier New',monospace";
+
+/** Headline character clamp (spec R2.5) — word boundary + `…`. */
+export const DIGEST_HEADLINE_MAX = 110;
+/** Max stories per company in Variant A before the `+N more` link. */
+export const DIGEST_PER_COMPANY_MAX = 3;
+/** Max stories rendered in one digest before the `See all N` link. */
+export const DIGEST_TOTAL_MAX = 15;
+/** Story-count threshold: `<=` renders Variant A, above renders Variant B. */
+export const DIGEST_VARIANT_A_MAX = 8;
+
+/** Clamp a headline to `max` chars on a word boundary, appending `…`. */
+export function clampHeadline(text: string, max = DIGEST_HEADLINE_MAX): string {
+  const t = (text ?? "").trim();
+  if (t.length <= max) return t;
+  let cut = t.slice(0, max - 1);
+  const sp = cut.lastIndexOf(" ");
+  if (sp > 0) cut = cut.slice(0, sp);
+  return `${cut.replace(/[\s,;:.!?\-–—]+$/, "")}…`;
+}
+
+/** Reader-facing relevance: the explicit 0-100 value, else derived from score. */
+function alertRelevance(a: DigestAlert): number {
+  return typeof a.relevance === "number" && Number.isFinite(a.relevance)
+    ? Math.min(100, Math.max(0, Math.round(a.relevance)))
+    : digestRelevance(a.score);
+}
+
+/** Timestamp used for ordering + the meta line: publishedAt, else createdAt. */
+function alertDate(a: DigestAlert): string {
+  return (a.publishedAt ?? a.createdAt ?? "") as string;
+}
+
+/**
+ * Flat relevance-first ordering (spec R2.6): relevance desc, then newest, then
+ * company name asc. Invalid alerts (no entity name) are dropped.
+ */
+export function sortDigestAlerts(alerts: DigestAlert[]): DigestAlert[] {
+  return alerts
+    .filter((a) => a && a.entityName)
+    .slice()
+    .sort((a, b) => {
+      const ra = alertRelevance(a);
+      const rb = alertRelevance(b);
+      if (ra !== rb) return rb - ra;
+      const da = alertDate(a);
+      const db = alertDate(b);
+      if (da !== db) return da < db ? 1 : -1;
+      return a.entityName.localeCompare(b.entityName);
+    });
+}
+
+/**
+ * Group alerts by entity, preserving the relevance-first order of the flat
+ * list: the entity whose top story ranks highest comes first, and stories
+ * inside an entity stay relevance-ordered (spec R2.6).
+ */
+export function groupSortedDigestAlerts(
+  alerts: DigestAlert[],
+): [string, DigestAlert[]][] {
+  const map = new Map<string, DigestAlert[]>();
+  for (const a of sortDigestAlerts(alerts)) {
+    const list = map.get(a.entityName);
+    if (list) list.push(a);
+    else map.set(a.entityName, [a]);
+  }
+  return Array.from(map.entries());
+}
+
+/** Muted meta line for the new layout: `"<source> · <date>"` (publishedAt). */
+export function digestItemMetaLine(alert: DigestAlert): string | null {
+  const source = alert.sourceName?.trim();
+  const date = formatDigestDate(alert.publishedAt ?? alert.createdAt);
+  if (source && date) return `${source} · ${date}`;
+  return source || date || null;
+}
+
+/** Monday (UTC) of the week containing the newest story, or `null`. */
+function digestWeekStart(alerts: DigestAlert[]): Date | null {
+  let newest = "";
+  for (const a of alerts) {
+    const d = alertDate(a);
+    if (d && d > newest) newest = d;
+  }
+  if (!newest) return null;
+  const dt = new Date(newest);
+  if (Number.isNaN(dt.getTime())) return null;
+  const daysSinceMonday = (dt.getUTCDay() + 6) % 7;
+  dt.setUTCDate(dt.getUTCDate() - daysSinceMonday);
+  dt.setUTCHours(0, 0, 0, 0);
+  return dt;
+}
+
+/** `"3 updates across 3 companies this week"` (singular-aware). */
+export function digestHeroTitle(updateCount: number, companyCount: number): string {
+  const u = `${updateCount} update${updateCount === 1 ? "" : "s"}`;
+  const c = `${companyCount} compan${companyCount === 1 ? "y" : "ies"}`;
+  return `${u} across ${c} this week`;
+}
+
+/**
+ * Article URL for an `<a href>` in the HTML part: only absolute **https** links
+ * are emitted. `safeDigestUrl` (shared with the text part) still permits `http:`
+ * but the email never ships an insecure `href`, so `http:` article URLs fall
+ * back to plain text exactly like a `javascript:` one.
+ */
+function safeDigestHtmlUrl(url: unknown): string | null {
+  const safe = safeDigestUrl(url);
+  if (!safe) return null;
+  try {
+    return new URL(safe).protocol === "https:" ? safe : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Inline dark + class-based light chip for one signal type. */
+function chipHtml(signalType: string): string {
+  const chip = getEmailChip(signalType);
+  if (!chip.label) return "";
+  return (
+    `<span class="chip-${chip.family} chip-txt" style="display:inline-block;` +
+    `vertical-align:1px;margin-right:6px;padding:1px 5px;border-radius:3px;` +
+    `background:${chip.dark.fill};color:${chip.dark.text};font-family:${MONO_STACK};` +
+    `font-size:11px;font-weight:700;letter-spacing:.04em;line-height:16px;">` +
+    `${escapeHtml(chip.label)}</span>`
+  );
+}
+
+/** PRIVATE / ticker / PUBLIC tag for a company header row, or `""`. */
+function companyTagHtml(alert: DigestAlert): string {
+  const ticker = alert.ticker?.trim();
+  let text: string | null = null;
+  if (alert.isPublic === false) text = "PRIVATE";
+  else if (ticker) text = ticker.toUpperCase();
+  else if (alert.isPublic === true) text = "PUBLIC";
+  if (!text) return "";
+  return (
+    `<span class="c-tag" style="display:inline-block;border:1px solid #444444;` +
+    `border-radius:3px;padding:1px 6px;font-family:${MONO_STACK};font-size:10px;` +
+    `letter-spacing:.06em;color:#9ca3af;white-space:nowrap;">${escapeHtml(text)}</span>`
+  );
+}
+
+/** Headline link (article URL) or quiet plain-text fallback when unusable. */
+function headlineHtml(alert: DigestAlert): string {
+  const text = escapeHtml(clampHeadline(alert.summary));
+  const safeUrl = safeDigestHtmlUrl(alert.url);
+  if (safeUrl) {
+    return (
+      `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" ` +
+      `class="c-txt" style="color:#d4d4d4;text-decoration:underline;font-weight:600;">` +
+      `${text}</a>`
+    );
+  }
+  // Quiet fallback: render the headline as plain text — no "(link unavailable)".
+  return `<span class="c-txt" style="color:#d4d4d4;font-weight:600;">${text}</span>`;
+}
+
+/** Muted meta line: `Relevance 93 · Source · Nov 17`. */
+function metaLineHtml(alert: DigestAlert): string {
+  const rest = digestItemMetaLine(alert);
+  const tail = rest ? ` &middot; ${escapeHtml(rest)}` : "";
+  return (
+    `<p class="c-mut" style="margin:3px 0 0;font-size:12px;line-height:16px;color:#9ca3af;">` +
+    `Relevance <span class="c-txt" style="color:#d4d4d4;font-weight:700;">` +
+    `${alertRelevance(alert)}</span>${tail}</p>`
+  );
+}
+
+/** Hidden preheader: lead story + the next (up to two) company names. */
+export function renderDigestPreheader(alerts: DigestAlert[]): string {
+  const sorted = sortDigestAlerts(alerts);
+  if (sorted.length === 0) return "Your weekly watchlist digest.";
+  const lead = clampHeadline(sorted[0].summary, 140);
+  const others: string[] = [];
+  for (const a of sorted.slice(1)) {
+    if (!others.includes(a.entityName) && others.length < 2) others.push(a.entityName);
+  }
+  const also = others.length ? ` Also: ${others.join(", ")}.` : "";
+  return `${lead}${also}`;
+}
+
+/** `<style>` block: mso resets, mobile tweaks and the light-mode overrides. */
+const DIGEST_STYLE = `<style>
+body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
+@media only screen and (max-width:480px){
+.h1{font-size:20px !important;line-height:26px !important;}
+.px{padding-left:16px !important;padding-right:16px !important;}
+.btn{display:block !important;width:100% !important;}
+.btn a{display:block !important;text-align:center !important;}
+.hide-m{display:none !important;}
+}
+@media (prefers-color-scheme: light){
+.c-page{background:#f4f5f7 !important;}
+.c-card{background:#ffffff !important;}
+.c-txt{color:#1a1a1a !important;}
+.c-mut{color:#5b6270 !important;}
+.c-acc{color:#0e7490 !important;}
+.c-brand{color:#047857 !important;}
+.c-brd{border-color:#e2e4e7 !important;}
+.c-brdtop{border-top-color:#e2e4e7 !important;}
+.c-brd-bot{border-bottom-color:#e2e4e7 !important;}
+.c-tag{border-color:#c5cad1 !important;color:#5b6270 !important;}
+.c-head{border-bottom-color:#047857 !important;}
+.c-cta{background:#0e7490 !important;}
+.c-cta-txt{color:#ffffff !important;}
+.chip-mint{background:#cde4dd !important;}
+.chip-gold{background:#f0ddce !important;}
+.chip-pink{background:#ecd2ef !important;}
+.chip-muted{background:#e1e3e6 !important;}
+.chip-txt{color:#1a1a1a !important;}
+}
+</style>`;
+
 /** HTML part of the digest. Inline styles only (email clients strip <style>). */
 export function renderDigestHtml(input: DigestRenderInput): string {
   const site = (input.siteUrl ?? getSiteUrl()).replace(/\/+$/, "");
-  const groups = groupDigestAlerts(input.alerts);
+  const sorted = sortDigestAlerts(input.alerts);
+  const groups = groupSortedDigestAlerts(input.alerts);
+  const total = sorted.length;
+  const companyNames = Array.from(new Set(sorted.map((a) => a.entityName))).sort(
+    (a, b) => a.localeCompare(b),
+  );
 
-  const sections = groups
-    .map(([entity, alerts]) => {
-      // Company heading links to the in-app CompanyDrawer (`?company=<name>`);
-      // without a valid https deep link it degrades to plain text.
+  const weekStart = digestWeekStart(sorted);
+  const weekLabel = weekStart ? formatDigestDate(weekStart.toISOString()) : null;
+  const useFlat = total > DIGEST_VARIANT_A_MAX;
+
+  const ctaHref = escapeHtml(`${site}/`);
+  const heroSub = weekLabel
+    ? `Week of ${escapeHtml(weekLabel)} &middot; sorted by relevance`
+    : "Sorted by relevance";
+
+  // ── header + hero + CTA ──────────────────────────────────────────────────
+  const header =
+    `<tr><td class="px c-page c-head" bgcolor="#0a0a0f" style="padding:14px 24px;background:#0a0a0f;border-bottom:2px solid #6decb9;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
+    `<td style="font-family:${MONO_STACK};font-size:13px;letter-spacing:.08em;color:#d4d4d4;">` +
+    `<span class="c-brand" style="color:#6decb9;font-weight:700;">AST</span>&nbsp;&nbsp;` +
+    `<span class="c-mut hide-m" style="color:#9ca3af;white-space:nowrap;">ALWAYS SCHEMING TERMINAL</span></td>` +
+    `<td align="right" class="c-mut" style="white-space:nowrap;font-family:${MONO_STACK};font-size:11px;letter-spacing:.08em;color:#9ca3af;">WEEKLY DIGEST</td>` +
+    `</tr></table></td></tr>`;
+
+  const hero =
+    `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:18px 24px 0;background:#0a0a0f;">` +
+    `<p class="h1 c-txt" style="margin:0;font-size:22px;line-height:28px;font-weight:700;color:#d4d4d4;">${escapeHtml(digestHeroTitle(total, companyNames.length))}</p>` +
+    `<p class="c-mut" style="margin:4px 0 0;font-size:14px;line-height:20px;color:#9ca3af;">${heroSub}</p></td></tr>`;
+
+  const cta =
+    `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:14px 24px 0;background:#0a0a0f;">` +
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="btn"><tr>` +
+    `<td class="c-cta" bgcolor="#77c4d9" style="background:#77c4d9;border-radius:6px;">` +
+    `<a href="${ctaHref}" class="c-cta-txt" style="display:inline-block;padding:11px 20px;font-size:15px;font-weight:700;line-height:18px;color:#0a0a0f;text-decoration:none;">Open in Terminal &rarr;</a>` +
+    `</td></tr></table></td></tr>`;
+
+  // ── the list: Variant A (grouped) or B (flat) ─────────────────────────────
+  let listSection: string;
+  if (useFlat) {
+    const shown = sorted.slice(0, DIGEST_TOTAL_MAX);
+    const rows = shown
+      .map((a, i) => {
+        const companyUrl = buildDigestCompanyUrl(a.entityName, site);
+        const nameLink = companyUrl
+          ? `<a href="${escapeHtml(companyUrl)}" class="c-txt" style="color:#d4d4d4;font-weight:700;text-decoration:underline;">${escapeHtml(a.entityName)}</a>`
+          : `<span class="c-txt" style="color:#d4d4d4;font-weight:700;">${escapeHtml(a.entityName)}</span>`;
+        const rest = digestItemMetaLine(a);
+        const tail = rest ? ` &middot; ${escapeHtml(rest)}` : "";
+        const last = i === shown.length - 1;
+        const border = last ? "" : "border-bottom:1px solid #2a2a2a;";
+        return (
+          `<tr><td class="${last ? "" : "c-brd-bot"}" style="padding:11px 0;${border}">` +
+          `<p style="margin:0;font-size:16px;line-height:22px;">${chipHtml(a.signalType)}${headlineHtml(a)}</p>` +
+          `<p class="c-mut" style="margin:3px 0 0;font-size:12px;line-height:16px;color:#9ca3af;">` +
+          `${nameLink} &middot; Relevance <span class="c-txt" style="color:#d4d4d4;font-weight:700;">${alertRelevance(a)}</span>${tail}</p>` +
+          `</td></tr>`
+        );
+      })
+      .join("");
+    listSection =
+      `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:4px 24px 0;background:#0a0a0f;">` +
+      `<p class="c-mut" style="margin:8px 0 0;font-family:${MONO_STACK};font-size:11px;letter-spacing:.08em;color:#9ca3af;">RANKED BY RELEVANCE</p>` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:4px;">${rows}</table>` +
+      `</td></tr>`;
+  } else {
+    let budget = DIGEST_TOTAL_MAX;
+    const cards: string[] = [];
+    for (const [entity, list] of groups) {
+      if (budget <= 0) break;
+      const perShown = list.slice(0, Math.min(DIGEST_PER_COMPANY_MAX, budget));
+      if (perShown.length === 0) continue;
+      budget -= perShown.length;
+
       const companyUrl = buildDigestCompanyUrl(entity, site);
-      const heading = companyUrl
-        ? `<a href="${escapeHtml(companyUrl)}" style="color:#e7e9ee;text-decoration:none;">${escapeHtml(entity)}</a>`
+      const nameLink = companyUrl
+        ? `<a href="${escapeHtml(companyUrl)}" class="c-txt" style="color:#d4d4d4;text-decoration:underline;">${escapeHtml(entity)}</a>`
         : escapeHtml(entity);
+      const tag = companyTagHtml(list[0]);
 
-      const rows = alerts
-        .map((a) => {
-          const type = escapeHtml(humanSignalType(a.signalType));
-          const summary = escapeHtml(a.summary);
-          // Reject non-http(s) schemes before they reach an href; a rejected
-          // article degrades to plain text with an "invalid link" note. A valid
-          // article link opens in a new tab.
-          const safeUrl = safeDigestUrl(a.url);
-          const title = safeUrl
-            ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" style="color:#e7e9ee;text-decoration:none;font-size:15px;line-height:1.45;">${summary}</a>`
-            : `<span style="color:#e7e9ee;font-size:15px;line-height:1.45;">${summary}</span>
-      <span style="color:#6b7280;font-size:12px;"> (link unavailable)</span>`;
-          const meta = digestMetaLine(a);
-          const metaLine = meta
-            ? `\n    <div style="color:#6b7280;font-size:12px;margin-top:4px;">${escapeHtml(meta)}</div>`
-            : "";
-          return `<tr>
-  <td style="padding:10px 0;border-bottom:1px solid #232831;">
-    <div style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#7cc4ff;margin-bottom:4px;">
-      ${type} · score ${a.score.toFixed(2)}
-    </div>
-    ${title}${metaLine}
-  </td>
-</tr>`;
-        })
-        .join("\n");
+      const rows = perShown
+        .map(
+          (a) =>
+            `<tr><td class="c-brdtop" style="padding:9px 16px 10px;border-top:1px solid #2a2a2a;">` +
+            `<p style="margin:0;font-size:16px;line-height:22px;">${chipHtml(a.signalType)}${headlineHtml(a)}</p>` +
+            `${metaLineHtml(a)}</td></tr>`,
+        )
+        .join("");
 
-      return `<tr>
-  <td style="padding:20px 0 4px;font-size:16px;font-weight:700;color:#e7e9ee;">${heading}</td>
-</tr>
-<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table></td></tr>`;
-    })
-    .join("\n");
+      const overflowCount = Math.max(0, list.length - DIGEST_PER_COMPANY_MAX);
+      const overflowRow =
+        overflowCount > 0 && companyUrl
+          ? `<tr><td class="c-brdtop" style="padding:9px 16px 10px;border-top:1px solid #2a2a2a;font-size:12px;line-height:16px;">` +
+            `<a href="${escapeHtml(companyUrl)}" class="c-acc" style="color:#77c4d9;text-decoration:underline;">` +
+            `+${overflowCount} more ${escapeHtml(entity)} update${overflowCount === 1 ? "" : "s"} in Terminal &rarr;</a></td></tr>`
+          : "";
 
+      cards.push(
+        `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:12px 24px 0;background:#0a0a0f;">` +
+          `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#1e1e1e" class="c-card c-brd" style="background:#1e1e1e;border:1px solid #2a2a2a;border-radius:8px;">` +
+          `<tr><td style="padding:12px 16px 6px;">` +
+          `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
+          `<td style="font-size:16px;font-weight:700;line-height:22px;">${nameLink}</td>` +
+          `<td align="right">${tag}</td>` +
+          `</tr></table></td></tr>${rows}${overflowRow}</table></td></tr>`,
+      );
+    }
+    listSection = cards.join("\n");
+  }
+
+  // ── "See all N" only when the overall cap was hit ─────────────────────────
+  const seeAll =
+    total > DIGEST_TOTAL_MAX
+      ? `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:14px 24px 0;background:#0a0a0f;font-size:13px;line-height:18px;">` +
+        `<a href="${ctaHref}" class="c-acc" style="color:#77c4d9;text-decoration:underline;">See all ${total} in Terminal &rarr;</a></td></tr>`
+      : "";
+
+  // ── footer ────────────────────────────────────────────────────────────────
+  const reason = companyNames.length
+    ? `You get this because these companies are on your watchlist: ${companyNames
+        .map((n) => escapeHtml(n))
+        .join(", ")}.`
+    : "You receive this because you watch companies on Always Scheming Terminal.";
   const footerAddress = input.footerAddress
-    ? `<p style="margin:8px 0 0;color:#6b7280;font-size:12px;">${escapeHtml(input.footerAddress)}</p>`
+    ? `<p class="c-mut" style="margin:8px 0 0;color:#9ca3af;">${escapeHtml(input.footerAddress)}</p>`
     : "";
+  const footer =
+    `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:24px 24px 28px;background:#0a0a0f;font-size:12px;line-height:18px;color:#9ca3af;">` +
+    `<p class="c-mut" style="margin:0;color:#9ca3af;">${reason}</p>` +
+    `<p class="c-mut" style="margin:8px 0 0;color:#9ca3af;">` +
+    `<a href="${escapeHtml(site)}/profile" class="c-acc" style="color:#77c4d9;text-decoration:underline;">Manage watchlist</a> &middot; ` +
+    `<a href="${escapeHtml(input.unsubscribeUrl)}" class="c-acc" style="color:#77c4d9;text-decoration:underline;">Unsubscribe</a></p>` +
+    `${footerAddress}</td></tr>`;
+
+  const preheader = renderDigestPreheader(input.alerts);
 
   return `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AST weekly digest</title></head>
-<body style="margin:0;padding:0;background:#0b0d10;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b0d10;">
-<tr><td align="center" style="padding:28px 12px;">
-  <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;font:15px/1.5 ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#e7e9ee;">
-    <tr><td style="padding-bottom:6px;font-size:18px;font-weight:700;">Always Scheming Terminal</td></tr>
-    <tr><td style="padding-bottom:8px;color:#a6adba;">Your weekly watchlist digest</td></tr>
-${sections}
-    <tr><td style="padding-top:28px;border-top:1px solid #232831;color:#6b7280;font-size:12px;line-height:1.6;">
-      You receive this because you watch companies on Always Scheming Terminal.<br>
-      <a href="${escapeHtml(site)}/profile" style="color:#7cc4ff;">Manage your watchlist</a> ·
-      <a href="${escapeHtml(input.unsubscribeUrl)}" style="color:#7cc4ff;">Unsubscribe</a>
-      ${footerAddress}
-    </td></tr>
-  </table>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><meta name="supported-color-schemes" content="dark light"><meta name="x-apple-disable-message-reformatting"><title>AST weekly digest</title>${DIGEST_STYLE}</head>
+<body class="c-page" bgcolor="#0a0a0f" style="margin:0;padding:0;background:#0a0a0f;">
+<div style="display:none;max-height:0;max-width:0;opacity:0;overflow:hidden;font-size:1px;line-height:1px;color:#0a0a0f;mso-hide:all;">${escapeHtml(preheader)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a0f" class="c-page" style="background:#0a0a0f;">
+<tr><td align="center" style="padding:20px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="c-txt" style="width:100%;max-width:600px;font-family:${SANS_STACK};font-size:15px;line-height:1.5;color:#d4d4d4;">
+${header}
+${hero}
+${cta}
+${listSection}
+${seeAll}
+${footer}
+</table>
 </td></tr>
 </table>
 </body>
