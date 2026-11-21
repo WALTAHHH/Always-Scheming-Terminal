@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import type { FeedItem } from "@/lib/database.types";
 import { TimeAgo } from "./TimeAgo";
 import Image from "next/image";
@@ -122,9 +123,15 @@ function getArticleAge(publishedAt: string | null): "fresh" | "normal" | "old" {
 interface FeedRowProps {
   isRelated?: boolean;
   item: FeedItem;
+  /**
+   * Optional badge (e.g. a cluster's importance tier) rendered in the row's
+   * right gutter, stacked above the external-link icon so the two never
+   * overlap. Passed as a slot so ClusterRow owns the badge content/styling.
+   */
+  importanceBadge?: ReactNode;
 }
 
-export function FeedRow({ item, isRelated = false }: FeedRowProps) {
+export function FeedRow({ item, isRelated = false, importanceBadge }: FeedRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [age, setAge] = useState<"fresh" | "normal" | "old">("normal");
   
@@ -204,27 +211,32 @@ export function FeedRow({ item, isRelated = false }: FeedRowProps) {
             <TagChips tags={item.tags as Record<string, string[]> | null} />
           </div>
 
-          {/* External link indicator — always visible (muted), accents on hover */}
-          <div
-            className="flex-shrink-0 text-ast-muted/40 group-hover:text-ast-accent transition-colors pt-1"
-            aria-hidden="true"
-            title="Opens in a new tab"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {/* Right gutter — an optional importance badge stacked above the
+              external-link indicator (flex-col items-end) so the two share a
+              column and never overlap. */}
+          <div className="flex-shrink-0 flex flex-col items-end gap-1 pt-1">
+            {importanceBadge}
+            <div
+              className="text-ast-muted/40 group-hover:text-ast-accent transition-colors"
+              aria-hidden="true"
+              title="Opens in a new tab"
             >
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </div>
           </div>
         </div>
       </a>

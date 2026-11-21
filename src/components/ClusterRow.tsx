@@ -16,14 +16,15 @@ export function ClusterRow({ cluster }: ClusterRowProps) {
 
   const scorePercent = ((cluster.importanceScore ?? 0) * 100).toFixed(0);
   const importanceBadge = tier !== "low" ? (
-    <div className="absolute top-3 right-3 flex items-center gap-1.5 group/tip cursor-default">
+    <div className="relative flex items-center gap-1.5 group/tip cursor-default">
       <span className={`w-1.5 h-1.5 rounded-full ${tierStyle.dotColor}`} />
       {tierStyle.label && (
         <span className={`text-[9px] font-semibold tracking-wider ${tierStyle.color}`}>
           {tierStyle.label}
         </span>
       )}
-      {/* Tooltip */}
+      {/* Tooltip — anchored to the badge's bottom-left so it opens leftward and
+          is never clipped by the row's right edge. */}
       <div className="absolute right-0 top-full mt-1 hidden group-hover/tip:block z-50">
         <div className={`px-2.5 py-1.5 rounded text-[10px] whitespace-nowrap border border-ast-border bg-ast-surface shadow-lg ${tierStyle.color}`}>
           {tierStyle.tooltip} <span className="text-ast-muted">({scorePercent})</span>
@@ -34,21 +35,14 @@ export function ClusterRow({ cluster }: ClusterRowProps) {
 
   // Single item — render with importance indicator if noteworthy
   if (cluster.related.length === 0) {
-    return (
-      <div className="relative">
-        <FeedRow item={cluster.lead} />
-        {importanceBadge}
-      </div>
-    );
+    return <FeedRow item={cluster.lead} importanceBadge={importanceBadge} />;
   }
 
   return (
     <div className={`${cluster.isMultiSource ? "border-l-2 border-l-ast-gold" : ""}`}>
       {/* Lead article */}
-      <div className="relative">
-        <FeedRow item={cluster.lead} />
-        {importanceBadge}
-
+      <div>
+        <FeedRow item={cluster.lead} importanceBadge={importanceBadge} />
         {/* Cluster indicator bar */}
         <div className="px-3 pb-2 flex items-center gap-2">
           <button
