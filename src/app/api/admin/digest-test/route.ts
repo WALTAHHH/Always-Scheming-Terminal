@@ -186,14 +186,22 @@ export async function POST(_req: NextRequest) {
 
     const [entityRes, signalRes] = await Promise.all([
       entityIds.length
-        ? supabase.from("entities").select("id, canonical_name").in("id", entityIds)
+        ? supabase
+            .from("entities")
+            .select("id, canonical_name, ticker, is_public")
+            .in("id", entityIds)
         : Promise.resolve({ data: [], error: null }),
       signalIds.length
         ? supabase.from("signals").select("id, summary, content_id").in("id", signalIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
 
-    const entities = (entityRes.data ?? []) as { id: string; canonical_name: string }[];
+    const entities = (entityRes.data ?? []) as {
+      id: string;
+      canonical_name: string;
+      ticker: string | null;
+      is_public: boolean | null;
+    }[];
     const signals = (signalRes.data ?? []) as {
       id: string;
       summary: string;
@@ -202,11 +210,24 @@ export async function POST(_req: NextRequest) {
 
     const contentIds = Array.from(new Set(signals.map((s) => s.content_id)));
     const { data: contentData } = contentIds.length
-      ? await supabase.from("content").select("id, url, source_id").in("id", contentIds)
-      : { data: [] as { id: string; url: string; source_id: string | null }[] };
+      ? await supabase
+          .from("content")
+          .select("id, url, title, published_at, source_id")
+          .in("id", contentIds)
+      : {
+          data: [] as {
+            id: string;
+            url: string;
+            title: string | null;
+            published_at: string | null;
+            source_id: string | null;
+          }[],
+        };
     const contentRows = (contentData ?? []) as {
       id: string;
       url: string;
+      title: string | null;
+      published_at: string | null;
       source_id: string | null;
     }[];
 
@@ -224,6 +245,8 @@ export async function POST(_req: NextRequest) {
     const content = contentRows.map((c) => ({
       id: c.id,
       url: c.url,
+      title: c.title,
+      published_at: c.published_at,
       source_name: (c.source_id && sourceNameById.get(c.source_id)) || null,
     }));
 

@@ -241,6 +241,45 @@ export interface DigestAlert {
    * omits the source half of the meta line.
    */
   sourceName?: string | null;
+  /**
+   * Exchange ticker symbol when the entity is a listed company (e.g. `ACME`).
+   * `null`/absent covers private companies and entities with no stored ticker.
+   */
+  ticker?: string | null;
+  /**
+   * `true` when the entity is publicly listed, `false` when known-private, and
+   * `null`/absent when the listing status is unknown. Drives the digest's
+   * PRIVATE tag / ticker tag.
+   */
+  isPublic?: boolean | null;
+  /**
+   * The source article's own title (the `content.title` row), when distinct
+   * from {@link DigestAlert.summary}. Optional — the digest falls back to the
+   * summary when it is absent.
+   */
+  title?: string | null;
+  /**
+   * The source's publication timestamp (the `content.published_at` row), used
+   * for the digest date when present. Distinct from {@link DigestAlert.createdAt},
+   * which is when the alert itself was recorded.
+   */
+  publishedAt?: string | null;
+  /**
+   * Whole-number relevance on a 0–100 scale, `round(score * 100)` — the
+   * reader-facing "Relevance 93" figure. Computed by
+   * {@link digestRelevance}; present on alerts produced by the digest pipeline.
+   */
+  relevance?: number;
+}
+
+/**
+ * Reader-facing relevance: `score` (a 0–1 ranking value) as a 0–100 integer,
+ * `round(score × 100)`. Non-finite input yields `0`; out-of-range values are
+ * clamped to `[0, 100]` so a bad upstream score can never print "Relevance 140".
+ */
+export function digestRelevance(score: number): number {
+  if (typeof score !== "number" || !Number.isFinite(score)) return 0;
+  return Math.min(100, Math.max(0, Math.round(score * 100)));
 }
 
 export interface DigestRenderInput {
@@ -567,30 +606,45 @@ export function buildSampleDigestAlerts(siteUrl: string): DigestAlert[] {
       signalType: "acquisition",
       summary:
         "SAMPLE — Acme Games acquires Pixel Forge for $120M in a cash-and-stock deal.",
+      title: "Acme Games acquires Pixel Forge for $120M",
       score: 0.93,
+      relevance: 93,
       url: `${base}/?sample=digest-1`,
       createdAt: "2026-11-17T09:00:00.000Z",
+      publishedAt: "2026-11-17T08:30:00.000Z",
       sourceName: "The Game Business",
+      ticker: "ACME",
+      isPublic: true,
     },
     {
       entityName: "Northstar Interactive",
       signalType: "fundraising",
       summary:
         "SAMPLE — Northstar Interactive raises a $45M Series B led by Horizon Ventures.",
+      title: "Northstar Interactive raises $45M Series B",
       score: 0.88,
+      relevance: 88,
       url: `${base}/?sample=digest-2`,
       createdAt: "2026-11-16T09:00:00.000Z",
+      publishedAt: "2026-11-16T08:15:00.000Z",
       sourceName: "PocketGamer.biz",
+      ticker: null,
+      isPublic: false,
     },
     {
       entityName: "Cobalt Studios",
       signalType: "layoffs",
       summary:
         "SAMPLE — Cobalt Studios cuts 80 roles as its live-service project winds down.",
+      title: "Cobalt Studios cuts 80 roles",
       score: 0.81,
+      relevance: 81,
       url: `${base}/?sample=digest-3`,
       createdAt: "2026-11-15T09:00:00.000Z",
+      publishedAt: "2026-11-15T07:45:00.000Z",
       sourceName: "GamesIndustry.biz",
+      ticker: "CBLT",
+      isPublic: true,
     },
   ];
 }

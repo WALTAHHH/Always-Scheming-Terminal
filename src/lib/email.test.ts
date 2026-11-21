@@ -17,6 +17,7 @@ import {
   buildDigestCompanyUrl,
   formatDigestDate,
   digestMetaLine,
+  digestRelevance,
   buildSampleDigestAlerts,
   type DigestAlert,
   type DigestRenderInput,
@@ -630,5 +631,52 @@ describe('digest item deep links + source/date meta line', () => {
       expect(digestMetaLine(s)).toMatch(/· Nov \d+/);
     }
     expect(digestMetaLine(samples[0])).toBe('The Game Business · Nov 17');
+  });
+
+  it('sample alerts carry ticker/isPublic (one public, one private) and a numeric relevance', () => {
+    const samples = buildSampleDigestAlerts('https://terminal.example.com');
+    expect(samples.length).toBeGreaterThanOrEqual(3);
+
+    // Every sample carries the reader-facing relevance as a 0-100 integer.
+    for (const s of samples) {
+      expect(Number.isInteger(s.relevance)).toBe(true);
+      expect(s.relevance).toBe(Math.round(s.score * 100));
+    }
+
+    // At least one public company with a ticker, and at least one private.
+    const publicWithTicker = samples.filter(
+      (s) => s.isPublic === true && typeof s.ticker === 'string' && s.ticker.length > 0,
+    );
+    const privateCos = samples.filter((s) => s.isPublic === false);
+    expect(publicWithTicker.length).toBeGreaterThanOrEqual(1);
+    expect(privateCos.length).toBeGreaterThanOrEqual(1);
+
+    // Mixed signal types across the sample week.
+    expect(new Set(samples.map((s) => s.signalType)).size).toBeGreaterThanOrEqual(2);
+
+    // Content title + publication date are present so card 2 can render the
+    // headline and the "Source · Mon DD" meta line without recomputing them.
+    for (const s of samples) {
+      expect(s.title).toBeTruthy();
+      expect(s.publishedAt).toBeTruthy();
+      expect(formatDigestDate(s.publishedAt)).not.toBeNull();
+    }
+  });
+});
+
+describe('digestRelevance', () => {
+  it('rounds score*100 to a 0-100 integer', () => {
+    expect(digestRelevance(0.93)).toBe(93);
+    expect(digestRelevance(0.88)).toBe(88);
+    expect(digestRelevance(0.005)).toBe(1);
+    expect(digestRelevance(0)).toBe(0);
+    expect(digestRelevance(1)).toBe(100);
+  });
+
+  it('clamps out-of-range and non-finite scores', () => {
+    expect(digestRelevance(1.4)).toBe(100);
+    expect(digestRelevance(-0.2)).toBe(0);
+    expect(digestRelevance(Number.NaN)).toBe(0);
+    expect(digestRelevance(Number.POSITIVE_INFINITY)).toBe(0);
   });
 });

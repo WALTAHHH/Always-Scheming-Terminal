@@ -40,6 +40,9 @@ vi.mock('./email', () => ({
   buildDigestUnsubHeaders: vi.fn(),
   getDigestFooterAddress: vi.fn(),
   getSiteUrl: vi.fn(),
+  digestRelevance: vi.fn((score: number) =>
+    Number.isFinite(score) ? Math.min(100, Math.max(0, Math.round(score * 100))) : 0,
+  ),
   renderDigestHtml: vi.fn(() => '<html></html>'),
   renderDigestSubject: vi.fn((n: number) => `Weekly AST watchlist digest — ${n} updates`),
   renderDigestText: vi.fn(() => 'text'),
@@ -2158,6 +2161,54 @@ describe('buildDigestAlerts', () => {
       sourceName: 'The Game Business',
       createdAt: '2026-11-17T09:00:00.000Z',
     });
+  });
+
+  it('carries ticker, is_public, the content title/published date and a numeric relevance', () => {
+    const out = buildDigestAlerts(
+      [alert],
+      [
+        {
+          id: 'ent-1',
+          canonical_name: 'Acme Games',
+          ticker: 'ACME',
+          is_public: true,
+        },
+      ],
+      [{ id: 'sig-1', summary: 'Acme acquires Pixel Forge.', content_id: 'c-1' }],
+      [
+        {
+          id: 'c-1',
+          url: 'https://news.example.com/story',
+          title: 'Acme Games acquires Pixel Forge for $120M',
+          published_at: '2026-11-17T08:30:00.000Z',
+          source_name: 'The Game Business',
+        },
+      ],
+    );
+    expect(out[0]).toMatchObject({
+      entityName: 'Acme Games',
+      ticker: 'ACME',
+      isPublic: true,
+      title: 'Acme Games acquires Pixel Forge for $120M',
+      publishedAt: '2026-11-17T08:30:00.000Z',
+      // 0.9 -> 90, the reader-facing relevance integer
+      relevance: 90,
+    });
+  });
+
+  it('leaves ticker/isPublic/title/publishedAt null when the rows do not provide them', () => {
+    const out = buildDigestAlerts(
+      [alert],
+      [{ id: 'ent-1', canonical_name: 'Acme Games' }],
+      [{ id: 'sig-1', summary: 'Acme acquires Pixel Forge.', content_id: 'c-1' }],
+      [{ id: 'c-1', url: 'https://news.example.com/story' }],
+    );
+    expect(out[0].ticker).toBeNull();
+    expect(out[0].isPublic).toBeNull();
+    expect(out[0].title).toBeNull();
+    expect(out[0].publishedAt).toBeNull();
+    // relevance is always derived from the score, never missing.
+    expect(out[0].relevance).toBe(90);
   });
 
   it('leaves sourceName null when the content row has no source name', () => {
