@@ -596,10 +596,10 @@ describe('digest item deep links + source/date meta line', () => {
     expect(digestMetaLine({ ...alert, sourceName: '  ', createdAt: null })).toBeNull();
   });
 
-  it('links the company heading to the drawer deep link', () => {
+  it('links the company heading to the drawer deep link (accent, bold, not underlined)', () => {
     const html = renderDigestHtml(input);
     expect(html).toContain(
-      '<a href="https://example.com/?company=Acme%20Games" class="c-txt" style="color:#d4d4d4;text-decoration:underline;">Acme Games</a>',
+      '<a href="https://example.com/?company=Acme%20Games" class="c-acc" style="color:#77c4d9;font-weight:700;text-decoration:none;-webkit-text-decoration:none;">Acme Games</a>',
     );
   });
 
@@ -860,5 +860,136 @@ describe('digest redesign v2 — layout, truncation, escaping', () => {
     });
     const html = renderDigestHtml(inputOf([mk({ entityName: 'Acme' })]));
     expect(html).toContain('href="https://example.com/unsubscribe?token=xyz"');
+  });
+});
+
+describe('digest no-underline affordances + link contrast', () => {
+  const anchors = (html: string) => [...html.matchAll(/<a\b[^>]*>/g)].map((m) => m[0]);
+  const FOOTER = /href="https:\/\/example\.com\/(profile|unsubscribe)/;
+
+  const aInput = (alerts: DigestAlert[]): DigestRenderInput => ({
+    alerts,
+    unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+    footerAddress: '1 Terminal Way, Neo Baku',
+    siteUrl: 'https://example.com',
+  });
+
+  const story = (over: Partial<DigestAlert> & { entityName: string }): DigestAlert => ({
+    signalType: 'acquisition',
+    summary: 'A headline',
+    score: 0.9,
+    url: 'https://news.example.com/story',
+    createdAt: '2026-11-17T09:00:00.000Z',
+    sourceName: 'The Verge',
+    ...over,
+  });
+
+  it('headline link is primary-weight, not underlined, with a nowrap accent arrow', () => {
+    const html = renderDigestHtml(aInput([story({ entityName: 'Acme Games' })]));
+    expect(html).toContain(
+      '<a href="https://news.example.com/story" target="_blank" rel="noopener noreferrer" class="c-txt" style="color:#d4d4d4;text-decoration:none;-webkit-text-decoration:none;font-weight:600;line-height:1.35;">',
+    );
+    expect(html).toContain(
+      '<span class="c-acc" style="color:#77c4d9;white-space:nowrap;">&nbsp;&#8599;</span>',
+    );
+  });
+
+  it('underlines ONLY the footer links — never headlines/company/button (Variant A)', () => {
+    const html = renderDigestHtml(aInput(buildSampleDigestAlerts('https://example.com')));
+    const tags = anchors(html);
+    const underlined = tags.filter((t) => /text-decoration:underline/.test(t));
+    expect(underlined).toHaveLength(2);
+    for (const t of underlined) expect(t).toMatch(FOOTER);
+    for (const t of tags.filter((t) => !FOOTER.test(t))) {
+      expect(t).toContain('text-decoration:none');
+    }
+  });
+
+  it('drops the underline on the +N more overflow link (Variant A)', () => {
+    const five = Array.from({ length: 5 }, (_, i) =>
+      story({
+        entityName: 'Acme Games',
+        relevance: 90 - i,
+        url: `https://news.example.com/${i}`,
+        createdAt: `2026-11-1${i}T09:00:00.000Z`,
+      }),
+    );
+    const html = renderDigestHtml(aInput(five));
+    expect(html).toContain('+2 more Acme Games updates in Terminal');
+    const tags = anchors(html);
+    const underlined = tags.filter((t) => /text-decoration:underline/.test(t));
+    expect(underlined).toHaveLength(2);
+    for (const t of underlined) expect(t).toMatch(FOOTER);
+    for (const t of tags.filter((t) => !FOOTER.test(t))) {
+      expect(t).toContain('text-decoration:none');
+    }
+  });
+
+  it('underlines ONLY the footer links across 15 ranked rows + See all (Variant B)', () => {
+    const twenty = Array.from({ length: 20 }, (_, i) =>
+      story({
+        entityName: `Co ${i}`,
+        relevance: 100 - i,
+        url: `https://news.example.com/${i}`,
+      }),
+    );
+    const html = renderDigestHtml(aInput(twenty));
+    expect(html).toContain('See all 20 in Terminal');
+    const tags = anchors(html);
+    const underlined = tags.filter((t) => /text-decoration:underline/.test(t));
+    expect(underlined).toHaveLength(2);
+    for (const t of underlined) expect(t).toMatch(FOOTER);
+    for (const t of tags.filter((t) => !FOOTER.test(t))) {
+      expect(t).toContain('text-decoration:none');
+    }
+  });
+
+  it('footer Manage watchlist / Unsubscribe links keep the underline', () => {
+    const html = renderDigestHtml(aInput(buildSampleDigestAlerts('https://example.com')));
+    expect(html).toContain(
+      'class="c-acc u" style="color:#77c4d9;text-decoration:underline;-webkit-text-decoration:underline;">Manage watchlist</a>',
+    );
+    expect(html).toContain(
+      'class="c-acc u" style="color:#77c4d9;text-decoration:underline;-webkit-text-decoration:underline;">Unsubscribe</a>',
+    );
+  });
+
+  it('wraps the footer postal address to resist client auto-link underlining', () => {
+    const html = renderDigestHtml(aInput(buildSampleDigestAlerts('https://example.com')));
+    expect(html).toContain('class="c-mut c-addr"');
+    expect(html).toContain('x-apple-data-detectors="false"');
+    expect(html).toContain('a[x-apple-data-detectors]{color:inherit !important;text-decoration:none !important;');
+  });
+
+  // WCAG 2.x relative-luminance contrast helper.
+  const chan = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const lum = (hex: string) => {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b);
+  };
+  const contrast = (a: string, b: string) => {
+    const la = lum(a);
+    const lb = lum(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+
+  it('the accent + primary link colours meet WCAG AA (>= 4.5) on both themes', () => {
+    const cases: [string, string, string][] = [
+      ['accent link on dark page', '#77c4d9', '#0a0a0f'],
+      ['accent link on dark card', '#77c4d9', '#1e1e1e'],
+      ['accent link on light card', '#0e7490', '#ffffff'],
+      ['accent link on light page', '#0e7490', '#f4f5f7'],
+      ['primary headline on dark', '#d4d4d4', '#0a0a0f'],
+      ['primary headline on light', '#1a1a1a', '#ffffff'],
+    ];
+    for (const [label, fg, bg] of cases) {
+      expect(contrast(fg, bg), label).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });

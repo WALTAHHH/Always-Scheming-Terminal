@@ -616,12 +616,12 @@ function headlineHtml(alert: DigestAlert): string {
   if (safeUrl) {
     return (
       `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" ` +
-      `class="c-txt" style="color:#d4d4d4;text-decoration:underline;font-weight:600;">` +
-      `${text}</a>`
+      `class="c-txt" style="color:#d4d4d4;text-decoration:none;-webkit-text-decoration:none;font-weight:600;line-height:1.35;">` +
+      `${text}<span class="c-acc" style="color:#77c4d9;white-space:nowrap;">&nbsp;&#8599;</span></a>`
     );
   }
   // Quiet fallback: render the headline as plain text — no "(link unavailable)".
-  return `<span class="c-txt" style="color:#d4d4d4;font-weight:600;">${text}</span>`;
+  return `<span class="c-txt" style="color:#d4d4d4;font-weight:600;line-height:1.35;">${text}</span>`;
 }
 
 /** Muted meta line: `Relevance 93 · Source · Nov 17`. */
@@ -652,6 +652,14 @@ export function renderDigestPreheader(alerts: DigestAlert[]): string {
 const DIGEST_STYLE = `<style>
 body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
 table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
+/* Neutralise client auto-detected links (Apple Mail date/address/phone
+   detectors) so the postal address + meta dates stay primary/muted instead of
+   blue-underlined. Gmail's iOS/Android app injects its own auto-link styling
+   that no CSS can override; see the .c-addr span markup for the best-effort
+   containment there. */
+a[x-apple-data-detectors]{color:inherit !important;text-decoration:none !important;font-size:inherit !important;font-family:inherit !important;font-weight:inherit !important;line-height:inherit !important;}
+.u{text-decoration:underline !important;-webkit-text-decoration:underline !important;}
+.c-addr{color:#9ca3af !important;}
 @media only screen and (max-width:480px){
 .h1{font-size:20px !important;line-height:26px !important;}
 .px{padding-left:16px !important;padding-right:16px !important;}
@@ -670,6 +678,7 @@ table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
 .c-brdtop{border-top-color:#e2e4e7 !important;}
 .c-brd-bot{border-bottom-color:#e2e4e7 !important;}
 .c-tag{border-color:#c5cad1 !important;color:#5b6270 !important;}
+.c-addr{color:#5b6270 !important;}
 .c-head{border-bottom-color:#047857 !important;}
 .c-cta{background:#0e7490 !important;}
 .c-cta-txt{color:#ffffff !important;}
@@ -719,7 +728,7 @@ export function renderDigestHtml(input: DigestRenderInput): string {
     `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:14px 24px 0;background:#0a0a0f;">` +
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="btn"><tr>` +
     `<td class="c-cta" bgcolor="#77c4d9" style="background:#77c4d9;border-radius:6px;">` +
-    `<a href="${ctaHref}" class="c-cta-txt" style="display:inline-block;padding:11px 20px;font-size:15px;font-weight:700;line-height:18px;color:#0a0a0f;text-decoration:none;">Open in Terminal &rarr;</a>` +
+    `<a href="${ctaHref}" class="c-cta-txt" style="display:inline-block;padding:11px 20px;font-size:15px;font-weight:700;line-height:18px;color:#0a0a0f;text-decoration:none;-webkit-text-decoration:none;">Open in Terminal &rarr;</a>` +
     `</td></tr></table></td></tr>`;
 
   // ── the list: Variant A (grouped) or B (flat) ─────────────────────────────
@@ -730,7 +739,7 @@ export function renderDigestHtml(input: DigestRenderInput): string {
       .map((a, i) => {
         const companyUrl = buildDigestCompanyUrl(a.entityName, site);
         const nameLink = companyUrl
-          ? `<a href="${escapeHtml(companyUrl)}" class="c-txt" style="color:#d4d4d4;font-weight:700;text-decoration:underline;">${escapeHtml(a.entityName)}</a>`
+          ? `<a href="${escapeHtml(companyUrl)}" class="c-acc" style="color:#77c4d9;font-weight:700;text-decoration:none;-webkit-text-decoration:none;">${escapeHtml(a.entityName)}</a>`
           : `<span class="c-txt" style="color:#d4d4d4;font-weight:700;">${escapeHtml(a.entityName)}</span>`;
         const rest = digestItemMetaLine(a);
         const tail = rest ? ` &middot; ${escapeHtml(rest)}` : "";
@@ -761,7 +770,7 @@ export function renderDigestHtml(input: DigestRenderInput): string {
 
       const companyUrl = buildDigestCompanyUrl(entity, site);
       const nameLink = companyUrl
-        ? `<a href="${escapeHtml(companyUrl)}" class="c-txt" style="color:#d4d4d4;text-decoration:underline;">${escapeHtml(entity)}</a>`
+        ? `<a href="${escapeHtml(companyUrl)}" class="c-acc" style="color:#77c4d9;font-weight:700;text-decoration:none;-webkit-text-decoration:none;">${escapeHtml(entity)}</a>`
         : escapeHtml(entity);
       const tag = companyTagHtml(list[0]);
 
@@ -778,7 +787,7 @@ export function renderDigestHtml(input: DigestRenderInput): string {
       const overflowRow =
         overflowCount > 0 && companyUrl
           ? `<tr><td class="c-brdtop" style="padding:9px 16px 10px;border-top:1px solid #2a2a2a;font-size:12px;line-height:16px;">` +
-            `<a href="${escapeHtml(companyUrl)}" class="c-acc" style="color:#77c4d9;text-decoration:underline;">` +
+            `<a href="${escapeHtml(companyUrl)}" class="c-acc" style="color:#77c4d9;text-decoration:none;-webkit-text-decoration:none;">` +
             `+${overflowCount} more ${escapeHtml(entity)} update${overflowCount === 1 ? "" : "s"} in Terminal &rarr;</a></td></tr>`
           : "";
 
@@ -799,7 +808,7 @@ export function renderDigestHtml(input: DigestRenderInput): string {
   const seeAll =
     total > DIGEST_TOTAL_MAX
       ? `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:14px 24px 0;background:#0a0a0f;font-size:13px;line-height:18px;">` +
-        `<a href="${ctaHref}" class="c-acc" style="color:#77c4d9;text-decoration:underline;">See all ${total} in Terminal &rarr;</a></td></tr>`
+        `<a href="${ctaHref}" class="c-acc" style="color:#77c4d9;text-decoration:none;-webkit-text-decoration:none;">See all ${total} in Terminal &rarr;</a></td></tr>`
       : "";
 
   // ── footer ────────────────────────────────────────────────────────────────
@@ -809,14 +818,16 @@ export function renderDigestHtml(input: DigestRenderInput): string {
         .join(", ")}.`
     : "You receive this because you watch companies on Always Scheming Terminal.";
   const footerAddress = input.footerAddress
-    ? `<p class="c-mut" style="margin:8px 0 0;color:#9ca3af;">${escapeHtml(input.footerAddress)}</p>`
+    ? `<p class="c-mut c-addr" style="margin:8px 0 0;color:#9ca3af;text-decoration:none;-webkit-text-decoration:none;">` +
+      `<span x-apple-data-detectors="false" style="color:inherit;text-decoration:inherit;-webkit-text-decoration:inherit;">` +
+      `${escapeHtml(input.footerAddress)}</span></p>`
     : "";
   const footer =
     `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:24px 24px 28px;background:#0a0a0f;font-size:12px;line-height:18px;color:#9ca3af;">` +
     `<p class="c-mut" style="margin:0;color:#9ca3af;">${reason}</p>` +
     `<p class="c-mut" style="margin:8px 0 0;color:#9ca3af;">` +
-    `<a href="${escapeHtml(site)}/profile" class="c-acc" style="color:#77c4d9;text-decoration:underline;">Manage watchlist</a> &middot; ` +
-    `<a href="${escapeHtml(input.unsubscribeUrl)}" class="c-acc" style="color:#77c4d9;text-decoration:underline;">Unsubscribe</a></p>` +
+    `<a href="${escapeHtml(site)}/profile" class="c-acc u" style="color:#77c4d9;text-decoration:underline;-webkit-text-decoration:underline;">Manage watchlist</a> &middot; ` +
+    `<a href="${escapeHtml(input.unsubscribeUrl)}" class="c-acc u" style="color:#77c4d9;text-decoration:underline;-webkit-text-decoration:underline;">Unsubscribe</a></p>` +
     `${footerAddress}</td></tr>`;
 
   const preheader = renderDigestPreheader(input.alerts);
