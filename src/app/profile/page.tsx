@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createAuthBrowserClient } from "@/lib/supabase";
@@ -11,6 +11,12 @@ import {
   type WatchlistEntry,
 } from "@/lib/watchlist";
 import TagPicker from "@/components/TagPicker";
+import {
+  getInitialLoadState,
+  isLoadablePreferencesPayload,
+  LoadErrorBanner,
+  type LoadState,
+} from "./load-state";
 
 // 9 segments from company-list-v1.md
 const SEGMENTS = [
@@ -38,16 +44,29 @@ const FOLLOWING_EMPTY_STATE =
 // user nothing and looks like a bug.
 const UNKNOWN_COMPANY = "Unknown company";
 
+// P0-1: writes are only ever allowed once the preferences GET has succeeded.
+//   'loading' — request in flight; render the loading UI, no controls.
+//   'ready'   — preferences loaded; every control may write.
+//   'error'   — request failed (network throw, non-OK status, or a body with no
+//               `preferences` object); render read-only + the Retry banner so a
+//               later edit can never PATCH empty defaults over the real data.
 export default function ProfilePage() {
   const router = useRouter();
-  const supabase = createAuthBrowserClient();
-  
-  const [loading, setLoading] = useState(true);
+  // P1-8/S6: createAuthBrowserClient() returns a new client on every call, so
+  // calling it in the render body churned the load effect's `[router, supabase]`
+  // dependency every render (a refetch loop). Memoise it so the client (and the
+  // effect) stay stable across re-renders.
+  const supabase = useMemo(() => createAuthBrowserClient(), []);
+
+  // P0-1: gate every write on a successful load.
+  const [loadState, setLoadState] = useState<LoadState>(getInitialLoadState);
+  // Bumped by the banner's Retry button to re-run the load effect.
+  const [reloadKey, setReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [email, setEmail] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
-  
+
   // Form state
   const [displayName, setDisplayName] = useState("");
   const [interests, setInterests] = useState<string[]>([]);
@@ -79,10 +98,17 @@ export default function ProfilePage() {
     "idle" | "saving" | "saved" | "error"
   >("idle");
 
+  // Only a fully-loaded page may mutate server state. Every write handler checks
+  // this first (defence in depth) and every control renders disabled when it is
+  // false, so a failed load can never PATCH empty defaults over real data.
+  const writesDisabled = loadState !== "ready";
+
   useEffect(() => {
     const fetchData = async () => {
+      setLoadState("loading");
+
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         router.push("/auth/login");
         return;
@@ -92,44 +118,60 @@ export default function ProfilePage() {
 
       try {
         const response = await fetch("/api/user/preferences");
-        if (response.ok) {
-          const data = await response.json();
-          setProfile(data.profile);
-          setPreferences(data.preferences);
-          setDisplayName(data.profile.display_name || "");
-          setInterests(data.preferences.interests || []);
-          setSegments(data.preferences.segments || []);
-          setSavedSegments(data.preferences.segments || []);
 
-          // Hydrate notification preferences (spec §5.5). `watchlist_email` is
-          // the single canonical weekly-digest gate — opt-in, so only an
-          // explicit `true` shows the toggle ON (matching `isDigestEnabled`).
-          // The legacy `digest` key is ignored.
-          const blob = (data.preferences?.notification_prefs ?? {}) as Record<
-            string,
-            unknown
-          >;
-          setNotificationPrefs(blob);
-          setDigestEnabled(blob.watchlist_email === true);
-          setMinScore(
-            typeof data.preferences?.watchlist_min_score === "number"
-              ? data.preferences.watchlist_min_score
-              : DEFAULT_WATCHLIST_MIN_SCORE
-          );
+        // A non-OK response (401/403/500/…) must surface as an error state, not
+        // silently leave the page on empty defaults.
+        if (!response.ok) {
+          throw new Error(`Failed to load preferences (${response.status})`);
         }
+
+        const data = await response.json();
+
+        // Treat a body without a `preferences` object as an error. An *empty*
+        // preferences object (new user) is valid and loads as 'ready'.
+        if (!isLoadablePreferencesPayload(data)) {
+          throw new Error("Malformed preferences response");
+        }
+
+        const prefs = data.preferences;
+        setProfile(data.profile ?? null);
+        setPreferences(prefs as UserPreferences);
+        setDisplayName(data.profile?.display_name || "");
+        setInterests(Array.isArray(prefs.interests) ? (prefs.interests as string[]) : []);
+        setSegments(Array.isArray(prefs.segments) ? (prefs.segments as string[]) : []);
+        setSavedSegments(Array.isArray(prefs.segments) ? (prefs.segments as string[]) : []);
+
+        // Hydrate notification preferences (spec §5.5). `watchlist_email` is
+        // the single canonical weekly-digest gate — opt-in, so only an
+        // explicit `true` shows the toggle ON (matching `isDigestEnabled`).
+        // The legacy `digest` key is ignored.
+        const blob = (prefs.notification_prefs ?? {}) as Record<string, unknown>;
+        setNotificationPrefs(blob);
+        setDigestEnabled(blob.watchlist_email === true);
+        setMinScore(
+          typeof prefs.watchlist_min_score === "number"
+            ? (prefs.watchlist_min_score as number)
+            : DEFAULT_WATCHLIST_MIN_SCORE
+        );
 
         // Watched entities for the Following list (spec §5.4). Fails soft to [].
         const watched = await fetchWatchlist();
         setWatchlist(watched.data);
+
+        // Success only after prefs hydrated — this is what unlocks writes.
+        setLoadState("ready");
       } catch (err) {
-        console.error("Failed to fetch profile", err);
-      } finally {
-        setLoading(false);
+        console.error("Failed to load profile preferences", err);
+        setLoadState("error");
       }
     };
 
     fetchData();
-  }, [router, supabase]);
+    // Supabase client is memoised above and `router` is stable, so this effect
+    // runs once (and again only when Retry bumps `reloadKey`) — never on a plain
+    // re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, supabase, reloadKey]);
 
   // Auto-dismiss the "Saved" confirmation after a short delay.
   useEffect(() => {
@@ -159,6 +201,8 @@ export default function ProfilePage() {
   };
 
   const handleSaveDisplayName = async () => {
+    // P0-1: never PATCH unless the real preferences loaded.
+    if (loadState !== "ready") return;
     setSaving(true);
     try {
       const response = await fetch("/api/user/preferences", {
@@ -181,6 +225,8 @@ export default function ProfilePage() {
   // only produces values that exist in the tag catalogue or that were already
   // saved, so a 400 means the catalogue changed under us — revert and surface it.
   const handleInterestsChange = async (next: string[]) => {
+    // P0-1: never PATCH unless the real preferences loaded.
+    if (loadState !== "ready") return;
     const previous = interests;
     setInterests(next);
     setInterestsStatus("saving");
@@ -205,6 +251,7 @@ export default function ProfilePage() {
   // clicks "Save preferences" (issue #112). Previously this autosaved with no
   // visible trigger or feedback.
   const handleToggleSegment = (segmentName: string) => {
+    if (loadState !== "ready") return;
     setSegments((prev) =>
       prev.includes(segmentName)
         ? prev.filter((s) => s !== segmentName)
@@ -219,6 +266,8 @@ export default function ProfilePage() {
     segments.some((s) => !savedSegments.includes(s));
 
   const handleSaveSegments = async () => {
+    // P0-1: never PATCH unless the real preferences loaded.
+    if (loadState !== "ready") return;
     setSegmentStatus("saving");
     try {
       const response = await fetch("/api/user/preferences", {
@@ -249,6 +298,7 @@ export default function ProfilePage() {
   // until the DELETE settles, so the pending state is actually observable and
   // a failed unfollow needs no revert. Success removes the row.
   const handleUnwatch = async (entityId: string) => {
+    if (loadState !== "ready") return;
     setUnwatchError(null);
     setUnwatching(entityId);
 
@@ -266,6 +316,8 @@ export default function ProfilePage() {
   // --- Notification preferences (spec §5.5) -------------------------------
   // Persist a partial update through the existing PATCH /api/user/preferences.
   const saveNotificationPrefs = async (payload: Record<string, unknown>) => {
+    // P0-1: never PATCH unless the real preferences loaded.
+    if (loadState !== "ready") return;
     setPrefsStatus("saving");
     try {
       const response = await fetch("/api/user/preferences", {
@@ -287,6 +339,7 @@ export default function ProfilePage() {
   // by the fan-out + unsubscribe routes; the legacy `digest` key is dropped
   // from the blob so the UI and the backend can never disagree again.
   const handleToggleDigest = async () => {
+    if (loadState !== "ready") return;
     const next = !digestEnabled;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { digest: _legacyDigest, ...rest } = notificationPrefs;
@@ -297,11 +350,12 @@ export default function ProfilePage() {
   };
 
   const handleMinScoreChange = async (value: number) => {
+    if (loadState !== "ready") return;
     setMinScore(value);
     await saveNotificationPrefs({ watchlist_min_score: value });
   };
 
-  if (loading) {
+  if (loadState === "loading") {
     return (
       <div className="min-h-screen bg-ast-bg flex items-center justify-center">
         <div className="text-ast-muted">Loading...</div>
@@ -312,6 +366,10 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-ast-bg">
       <div className="max-w-3xl mx-auto px-4 py-8">
+        {loadState === "error" && (
+          <LoadErrorBanner onRetry={() => setReloadKey((k) => k + 1)} />
+        )}
+
         <button
           onClick={() => router.push("/")}
           className="inline-flex items-center gap-2 px-3 py-1.5 mb-6 rounded border border-ast-border text-sm text-ast-text hover:border-ast-accent hover:text-ast-accent transition-colors"
@@ -348,13 +406,16 @@ export default function ProfilePage() {
                     type="text"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-ast-text focus:outline-none focus:ring-2 focus:ring-ast-accent"
+                    disabled={writesDisabled}
+                    aria-disabled={writesDisabled}
+                    className="flex-1 px-3 py-2 bg-ast-bg border border-ast-border rounded text-ast-text focus:outline-none focus:ring-2 focus:ring-ast-accent disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Your display name"
                   />
                   <button
                     onClick={handleSaveDisplayName}
-                    disabled={saving}
-                    className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/90 disabled:opacity-50"
+                    disabled={saving || writesDisabled}
+                    aria-disabled={saving || writesDisabled}
+                    className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {saving ? "Saving..." : "Save"}
                   </button>
@@ -387,7 +448,13 @@ export default function ProfilePage() {
               Topics you care about — pick from the existing tags below.
             </p>
 
-            <TagPicker selected={interests} onChange={handleInterestsChange} />
+            <div
+              aria-disabled={writesDisabled}
+              data-testid="interests-controls"
+              className={writesDisabled ? "opacity-50 pointer-events-none" : undefined}
+            >
+              <TagPicker selected={interests} onChange={handleInterestsChange} />
+            </div>
 
             <div className="mt-3 flex items-center gap-3" aria-live="polite">
               {interestsStatus === "saving" && (
@@ -423,7 +490,9 @@ export default function ProfilePage() {
                     type="checkbox"
                     checked={segments.includes(segment.name)}
                     onChange={() => handleToggleSegment(segment.name)}
-                    className="w-4 h-4 rounded border-ast-border text-ast-accent focus:ring-ast-accent"
+                    disabled={writesDisabled}
+                    aria-disabled={writesDisabled}
+                    className="w-4 h-4 rounded border-ast-border text-ast-accent focus:ring-ast-accent disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <div className="flex-1">
                     <div className="text-sm text-ast-text">{segment.name}</div>
@@ -437,7 +506,8 @@ export default function ProfilePage() {
             <div className="sticky bottom-4 z-10 mt-4 pt-4 border-t border-ast-border flex items-center gap-3 bg-ast-surface/95 backdrop-blur-sm rounded-b">
               <button
                 onClick={handleSaveSegments}
-                disabled={!segmentsDirty || segmentStatus === "saving"}
+                disabled={!segmentsDirty || segmentStatus === "saving" || writesDisabled}
+                aria-disabled={!segmentsDirty || segmentStatus === "saving" || writesDisabled}
                 className="px-4 py-2 bg-ast-accent text-ast-bg rounded font-medium hover:bg-ast-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {segmentStatus === "saving" ? "Saving..." : "Save preferences"}
@@ -520,7 +590,8 @@ export default function ProfilePage() {
                         <button
                           type="button"
                           onClick={() => handleUnwatch(entry.entity_id)}
-                          disabled={pending}
+                          disabled={pending || writesDisabled}
+                          aria-disabled={pending || writesDisabled}
                           aria-label={`Unfollow ${name}`}
                           className="shrink-0 px-2 py-1 rounded text-xs text-ast-muted hover:text-red-400 hover:bg-ast-bg disabled:opacity-50 disabled:cursor-wait"
                         >
@@ -555,7 +626,9 @@ export default function ProfilePage() {
                   type="checkbox"
                   checked={digestEnabled}
                   onChange={handleToggleDigest}
-                  className="mt-1 w-4 h-4 rounded border-ast-border text-ast-accent focus:ring-ast-accent"
+                  disabled={writesDisabled}
+                  aria-disabled={writesDisabled}
+                  className="mt-1 w-4 h-4 rounded border-ast-border text-ast-accent focus:ring-ast-accent disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <div>
                   <div className="text-sm text-ast-text">
@@ -583,7 +656,9 @@ export default function ProfilePage() {
                   step={0.05}
                   value={minScore}
                   onChange={(e) => handleMinScoreChange(Number(e.target.value))}
-                  className="w-full accent-ast-accent"
+                  disabled={writesDisabled}
+                  aria-disabled={writesDisabled}
+                  className="w-full accent-ast-accent disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <p className="text-xs text-ast-muted mt-2">
                   Only signals scoring {minScore.toFixed(2)} or higher are sent.
