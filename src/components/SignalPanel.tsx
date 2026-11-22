@@ -21,6 +21,12 @@ import { getSignalChip, getSignalStripeClass } from "@/lib/chip-styles";
 
 interface SignalPanelProps {
   items: FeedItem[];
+  /**
+   * Deep-link entry point: pre-select a filter chip. Allowlisted by the caller
+   * (`LiveFeed` parses `?filter=` against the same union), so an arbitrary
+   * query string can never reach this state.
+   */
+  initialFilter?: SourceFilter;
 }
 
 interface TopStory {
@@ -141,7 +147,7 @@ function ScoreBreakdownPanel({
   );
 }
 
-type SourceFilter = "all" | "analysis" | "news" | "watchlist";
+export type SourceFilter = "all" | "analysis" | "news" | "watchlist";
 
 const FILTER_CHIPS: { value: SourceFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -186,9 +192,9 @@ function SectionToggle({
   );
 }
 
-export function SignalPanel({ items }: SignalPanelProps) {
+export function SignalPanel({ items, initialFilter = "all" }: SignalPanelProps) {
   const [expandedStory] = useState<string | null>(null); // kept for future use
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>(initialFilter);
   const [signals, setSignals] = useState<DbSignal[]>([]);
   // Lowercased canonical names + tickers of the companies the user watches.
   const [watchedNames, setWatchedNames] = useState<Set<string>>(new Set());

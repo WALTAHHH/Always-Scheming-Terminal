@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import type { FeedItem } from "@/lib/database.types";
 import { Feed, matchesFilter } from "./Feed";
 import type { FilterState } from "./FilterBar";
 import { EMPTY_FILTERS } from "./FilterBar";
 import { NewItemsBanner } from "./NewItemsBanner";
-import { SignalPanel } from "./SignalPanel";
+import { SignalPanel, type SourceFilter } from "./SignalPanel";
 import { CompanyTray } from "./CompanyTray";
 import { CompanyDrawerPortal, setGlobalItems } from "./CompanyDrawer";
 import { CompanyTrayBoundary } from "./ErrorBoundary";
@@ -47,6 +48,31 @@ export function parseLayout(value: string | null): LayoutMode {
   return value === "feed" || value === "signal" || value === "split"
     ? value
     : DEFAULT_LAYOUT;
+}
+
+// ── deep-link query params ──────────────────────────────────────────────────
+// The weekly digest's CTA lands on `/?view=signals&filter=watchlist`. Both
+// params are allowlisted here and parsed client-side only: unknown/missing
+// values are ignored (no server trust, no effect when absent), so a hostile
+// link cannot select an arbitrary layout or filter.
+export function parseViewParam(value: string | null): LayoutMode | null {
+  if (value === "feed") return "feed";
+  if (value === "signal" || value === "signals") return "signal";
+  if (value === "split") return "split";
+  return null;
+}
+
+const FILTER_VALUES: readonly SourceFilter[] = [
+  "all",
+  "analysis",
+  "news",
+  "watchlist",
+];
+
+export function parseFilterParam(value: string | null): SourceFilter | null {
+  return value && (FILTER_VALUES as readonly string[]).includes(value)
+    ? (value as SourceFilter)
+    : null;
 }
 
 // Derive which panes are visible for a given layout. Kept pure so it can be
@@ -119,9 +145,15 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
   const [isDraggingV, setIsDraggingV] = useState(false);
   const leftWidthRef = useRef(50);
   const topHeightRef = useRef(60);
+  // Deep-link entry (digest CTA): `?view=signals&filter=watchlist`. Both are
+  // allowlisted; absent/invalid values leave the normal persisted behaviour.
+  const searchParams = useSearchParams();
+  const requestedView = parseViewParam(searchParams.get("view"));
+  const requestedFilter = parseFilterParam(searchParams.get("filter"));
+
   // Desktop layout: 'feed' | 'signal' | 'split' (default). Panes are derived
   // from this single source of truth so the tab bar can never disagree with it.
-  const [layout, setLayout] = useState<LayoutMode>(DEFAULT_LAYOUT);
+  const [layout, setLayout] = useState<LayoutMode>(requestedView ?? DEFAULT_LAYOUT);
   const { feed: showFeed, signal: showSignal } = layoutToPanels(layout);
   
   // Company tray modal state
@@ -157,6 +189,12 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       }
     }
 
+    // A deep link wins over the remembered layout; only fall back to storage
+    // when the URL did not request a valid view.
+    if (requestedView) {
+      setLayout(requestedView);
+      return;
+    }
     const savedLayout = localStorage.getItem(LAYOUT_STORAGE_KEY);
     if (savedLayout !== null) {
       setLayout(parseLayout(savedLayout));
@@ -165,7 +203,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       const migrated = migrateLegacyLayout(localStorage.getItem(STORAGE_KEY_PANELS));
       if (migrated) setLayout(migrated);
     }
-  }, []);
+  }, [requestedView]);
 
   // Horizontal drag (left/right split)
   const handleMouseDownH = useCallback((e: React.MouseEvent) => {
@@ -418,7 +456,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
       id: "signal",
       label: "Signal",
       color: "ast-gold",
-        content: <SignalPanel items={items} />,
+        content: <SignalPanel items={items} initialFilter={requestedFilter ?? "all"} />,
     },
     {
       id: "companies",
@@ -430,7 +468,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
         />
       ),
     },
-  ], [items, sources, hasMore, loadingMore, loadMore]);
+  ], [items, sources, hasMore, loadingMore, loadMore, requestedFilter]);
 
   // Active tab for the tab bar — always reflects the true layout, never a
   // fallback guess (the old code highlighted 'feed' whenever both panes showed).
@@ -529,7 +567,7 @@ export function LiveFeed({ initialItems, initialHasMore, sources }: LiveFeedProp
                   className="overflow-y-auto"
                   style={{ height: showBothRight ? `${topHeight}%` : "100%" }}
                 >
-                  <SignalPanel items={items} />
+                  <SignalPanel items={items} initialFilter={requestedFilter ?? "all"} />
                 </div>
                 
                 {/* Vertical divider (desktop only) */}

@@ -267,9 +267,9 @@ describe('POST /api/admin/digest-test — sample fallback', () => {
     // Real recipient (unmasked) is what the transport receives.
     expect(sent.to).toBe(ADMIN_EMAIL);
     expect(sent.subject.startsWith('[TEST]')).toBe(true);
-    // All three sample rows are rendered and clearly labelled.
-    expect(sent.html).toContain('SAMPLE');
-    expect((sent.html.match(/SAMPLE/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // All three sample rows are rendered; the hero carries the SAMPLE DATA note.
+    expect(sent.html).toContain('SAMPLE DATA');
+    expect((sent.html.match(/SAMPLE DATA/g) ?? []).length).toBe(1);
     // Production-shape unsubscribe link + RFC 8058 headers + CAN-SPAM footer.
     expect(sent.headers['List-Unsubscribe']).toContain(
       '<https://terminal.example.com/unsubscribe?token=',
@@ -340,11 +340,11 @@ describe('POST /api/admin/digest-test — sample fallback', () => {
     expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
-  it('buildSampleDigestAlerts returns exactly 3 SAMPLE-labelled alerts on the site origin', () => {
+  it('buildSampleDigestAlerts returns exactly 3 realistic alerts on the site origin', () => {
     const alerts = buildSampleDigestAlerts('https://terminal.example.com/');
     expect(alerts).toHaveLength(3);
     for (const a of alerts) {
-      expect(a.summary).toContain('SAMPLE');
+      expect(a.summary).not.toContain('SAMPLE');
       expect(a.url.startsWith('https://terminal.example.com/')).toBe(true);
     }
   });
@@ -669,9 +669,9 @@ describe('GET /api/admin/digest-test — HTML preview', () => {
 
     const html = await res.text();
     expect(html).toContain('<!doctype html>');
-    expect(html).toContain('SAMPLE');
-    expect(html).toContain('RANKED BY RELEVANCE'); // 25 > 8 → Variant B
-    expect(html).toContain('See all 25 in Terminal');
+    expect(html).toContain('SAMPLE DATA');
+    expect(html).toContain('MOST RELEVANT FIRST'); // 25 > 8 → Variant B
+    expect(html).toContain('See all 25 updates');
     // No email transport, no database, no writes.
     expect(mockSendEmail).not.toHaveBeenCalled();
     expect(mockFrom).not.toHaveBeenCalled();
@@ -682,7 +682,7 @@ describe('GET /api/admin/digest-test — HTML preview', () => {
     const res = await get('?preview=1&stories=3');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
-    expect(await res.text()).toContain('SAMPLE');
+    expect(await res.text()).toContain('SAMPLE DATA');
     expect(mockSendEmail).not.toHaveBeenCalled();
     expect(mockFrom).not.toHaveBeenCalled();
   });
@@ -699,9 +699,9 @@ describe('GET /api/admin/digest-test — HTML preview', () => {
     mockRequireAdmin.mockResolvedValue({ userId: 'admin-preview-variant' });
     const eight = await (await get('?preview=1&stories=8')).text();
     const nine = await (await get('?preview=1&stories=9')).text();
-    expect(eight).not.toContain('RANKED BY RELEVANCE');
+    expect(eight).not.toContain('MOST RELEVANT FIRST');
     expect(eight).toContain('+1 more Acme Games update in Terminal');
-    expect(nine).toContain('RANKED BY RELEVANCE');
+    expect(nine).toContain('MOST RELEVANT FIRST');
   });
 
   it('is deterministic — two identical previews render byte-for-byte the same', async () => {
@@ -743,7 +743,7 @@ describe('POST /api/admin/digest-test — preview + stories', () => {
     const res = await postJson({ preview: true, stories: 9 });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
-    expect(await res.text()).toContain('RANKED BY RELEVANCE');
+    expect(await res.text()).toContain('MOST RELEVANT FIRST');
     expect(mockSendEmail).not.toHaveBeenCalled();
     expect(mockFrom).not.toHaveBeenCalled();
   });
@@ -765,7 +765,7 @@ describe('POST /api/admin/digest-test — preview + stories', () => {
 
     const sent = mockSendEmail.mock.calls[0][0] as { subject: string; html: string };
     expect(sent.subject).toContain('15 updates');
-    expect((sent.html.match(/SAMPLE/g) ?? []).length).toBeGreaterThanOrEqual(15);
+    expect((sent.html.match(/SAMPLE DATA/g) ?? []).length).toBe(1);
     // No alert_events query ran (stories short-circuits the real-alert read).
     expect(mockFrom).not.toHaveBeenCalledWith('alert_events');
   });
