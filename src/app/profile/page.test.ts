@@ -1,6 +1,34 @@
-import { describe, test, expect } from 'vitest'
+import { describe, test, expect, vi } from 'vitest'
+import React from 'react'
+import { renderToString } from 'react-dom/server'
 import fs from 'fs'
 import path from 'path'
+
+// P0-1 render tests: ProfilePage renders Next's Link + useRouter, and imports
+// the Supabase browser client. Stub both so a node-environment render never
+// touches a router or a real client.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: () => {}, replace: () => {}, refresh: () => {}, prefetch: () => {} }),
+}))
+vi.mock('@/lib/supabase', () => ({
+  createAuthBrowserClient: () => ({
+    auth: {
+      getSession: async () => ({ data: { session: null } }),
+      signOut: async () => {},
+    },
+  }),
+}))
+
+// The profile page's load state is fixed to 'loading' in production. Partial-
+// mock the module so the error state can be rendered end-to-end here without a
+// live fetch (Next.js forbids a prop-based test seam on a page component).
+vi.mock('./load-state', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./load-state')>()
+  return { ...actual, getInitialLoadState: () => 'error' as const }
+})
+
+import ProfilePage from './page'
+import { isLoadablePreferencesPayload, LoadErrorBanner } from './load-state'
 
 describe('Profile page UX fixes', () => {
   const filePath = path.resolve(__dirname, 'page.tsx')
@@ -137,7 +165,8 @@ describe('Following list rendering (AST t_9e83034c)', () => {
 
   test('shows an "unfollowing..." pending state', () => {
     expect(following).toContain('"unfollowing..."')
-    expect(following).toContain('disabled={pending}')
+    // P0-1: the row is also disabled while preferences are not loaded.
+    expect(following).toContain('disabled={pending || writesDisabled}')
   })
 
   test('a failed unfollow surfaces an error instead of silently reverting', () => {
@@ -207,6 +236,139 @@ describe('Profile segment descriptions — Niantic rename', () => {
 
   test('Infrastructure / Middleware lists Niantic Spatial', () => {
     expect(content).toMatch(/ironSource,\s*Twitch,\s*Niantic Spatial/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Card t_113538df (P0-1): gate writes on a successful load, banner + Retry.
+// ---------------------------------------------------------------------------
+
+describe('P0-1 — preferences payload validation', () => {
+  test('accepts a populated preferences object as ready', () => {
+    expect(
+      isLoadablePreferencesPayload({
+        preferences: { interests: ['mobile'], segments: [] },
+        profile: { display_name: 'Ada' },
+      })
+    ).toBe(true)
+  })
+
+  test('treats a legitimately EMPTY new-user preferences object as ready', () => {
+    expect(isLoadablePreferencesPayload({ preferences: {} })).toBe(true)
+  })
+
+  test('rejects a body with no preferences object (error, not empty)', () => {
+    expect(isLoadablePreferencesPayload({})).toBe(false)
+    expect(isLoadablePreferencesPayload({ preferences: null })).toBe(false)
+    expect(isLoadablePreferencesPayload({ preferences: 'nope' })).toBe(false)
+    expect(isLoadablePreferencesPayload({ preferences: [] })).toBe(false)
+    expect(isLoadablePreferencesPayload(null)).toBe(false)
+    expect(isLoadablePreferencesPayload(undefined)).toBe(false)
+  })
+})
+
+describe('P0-1 — load-error state renders read-only + Retry banner', () => {
+  test('shows the alert banner with the protection copy and a Retry button', () => {
+    const html = renderToString(React.createElement(ProfilePage))
+
+    expect(html).toContain('role="alert"')
+    expect(html).toContain('data-testid="load-error-banner"')
+    expect(html).toContain(
+      'editing is turned off to protect your saved settings'
+    )
+    expect(html).toContain('>Retry<')
+  })
+
+  test('renders controls disabled so no write is reachable in the error state', () => {
+    const html = renderToString(React.createElement(ProfilePage))
+
+    // Native `disabled` (serialised as disabled=""): display-name field,
+    // segment checkboxes, digest toggle, min-score slider, save buttons.
+    const disabledCount = (html.match(/disabled=""/g) ?? []).length
+    expect(disabledCount).toBeGreaterThanOrEqual(3)
+    // The interests picker is wrapped in an aria-disabled, inert box.
+    expect(html).toContain('aria-disabled="true"')
+    expect(html).toContain('data-testid="interests-controls"')
+  })
+
+  test('the banner component renders standalone with role=alert + Retry', () => {
+    const html = renderToString(
+      React.createElement(LoadErrorBanner, { onRetry: () => {} })
+    )
+    expect(html).toContain('role="alert"')
+    expect(html).toContain('data-testid="load-error-banner"')
+    expect(html).toContain('>Retry<')
+  })
+})
+
+describe('P0-1 — every write path is guarded (source assertions)', () => {
+  const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf-8')
+  const guard = 'if (loadState !== "ready") return;'
+
+  test('defines loadState and derives a single writes-disabled gate', () => {
+    expect(src).toContain('const [loadState, setLoadState] = useState<LoadState>')
+    expect(src).toContain('const writesDisabled = loadState !== "ready"')
+  })
+
+  test('guards each preferences/DELETE handler with the ready check', () => {
+    const handlers: Record<string, [string, string]> = {
+      handleSaveDisplayName: ['const handleSaveDisplayName', 'const handleInterestsChange'],
+      handleInterestsChange: ['const handleInterestsChange', 'const handleToggleSegment'],
+      handleToggleSegment: ['const handleToggleSegment', 'const segmentsDirty'],
+      handleSaveSegments: ['const handleSaveSegments', 'const getInitials'],
+      handleUnwatch: ['const handleUnwatch', 'const saveNotificationPrefs'],
+      saveNotificationPrefs: ['const saveNotificationPrefs', 'const handleToggleDigest'],
+      handleToggleDigest: ['const handleToggleDigest', 'const handleMinScoreChange'],
+      handleMinScoreChange: ['const handleMinScoreChange', 'if (loadState === "loading")'],
+    }
+
+    for (const [name, [startMarker, endMarker]] of Object.entries(handlers)) {
+      const start = src.indexOf(startMarker)
+      const end = src.indexOf(endMarker)
+      expect(start, `${name} start`).toBeGreaterThan(-1)
+      expect(end, `${name} end`).toBeGreaterThan(start)
+      expect(src.slice(start, end), `${name} must early-return unless ready`).toContain(
+        guard
+      )
+    }
+  })
+
+  test('renders controls disabled from the writesDisabled gate', () => {
+    expect(src).toContain('disabled={writesDisabled}')
+    expect(src).toContain('aria-disabled={writesDisabled}')
+  })
+
+  test('treats a non-OK / malformed response as an error (never defaults)', () => {
+    expect(src).toContain('if (!response.ok) {')
+    expect(src).toContain('Failed to load preferences')
+    expect(src).toContain('isLoadablePreferencesPayload(data)')
+    expect(src).toContain('setLoadState("error")')
+  })
+})
+
+describe('P0-1 — no refetch on re-render (audit S6)', () => {
+  const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf-8')
+
+  test('memoises the auth browser client so the load effect is stable', () => {
+    expect(src).toContain('const supabase = useMemo(() => createAuthBrowserClient(), [])')
+    // It must NOT be created in the render body any more.
+    expect(src).not.toContain('const supabase = createAuthBrowserClient()')
+  })
+
+  test('re-runs the load only on router/supabase/reloadKey change', () => {
+    expect(src).toContain('}, [router, supabase, reloadKey]);')
+  })
+
+  test('the Retry button bumps reloadKey to re-run the load', () => {
+    expect(src).toContain('const [reloadKey, setReloadKey] = useState(0)')
+    expect(src).toContain(
+      '<LoadErrorBanner onRetry={() => setReloadKey((k) => k + 1)} />'
+    )
+  })
+
+  test('renders the loading UI only while the request is in flight', () => {
+    expect(src).toContain('if (loadState === "loading")')
+    expect(src).toContain('Loading...')
   })
 })
 
