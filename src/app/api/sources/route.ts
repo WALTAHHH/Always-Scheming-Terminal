@@ -36,36 +36,59 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Get article counts per source — use per-source COUNT queries to avoid
-  // PostgREST's 1000-row default cap on the content table.
+  // Get article counts + latest article per source.
+  //
+  // Previously this issued 2×N queries (one COUNT and one ordered LIMIT 1 per
+  // source) — 90 round-trips for 45 sources, ~1 s warm / ~6 s cold. The
+  // admin_source_stats() RPC (migration 024) aggregates server-side in one
+  // query. When the migration has not run yet the route falls back to the
+  // per-source queries, so code can deploy before the SQL.
   const sourceIds = (sources || []).map((s) => s.id);
   const articleCounts: Record<string, number> = {};
   const latestArticle: Record<string, string> = {};
 
-  // Batch: one count query per source (small N — typically 20-30 sources)
-  await Promise.all(
-    sourceIds.map(async (sid) => {
-      const { count } = await supabase
-        .from("content")
-        .select("*", { count: "exact", head: true })
-        .eq("source_id", sid);
-      if (count) articleCounts[sid] = count;
-    })
-  );
+  const { data: stats, error: statsError } = await supabase.rpc("admin_source_stats");
 
-  // Latest published_at per source — use a single ordered query per source
-  await Promise.all(
-    sourceIds.map(async (sid) => {
-      const { data } = await supabase
-        .from("content")
-        .select("published_at")
-        .eq("source_id", sid)
-        .order("published_at", { ascending: false, nullsFirst: false })
-        .limit(1)
-        .maybeSingle();
-      if (data?.published_at) latestArticle[sid] = data.published_at;
-    })
-  );
+  if (!statsError && Array.isArray(stats)) {
+    for (const row of stats as {
+      source_id: string;
+      article_count: number | string;
+      latest_article_at: string | null;
+    }[]) {
+      if (row.article_count) articleCounts[row.source_id] = Number(row.article_count);
+      if (row.latest_article_at) latestArticle[row.source_id] = row.latest_article_at;
+    }
+  } else {
+    if (statsError) {
+      console.warn("admin_source_stats RPC unavailable, falling back to per-source queries:", statsError.message);
+    }
+
+    // Fallback: one count query per source (counts happen server-side, so the
+    // PostgREST 1000-row cap does not affect them).
+    await Promise.all(
+      sourceIds.map(async (sid) => {
+        const { count } = await supabase
+          .from("content")
+          .select("*", { count: "exact", head: true })
+          .eq("source_id", sid);
+        if (count) articleCounts[sid] = count;
+      })
+    );
+
+    // Fallback: latest published_at per source.
+    await Promise.all(
+      sourceIds.map(async (sid) => {
+        const { data } = await supabase
+          .from("content")
+          .select("published_at")
+          .eq("source_id", sid)
+          .order("published_at", { ascending: false, nullsFirst: false })
+          .limit(1)
+          .maybeSingle();
+        if (data?.published_at) latestArticle[sid] = data.published_at;
+      })
+    );
+  }
 
   const enriched = (sources || []).map((s) => ({
     ...s,
