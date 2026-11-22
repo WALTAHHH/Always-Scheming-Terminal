@@ -413,10 +413,10 @@ export function groupDigestAlerts(alerts: DigestAlert[]): [string, DigestAlert[]
     ]);
 }
 
-/** Subject line, e.g. `Weekly AST watchlist digest — 3 updates`. */
+/** Subject line, e.g. `Your weekly watchlist digest — 3 updates`. */
 export function renderDigestSubject(alertCount: number): string {
   const n = alertCount === 1 ? "1 update" : `${alertCount} updates`;
-  return `Weekly AST watchlist digest — ${n}`;
+  return `Your weekly watchlist digest — ${n}`;
 }
 
 /** Plain-text alternative part (deliverability + text-only clients). */
@@ -444,7 +444,7 @@ export function renderDigestText(input: DigestRenderInput): string {
     out.push("");
   }
   out.push("—");
-  out.push("You receive this because you watch companies on Always Scheming Terminal.");
+  out.push("You get this because you watch companies on your watchlist.");
   out.push(`Manage your watchlist: ${site}/profile`);
   out.push(`Unsubscribe: ${input.unsubscribeUrl}`);
   if (input.footerAddress) out.push(input.footerAddress);
@@ -587,7 +587,7 @@ function chipHtml(signalType: string): string {
   if (!chip.label) return "";
   return (
     `<span class="chip-${chip.family} chip-txt" style="display:inline-block;` +
-    `vertical-align:1px;margin-right:6px;padding:1px 5px;border-radius:3px;` +
+    `vertical-align:1px;padding:1px 5px;border-radius:3px;` +
     `background:${chip.dark.fill};color:${chip.dark.text};font-family:${MONO_STACK};` +
     `font-size:11px;font-weight:700;letter-spacing:.04em;line-height:16px;">` +
     `${escapeHtml(chip.label)}</span>`
@@ -624,14 +624,24 @@ function headlineHtml(alert: DigestAlert): string {
   return `<span class="c-txt" style="color:#d4d4d4;font-weight:600;line-height:1.35;">${text}</span>`;
 }
 
-/** Muted meta line: `Relevance 93 · Source · Nov 17`. */
-function metaLineHtml(alert: DigestAlert): string {
-  const rest = digestItemMetaLine(alert);
-  const tail = rest ? ` &middot; ${escapeHtml(rest)}` : "";
+/**
+ * Muted meta row: text left-aligned, signal-type chip right-aligned on the
+ * same line (2-cell table so the chip sits at the bottom-right of the story
+ * row without wrapping under the meta text). The chip is omitted when the
+ * signal type has no label.
+ */
+function metaRowHtml(alert: DigestAlert, leftHtml: string | null): string {
+  const chip = chipHtml(alert.signalType);
+  if (!leftHtml && !chip) return "";
+  const left = leftHtml
+    ? `<td class="c-mut" style="font-size:12px;line-height:16px;color:#9ca3af;vertical-align:middle;">${leftHtml}</td>`
+    : `<td></td>`;
+  const chipCell = chip
+    ? `<td align="right" style="padding-left:8px;white-space:nowrap;vertical-align:middle;">${chip}</td>`
+    : "";
   return (
-    `<p class="c-mut" style="margin:3px 0 0;font-size:12px;line-height:16px;color:#9ca3af;">` +
-    `Relevance <span class="c-txt" style="color:#d4d4d4;font-weight:700;">` +
-    `${alertRelevance(alert)}</span>${tail}</p>`
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:3px;">` +
+    `<tr>${left}${chipCell}</tr></table>`
   );
 }
 
@@ -659,7 +669,8 @@ table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
    containment there. */
 a[x-apple-data-detectors]{color:inherit !important;text-decoration:none !important;font-size:inherit !important;font-family:inherit !important;font-weight:inherit !important;line-height:inherit !important;}
 .u{text-decoration:underline !important;-webkit-text-decoration:underline !important;}
-.c-addr{color:#9ca3af !important;}
+.c-addr{color:#4a4a55 !important;}
+.gmail-hide{color:inherit !important;text-decoration:none !important;}
 @media only screen and (max-width:480px){
 .h1{font-size:20px !important;line-height:26px !important;}
 .px{padding-left:16px !important;padding-right:16px !important;}
@@ -678,7 +689,7 @@ a[x-apple-data-detectors]{color:inherit !important;text-decoration:none !importa
 .c-brdtop{border-top-color:#e2e4e7 !important;}
 .c-brd-bot{border-bottom-color:#e2e4e7 !important;}
 .c-tag{border-color:#c5cad1 !important;color:#5b6270 !important;}
-.c-addr{color:#5b6270 !important;}
+.c-addr{color:#9a9aa5 !important;}
 .c-head{border-bottom-color:#047857 !important;}
 .c-cta{background:#0e7490 !important;}
 .c-cta-txt{color:#ffffff !important;}
@@ -706,17 +717,18 @@ export function renderDigestHtml(input: DigestRenderInput): string {
 
   const ctaHref = escapeHtml(`${site}/`);
   const heroSub = weekLabel
-    ? `Week of ${escapeHtml(weekLabel)} &middot; sorted by relevance`
-    : "Sorted by relevance";
+    ? `Week of ${escapeHtml(weekLabel)} &middot; most relevant first`
+    : "Most relevant first";
 
   // ── header + hero + CTA ──────────────────────────────────────────────────
+  // Full product name as the wordmark (no "AST" abbreviation), kept on one
+  // line at 375px by tightening the mono type: 12px/600px wordmark + 10px tag.
   const header =
     `<tr><td class="px c-page c-head" bgcolor="#0a0a0f" style="padding:14px 24px;background:#0a0a0f;border-bottom:2px solid #6decb9;">` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
-    `<td style="font-family:${MONO_STACK};font-size:13px;letter-spacing:.08em;color:#d4d4d4;">` +
-    `<span class="c-brand" style="color:#6decb9;font-weight:700;">AST</span>&nbsp;&nbsp;` +
-    `<span class="c-mut hide-m" style="color:#9ca3af;white-space:nowrap;">ALWAYS SCHEMING TERMINAL</span></td>` +
-    `<td align="right" class="c-mut" style="white-space:nowrap;font-family:${MONO_STACK};font-size:11px;letter-spacing:.08em;color:#9ca3af;">WEEKLY DIGEST</td>` +
+    `<td style="font-family:${MONO_STACK};font-size:12px;letter-spacing:.02em;color:#d4d4d4;white-space:nowrap;">` +
+    `<span class="c-brand" style="color:#6decb9;font-weight:700;">Always Scheming Terminal</span></td>` +
+    `<td align="right" class="c-mut" style="white-space:nowrap;font-family:${MONO_STACK};font-size:10px;letter-spacing:.06em;color:#9ca3af;padding-left:8px;">WEEKLY DIGEST</td>` +
     `</tr></table></td></tr>`;
 
   const hero =
@@ -743,20 +755,20 @@ export function renderDigestHtml(input: DigestRenderInput): string {
           : `<span class="c-txt" style="color:#d4d4d4;font-weight:700;">${escapeHtml(a.entityName)}</span>`;
         const rest = digestItemMetaLine(a);
         const tail = rest ? ` &middot; ${escapeHtml(rest)}` : "";
+        const metaLeft = `${nameLink}${tail}`;
         const last = i === shown.length - 1;
         const border = last ? "" : "border-bottom:1px solid #2a2a2a;";
         return (
           `<tr><td class="${last ? "" : "c-brd-bot"}" style="padding:11px 0;${border}">` +
-          `<p style="margin:0;font-size:16px;line-height:22px;">${chipHtml(a.signalType)}${headlineHtml(a)}</p>` +
-          `<p class="c-mut" style="margin:3px 0 0;font-size:12px;line-height:16px;color:#9ca3af;">` +
-          `${nameLink} &middot; Relevance <span class="c-txt" style="color:#d4d4d4;font-weight:700;">${alertRelevance(a)}</span>${tail}</p>` +
+          `<p style="margin:0;font-size:16px;line-height:22px;">${headlineHtml(a)}</p>` +
+          `${metaRowHtml(a, metaLeft)}` +
           `</td></tr>`
         );
       })
       .join("");
     listSection =
       `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:4px 24px 0;background:#0a0a0f;">` +
-      `<p class="c-mut" style="margin:8px 0 0;font-family:${MONO_STACK};font-size:11px;letter-spacing:.08em;color:#9ca3af;">RANKED BY RELEVANCE</p>` +
+      `<p class="c-mut" style="margin:8px 0 0;font-family:${MONO_STACK};font-size:11px;letter-spacing:.08em;color:#9ca3af;">MOST RELEVANT FIRST</p>` +
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:4px;">${rows}</table>` +
       `</td></tr>`;
   } else {
@@ -775,12 +787,15 @@ export function renderDigestHtml(input: DigestRenderInput): string {
       const tag = companyTagHtml(list[0]);
 
       const rows = perShown
-        .map(
-          (a) =>
+        .map((a) => {
+          const rest = digestItemMetaLine(a);
+          const metaLeft = rest ? escapeHtml(rest) : null;
+          return (
             `<tr><td class="c-brdtop" style="padding:9px 16px 10px;border-top:1px solid #2a2a2a;">` +
-            `<p style="margin:0;font-size:16px;line-height:22px;">${chipHtml(a.signalType)}${headlineHtml(a)}</p>` +
-            `${metaLineHtml(a)}</td></tr>`,
-        )
+            `<p style="margin:0;font-size:16px;line-height:22px;">${headlineHtml(a)}</p>` +
+            `${metaRowHtml(a, metaLeft)}</td></tr>`
+          );
+        })
         .join("");
 
       const overflowCount = Math.max(0, list.length - DIGEST_PER_COMPANY_MAX);
@@ -816,10 +831,16 @@ export function renderDigestHtml(input: DigestRenderInput): string {
     ? `You get this because these companies are on your watchlist: ${companyNames
         .map((n) => escapeHtml(n))
         .join(", ")}.`
-    : "You receive this because you watch companies on Always Scheming Terminal.";
+    : "You get this because you watch companies on your watchlist.";
+  // Deliberately quiet postal address: present, selectable and last, but low
+  // contrast (dark ~#4a4a55 on #0a0a0f, light #9a9aa5 on #fff) so it reads as
+  // fine print rather than a headline. Never hidden — CAN-SPAM needs a valid
+  // physical address and hidden text is a deliverability signal. The address
+  // text itself comes from DIGEST_FOOTER_ADDRESS (Vercel env var) so it can be
+  // swapped for a PO box/mail-forwarding address without a code change.
   const footerAddress = input.footerAddress
-    ? `<p class="c-mut c-addr" style="margin:8px 0 0;color:#9ca3af;text-decoration:none;-webkit-text-decoration:none;">` +
-      `<span x-apple-data-detectors="false" style="color:inherit;text-decoration:inherit;-webkit-text-decoration:inherit;">` +
+    ? `<p class="c-addr gmail-hide" style="margin:14px 0 0;font-size:11px;line-height:15px;color:#4a4a55;text-decoration:none;-webkit-text-decoration:none;">` +
+      `<span class="c-addr gmail-hide" x-apple-data-detectors="false" style="color:inherit;text-decoration:none;-webkit-text-decoration:none;font-size:11px;line-height:15px;">` +
       `${escapeHtml(input.footerAddress)}</span></p>`
     : "";
   const footer =
@@ -834,7 +855,7 @@ export function renderDigestHtml(input: DigestRenderInput): string {
 
   return `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><meta name="supported-color-schemes" content="dark light"><meta name="x-apple-disable-message-reformatting"><title>AST weekly digest</title>${DIGEST_STYLE}</head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><meta name="supported-color-schemes" content="dark light"><meta name="x-apple-disable-message-reformatting"><title>Your weekly watchlist digest</title>${DIGEST_STYLE}</head>
 <body class="c-page" bgcolor="#0a0a0f" style="margin:0;padding:0;background:#0a0a0f;">
 <div style="display:none;max-height:0;max-width:0;opacity:0;overflow:hidden;font-size:1px;line-height:1px;color:#0a0a0f;mso-hide:all;">${escapeHtml(preheader)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a0f" class="c-page" style="background:#0a0a0f;">
