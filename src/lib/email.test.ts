@@ -19,7 +19,11 @@ import {
   digestHeroTitle,
   renderDigestPreheader,
   clampHeadline,
+  digestCtaLabel,
+  buildDigestCtaUrl,
   DIGEST_HEADLINE_MAX,
+  DIGEST_CTA_VIEW,
+  DIGEST_CTA_FILTER,
   DIGEST_PER_COMPANY_MAX,
   DIGEST_TOTAL_MAX,
   DIGEST_VARIANT_A_MAX,
@@ -616,7 +620,7 @@ describe('digest item deep links + source/date meta line', () => {
   it('renders the muted source · date meta line without a relevance figure', () => {
     const html = renderDigestHtml(input);
     expect(html).toContain('The Game Business · Nov 17');
-    expect(html).toContain('font-size:12px;line-height:16px;color:#9ca3af');
+    expect(html).toContain('font-size:11px;line-height:15px;color:#9ca3af');
     expect(html).not.toContain('Relevance');
     expect(html).not.toContain('>93</span>');
   });
@@ -749,7 +753,7 @@ describe('digest redesign v2 — layout, truncation, escaping', () => {
   it('moves the signal chip to the bottom-right of each story row (Variant A)', () => {
     const html = renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com')));
     // Chip is no longer inline before the headline.
-    expect(html).not.toMatch(/<p style="margin:0;font-size:16px;line-height:22px;"><span class="chip-/);
+    expect(html).not.toMatch(/<p style="margin:0;font-size:15px;line-height:21px;"><span class="chip-/);
     // It sits in a right-aligned, nowrap cell on the meta row.
     expect(html).toMatch(
       /<td align="right" style="padding-left:8px;white-space:nowrap;vertical-align:middle;"><span class="chip-/,
@@ -759,7 +763,7 @@ describe('digest redesign v2 — layout, truncation, escaping', () => {
 
   it('moves the signal chip to the bottom-right of each story row (Variant B)', () => {
     const html = renderDigestHtml(inputOf(tenStories()));
-    expect(html).not.toMatch(/<p style="margin:0;font-size:16px;line-height:22px;"><span class="chip-/);
+    expect(html).not.toMatch(/<p style="margin:0;font-size:15px;line-height:21px;"><span class="chip-/);
     expect(html).toMatch(
       /<td align="right" style="padding-left:8px;white-space:nowrap;vertical-align:middle;"><span class="chip-/,
     );
@@ -813,15 +817,37 @@ describe('digest redesign v2 — layout, truncation, escaping', () => {
     expect(groupSortedDigestAlerts(alerts).map(([e]) => e)).toEqual(['Beta', 'Alpha', 'Zeta']);
   });
 
-  it('clamps a headline over 110 chars on a word boundary', () => {
+  it('clamps at 85/86 chars on a word boundary', () => {
+    expect(DIGEST_HEADLINE_MAX).toBe(85);
+    // Exactly 85 chars is untouched, no ellipsis.
+    const exactly = 'x'.repeat(DIGEST_HEADLINE_MAX);
+    expect(clampHeadline(exactly)).toBe(exactly);
+    // 86 chars clamps. A word that straddles the boundary is dropped whole.
     const long = 'Word '.repeat(40).trim(); // 199 chars
     const clamped = clampHeadline(long);
     expect(clamped.length).toBeLessThanOrEqual(DIGEST_HEADLINE_MAX);
     expect(clamped.endsWith('…')).toBe(true);
     expect(clamped).not.toContain('  ');
-    // short input is untouched, no ellipsis
+    expect(clamped).not.toMatch(/\s…$/);
+    // 86 chars with a breakable space: cut at the last space before 85.
+    const sentence = `${'a'.repeat(80)} bbbbb`; // 86 chars
+    expect(clampHeadline(sentence)).toBe(`${'a'.repeat(80)}…`);
+    // Short input is untouched, no ellipsis.
     expect(clampHeadline('Short headline')).toBe('Short headline');
-    expect(clampHeadline('x'.repeat(DIGEST_HEADLINE_MAX))).toBe('x'.repeat(DIGEST_HEADLINE_MAX));
+  });
+
+  it('never splits a surrogate pair or a literal HTML entity when clamping', () => {
+    // 83 ASCII + emoji (2 code units) + more => 89 chars; the cut at 84 lands
+    // exactly between the surrogate halves, so the emoji must be dropped whole.
+    const emoji = `${'a'.repeat(83)}😀tail`;
+    const clamped = clampHeadline(emoji);
+    expect(clamped).toBe(`${'a'.repeat(83)}…`);
+    expect(clamped).not.toContain('\uFFFD');
+    // A literal entity must not be cut mid-way.
+    const entity = `${'b'.repeat(80)}&amp; more`;
+    const entityClamped = clampHeadline(entity);
+    expect(entityClamped).not.toMatch(/&(?:[a-z]*)$/);
+    expect(entityClamped.endsWith('…')).toBe(true);
   });
 
   it('caps a company at 3 stories then links the overflow (Variant A)', () => {
@@ -839,7 +865,7 @@ describe('digest redesign v2 — layout, truncation, escaping', () => {
     );
     const html = renderDigestHtml(inputOf(twenty));
     expect(noopenerCount(html)).toBe(DIGEST_TOTAL_MAX);
-    expect(html).toContain('See all 20 in Terminal');
+    expect(html).toContain('See all 20 updates');
   });
 
   it('renders the preheader from the top story', () => {
@@ -923,7 +949,7 @@ describe('digest no-underline affordances + link contrast', () => {
   it('headline link is primary-weight, not underlined, with a nowrap accent arrow', () => {
     const html = renderDigestHtml(aInput([story({ entityName: 'Acme Games' })]));
     expect(html).toContain(
-      '<a href="https://news.example.com/story" target="_blank" rel="noopener noreferrer" class="c-txt" style="color:#d4d4d4;text-decoration:none;-webkit-text-decoration:none;font-weight:600;line-height:1.35;">',
+      '<a href="https://news.example.com/story" target="_blank" rel="noopener noreferrer" class="c-txt" style="color:#d4d4d4;text-decoration:none;-webkit-text-decoration:none;font-weight:600;font-size:15px;line-height:21px;">',
     );
     expect(html).toContain(
       '<span class="c-acc" style="color:#77c4d9;white-space:nowrap;">&nbsp;&#8599;</span>',
@@ -970,7 +996,7 @@ describe('digest no-underline affordances + link contrast', () => {
       }),
     );
     const html = renderDigestHtml(aInput(twenty));
-    expect(html).toContain('See all 20 in Terminal');
+    expect(html).toContain('See all 20 updates');
     const tags = anchors(html);
     const underlined = tags.filter((t) => /text-decoration:underline/.test(t));
     expect(underlined).toHaveLength(2);
@@ -1039,6 +1065,85 @@ describe('digest no-underline affordances + link contrast', () => {
   });
 });
 
+describe('digest CTA — value-led copy + allowlisted destination', () => {
+  const mk = (over: Partial<DigestAlert> & { entityName: string }): DigestAlert => ({
+    signalType: 'acquisition',
+    summary: 'A headline',
+    score: 0.9,
+    relevance: 90,
+    url: 'https://news.example.com/story',
+    createdAt: '2026-11-17T09:00:00.000Z',
+    ...over,
+  });
+  const inputOf = (alerts: DigestAlert[], siteUrl = 'https://example.com'): DigestRenderInput => ({
+    alerts,
+    unsubscribeUrl: 'https://example.com/unsubscribe?token=xyz',
+    footerAddress: '',
+    siteUrl,
+  });
+
+  it('computes plural, singular and one-company labels', () => {
+    expect(digestCtaLabel(3, ['Acme', 'Beta', 'Cobalt'])).toBe('Catch up on 3 updates');
+    expect(digestCtaLabel(1, ['Acme', 'Beta'])).toBe('Catch up on 1 update');
+    expect(digestCtaLabel(5, ['Acme Games'])).toBe("See what's new at Acme Games");
+    expect(digestCtaLabel(1, ['Acme Games'])).toBe("See what's new at Acme Games");
+  });
+
+  it('renders the computed label in the primary CTA', () => {
+    const html = renderDigestHtml(
+      inputOf([
+        mk({ entityName: 'Acme' }),
+        mk({ entityName: 'Beta' }),
+        mk({ entityName: 'Cobalt' }),
+      ]),
+    );
+    expect(html).toContain('Catch up on 3 updates &rarr;');
+    expect(html).not.toContain('Open in Terminal');
+
+    const one = renderDigestHtml(inputOf([mk({ entityName: 'Acme' })]));
+    expect(one).toContain('See what&#39;s new at Acme &rarr;');
+
+    const oneStoryTwoCos = renderDigestHtml(
+      inputOf([mk({ entityName: 'Acme' }), mk({ entityName: 'Beta' })]),
+    );
+    expect(oneStoryTwoCos).toContain('Catch up on 2 updates &rarr;');
+  });
+
+  it('points both CTAs at the allowlisted Signals/Watchlist destination', () => {
+    const html = renderDigestHtml(
+      inputOf(Array.from({ length: 20 }, (_, i) => mk({ entityName: `Co ${i}` }))),
+    );
+    const href = 'https://example.com/?view=signals&amp;filter=watchlist';
+    expect(html).toContain(`href="${href}"`);
+    expect(html).toContain('See all 20 updates &rarr;');
+    // No other query params are ever emitted.
+    expect(buildDigestCtaUrl('https://example.com')).toBe(
+      'https://example.com/?view=signals&filter=watchlist',
+    );
+    expect(DIGEST_CTA_VIEW).toBe('signals');
+    expect(DIGEST_CTA_FILTER).toBe('watchlist');
+  });
+
+  it('falls back to the site root for a non-https origin', () => {
+    expect(buildDigestCtaUrl('http://example.com')).toBeNull();
+    const html = renderDigestHtml(inputOf([mk({ entityName: 'Acme' })], 'http://example.com'));
+    expect(html).toContain('href="http://example.com/"');
+    expect(html).not.toContain('view=signals');
+  });
+
+  it('keeps the text/plain CTA wording in sync', () => {
+    const text = renderDigestText(
+      inputOf([
+        mk({ entityName: 'Acme' }),
+        mk({ entityName: 'Beta' }),
+        mk({ entityName: 'Cobalt' }),
+      ]),
+    );
+    expect(text).toContain('Catch up on 3 updates');
+    expect(text).toContain('https://example.com/?view=signals&filter=watchlist');
+  });
+});
+
 describe('buildSampleDigestAlerts — larger, varied sets (admin digest test)', () => {
   const SITE = 'https://terminal.example.com';
 
@@ -1086,12 +1191,13 @@ describe('buildSampleDigestAlerts — larger, varied sets (admin digest test)', 
     expect(big.slice(0, 8)).toEqual(small);
   });
 
-  it('labels every story SAMPLE, with links at the site root and a meta source/date', () => {
+  it('sample stories are realistic headlines without a SAMPLE prefix', () => {
     for (const a of buildSampleDigestAlerts(SITE, 40)) {
-      expect(a.summary).toContain('SAMPLE');
-      expect(a.url).toContain('https://terminal.example.com/');
+      expect(a.summary).not.toContain('SAMPLE');
+      expect(a.summary.length).toBeGreaterThanOrEqual(20);
+      expect(a.url).toContain('https://terminal.example.com');
       expect(a.sourceName).toBeTruthy();
-      expect(formatDigestDate(a.publishedAt)).not.toBeNull();
+      expect(formatDigestDate(a.publishedAt ?? a.createdAt)).not.toBeNull();
       expect(Number.isInteger(a.relevance)).toBe(true);
     }
   });
@@ -1124,10 +1230,10 @@ describe('buildSampleDigestAlerts — larger, varied sets (admin digest test)', 
       siteUrl: 'https://example.com',
     });
     expect(renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com', 8)))).not.toContain(
-      'RANKED BY RELEVANCE',
+      'MOST RELEVANT FIRST',
     );
     expect(renderDigestHtml(inputOf(buildSampleDigestAlerts('https://example.com', 9)))).toContain(
-      'RANKED BY RELEVANCE',
+      'MOST RELEVANT FIRST',
     );
   });
 
@@ -1148,8 +1254,8 @@ describe('buildSampleDigestAlerts — larger, varied sets (admin digest test)', 
       footerAddress: '',
       siteUrl: 'https://example.com',
     });
-    expect(renderDigestHtml(inputOf(25))).toContain('See all 25 in Terminal');
-    expect(renderDigestHtml(inputOf(40))).toContain('See all 40 in Terminal');
+    expect(renderDigestHtml(inputOf(25))).toContain('See all 25 updates');
+    expect(renderDigestHtml(inputOf(40))).toContain('See all 40 updates');
   });
 
   it('escapes the nasty sample headlines (no raw markup reaches the HTML)', () => {

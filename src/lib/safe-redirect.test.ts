@@ -15,6 +15,7 @@ describe("safeRedirectTarget", () => {
     // Percent-encoded query data that decodes to an interior space stays valid
     // (this is the digest deep link: /?company=Acme%20Games).
     ["/?company=Acme%20Games", "/?company=Acme%20Games"],
+    ["/?view=signals&filter=watchlist", "/?view=signals&filter=watchlist"],
     // Interior dot segments are normalised by URL parsing, not rejected.
     ["/a/../b", "/b"],
     ["/feed/../profile?tab=watchlist", "/profile?tab=watchlist"],

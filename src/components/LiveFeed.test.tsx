@@ -19,6 +19,8 @@ import {
   parseLayout,
   layoutToPanels,
   migrateLegacyLayout,
+  parseViewParam,
+  parseFilterParam,
   LAYOUT_STORAGE_KEY,
   DEFAULT_LAYOUT,
 } from './LiveFeed';
@@ -95,6 +97,22 @@ describe('LiveFeed layout state model', () => {
     expect(migrateLegacyLayout(JSON.stringify({ feed: false, signal: false }))).toBeNull();
     expect(migrateLegacyLayout(null)).toBeNull();
     expect(migrateLegacyLayout('not json')).toBeNull();
+  });
+
+  it('parses only allowlisted deep-link view/filter values', () => {
+    expect(parseViewParam('signals')).toBe('signal');
+    expect(parseViewParam('signal')).toBe('signal');
+    expect(parseViewParam('feed')).toBe('feed');
+    expect(parseViewParam('split')).toBe('split');
+    expect(parseViewParam('nonsense')).toBeNull();
+    expect(parseViewParam(null)).toBeNull();
+
+    expect(parseFilterParam('watchlist')).toBe('watchlist');
+    expect(parseFilterParam('analysis')).toBe('analysis');
+    expect(parseFilterParam('news')).toBe('news');
+    expect(parseFilterParam('all')).toBe('all');
+    expect(parseFilterParam('javascript:alert(1)')).toBeNull();
+    expect(parseFilterParam(null)).toBeNull();
   });
 });
 

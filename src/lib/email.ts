@@ -422,8 +422,14 @@ export function renderDigestSubject(alertCount: number): string {
 /** Plain-text alternative part (deliverability + text-only clients). */
 export function renderDigestText(input: DigestRenderInput): string {
   const site = (input.siteUrl ?? getSiteUrl()).replace(/\/+$/, "");
-  const out: string[] = [];
-  for (const [entity, alerts] of groupDigestAlerts(input.alerts)) {
+  const sorted = sortDigestAlerts(input.alerts);
+  const companyNames = Array.from(new Set(sorted.map((a) => a.entityName))).sort(
+    (a, b) => a.localeCompare(b),
+  );
+  const ctaUrl = buildDigestCtaUrl(site);
+  const ctaLine = `${digestCtaLabel(sorted.length, companyNames)}${ctaUrl ? ` → ${ctaUrl}` : ""}`;
+  const out: string[] = [ctaLine, ""];
+  for (const [entity, list] of groupDigestAlerts(input.alerts)) {
     out.push(`${entity}`);
     out.push("=".repeat(entity.length));
     // App deep link for the entity (opens the drawer via `?company=`), then the
@@ -432,7 +438,7 @@ export function renderDigestText(input: DigestRenderInput): string {
     // digest still goes out.
     const companyUrl = buildDigestCompanyUrl(entity, site);
     if (companyUrl) out.push(companyUrl);
-    for (const a of alerts) {
+    for (const a of list) {
       out.push(
         `- [${humanSignalType(a.signalType)}] ${a.summary} (score ${a.score.toFixed(2)})`,
       );
@@ -468,7 +474,7 @@ const MONO_STACK =
   "'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,'Courier New',monospace";
 
 /** Headline character clamp (spec R2.5) — word boundary + `…`. */
-export const DIGEST_HEADLINE_MAX = 110;
+export const DIGEST_HEADLINE_MAX = 85;
 /** Max stories per company in Variant A before the `+N more` link. */
 export const DIGEST_PER_COMPANY_MAX = 3;
 /** Max stories rendered in one digest before the `See all N` link. */
@@ -476,14 +482,68 @@ export const DIGEST_TOTAL_MAX = 15;
 /** Story-count threshold: `<=` renders Variant A, above renders Variant B. */
 export const DIGEST_VARIANT_A_MAX = 8;
 
-/** Clamp a headline to `max` chars on a word boundary, appending `…`. */
+/**
+ * Allowlisted deep-link params for the digest CTA. The app's LiveFeed parses
+ * only these values (unknown values are ignored), so the email can land the
+ * reader in the Signals pane with the Watchlist chip pre-selected without
+ * trusting arbitrary query data.
+ */
+export const DIGEST_CTA_VIEW = "signals";
+export const DIGEST_CTA_FILTER = "watchlist";
+
+/**
+ * Clamp a headline to `max` characters on a word boundary, appending `…`.
+ *
+ * Gmail strips `-webkit-line-clamp`, so this must be a real character cut. Two
+ * safety rules matter more than the word boundary:
+ *  - never split a surrogate pair (an emoji or astral-plane glyph would render
+ *    as two replacement characters);
+ *  - never cut inside a literal `&...;` entity in the raw text, which would
+ *    leave a dangling `&` (or an escaped fragment) visible.
+ */
 export function clampHeadline(text: string, max = DIGEST_HEADLINE_MAX): string {
   const t = (text ?? "").trim();
   if (t.length <= max) return t;
-  let cut = t.slice(0, max - 1);
+  let end = max - 1;
+  // Back off one code unit when the cut would land between a high/low surrogate.
+  const last = end > 0 ? t.charCodeAt(end - 1) : 0;
+  if (end > 0 && last >= 0xd800 && last <= 0xdbff) end -= 1;
+  // Back off to the start of a literal entity whose `;` falls past the cut.
+  const amp = t.lastIndexOf("&", end - 1);
+  if (amp >= 0 && t.indexOf(";", amp) >= end) end = amp;
+  let cut = t.slice(0, end);
   const sp = cut.lastIndexOf(" ");
   if (sp > 0) cut = cut.slice(0, sp);
   return `${cut.replace(/[\s,;:.!?\-–—]+$/, "")}…`;
+}
+
+/**
+ * Value-led primary CTA label computed from the digest data. The HTML appends
+ * ` &rarr;`; the text part appends ` →`.
+ *
+ * - exactly one company → name it: `See what's new at {Company}`
+ * - otherwise → `Catch up on N updates` (singular for N = 1)
+ */
+export function digestCtaLabel(total: number, companyNames: string[]): string {
+  const n = Math.max(0, Math.trunc(total));
+  if (companyNames.length === 1) return `See what's new at ${companyNames[0]}`;
+  if (n === 0) return "Catch up on your watchlist";
+  return n === 1 ? "Catch up on 1 update" : `Catch up on ${n} updates`;
+}
+
+/**
+ * Content-specific CTA destination. Only absolute **https** origins are
+ * emitted; the query params are the fixed allowlisted pair the app understands.
+ * Returns `null` for a non-https origin so callers can fall back to `/`.
+ */
+export function buildDigestCtaUrl(baseUrl?: string): string | null {
+  const base = (baseUrl ?? getSiteUrl()).replace(/\/+$/, "");
+  const url = `${base}/?view=${DIGEST_CTA_VIEW}&filter=${DIGEST_CTA_FILTER}`;
+  try {
+    return new URL(url).protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Reader-facing relevance: the explicit 0-100 value, else derived from score. */
@@ -616,12 +676,12 @@ function headlineHtml(alert: DigestAlert): string {
   if (safeUrl) {
     return (
       `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" ` +
-      `class="c-txt" style="color:#d4d4d4;text-decoration:none;-webkit-text-decoration:none;font-weight:600;line-height:1.35;">` +
+      `class="c-txt" style="color:#d4d4d4;text-decoration:none;-webkit-text-decoration:none;font-weight:600;font-size:15px;line-height:21px;">` +
       `${text}<span class="c-acc" style="color:#77c4d9;white-space:nowrap;">&nbsp;&#8599;</span></a>`
     );
   }
   // Quiet fallback: render the headline as plain text — no "(link unavailable)".
-  return `<span class="c-txt" style="color:#d4d4d4;font-weight:600;line-height:1.35;">${text}</span>`;
+  return `<span class="c-txt" style="color:#d4d4d4;font-weight:600;font-size:15px;line-height:21px;">${text}</span>`;
 }
 
 /**
@@ -634,13 +694,13 @@ function metaRowHtml(alert: DigestAlert, leftHtml: string | null): string {
   const chip = chipHtml(alert.signalType);
   if (!leftHtml && !chip) return "";
   const left = leftHtml
-    ? `<td class="c-mut" style="font-size:12px;line-height:16px;color:#9ca3af;vertical-align:middle;">${leftHtml}</td>`
+    ? `<td class="c-mut" style="font-size:11px;line-height:15px;color:#9ca3af;vertical-align:middle;">${leftHtml}</td>`
     : `<td></td>`;
   const chipCell = chip
     ? `<td align="right" style="padding-left:8px;white-space:nowrap;vertical-align:middle;">${chip}</td>`
     : "";
   return (
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:3px;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:7px;">` +
     `<tr>${left}${chipCell}</tr></table>`
   );
 }
@@ -715,10 +775,19 @@ export function renderDigestHtml(input: DigestRenderInput): string {
   const weekLabel = weekStart ? formatDigestDate(weekStart.toISOString()) : null;
   const useFlat = total > DIGEST_VARIANT_A_MAX;
 
-  const ctaHref = escapeHtml(`${site}/`);
+  const ctaUrl = buildDigestCtaUrl(site);
+  const ctaHref = escapeHtml(ctaUrl ?? `${site}/`);
+  const ctaLabel = digestCtaLabel(total, companyNames);
   const heroSub = weekLabel
     ? `Week of ${escapeHtml(weekLabel)} &middot; most relevant first`
     : "Most relevant first";
+  // Sample digests are generated by the admin test endpoint; their story URLs
+  // carry `?sample=digest-N`. Flag them in the hero so nobody mistakes the
+  // rendered preview for real news (the subject line also carries `[TEST]`).
+  const isSample = sorted.some((a) => /[?&]sample=digest-/.test(a.url ?? ""));
+  const sampleNote = isSample
+    ? `<p class="c-mut" style="margin:6px 0 0;font-family:${MONO_STACK};font-size:10px;letter-spacing:.08em;color:#9ca3af;">SAMPLE DATA &mdash; NOT REAL NEWS</p>`
+    : "";
 
   // ── header + hero + CTA ──────────────────────────────────────────────────
   // Full product name as the wordmark (no "AST" abbreviation), kept on one
@@ -734,13 +803,14 @@ export function renderDigestHtml(input: DigestRenderInput): string {
   const hero =
     `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:18px 24px 0;background:#0a0a0f;">` +
     `<p class="h1 c-txt" style="margin:0;font-size:22px;line-height:28px;font-weight:700;color:#d4d4d4;">${escapeHtml(digestHeroTitle(total, companyNames.length))}</p>` +
-    `<p class="c-mut" style="margin:4px 0 0;font-size:14px;line-height:20px;color:#9ca3af;">${heroSub}</p></td></tr>`;
+    `<p class="c-mut" style="margin:4px 0 0;font-size:14px;line-height:20px;color:#9ca3af;">${heroSub}</p>` +
+    `${sampleNote}</td></tr>`;
 
   const cta =
     `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:14px 24px 0;background:#0a0a0f;">` +
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="btn"><tr>` +
     `<td class="c-cta" bgcolor="#77c4d9" style="background:#77c4d9;border-radius:6px;">` +
-    `<a href="${ctaHref}" class="c-cta-txt" style="display:inline-block;padding:11px 20px;font-size:15px;font-weight:700;line-height:18px;color:#0a0a0f;text-decoration:none;-webkit-text-decoration:none;">Open in Terminal &rarr;</a>` +
+    `<a href="${ctaHref}" class="c-cta-txt" style="display:inline-block;padding:11px 20px;font-size:15px;font-weight:700;line-height:18px;color:#0a0a0f;text-decoration:none;-webkit-text-decoration:none;">${escapeHtml(ctaLabel)} &rarr;</a>` +
     `</td></tr></table></td></tr>`;
 
   // ── the list: Variant A (grouped) or B (flat) ─────────────────────────────
@@ -760,7 +830,7 @@ export function renderDigestHtml(input: DigestRenderInput): string {
         const border = last ? "" : "border-bottom:1px solid #2a2a2a;";
         return (
           `<tr><td class="${last ? "" : "c-brd-bot"}" style="padding:11px 0;${border}">` +
-          `<p style="margin:0;font-size:16px;line-height:22px;">${headlineHtml(a)}</p>` +
+          `<p style="margin:0;font-size:15px;line-height:21px;">${headlineHtml(a)}</p>` +
           `${metaRowHtml(a, metaLeft)}` +
           `</td></tr>`
         );
@@ -792,7 +862,7 @@ export function renderDigestHtml(input: DigestRenderInput): string {
           const metaLeft = rest ? escapeHtml(rest) : null;
           return (
             `<tr><td class="c-brdtop" style="padding:9px 16px 10px;border-top:1px solid #2a2a2a;">` +
-            `<p style="margin:0;font-size:16px;line-height:22px;">${headlineHtml(a)}</p>` +
+            `<p style="margin:0;font-size:15px;line-height:21px;">${headlineHtml(a)}</p>` +
             `${metaRowHtml(a, metaLeft)}</td></tr>`
           );
         })
@@ -823,7 +893,7 @@ export function renderDigestHtml(input: DigestRenderInput): string {
   const seeAll =
     total > DIGEST_TOTAL_MAX
       ? `<tr><td class="px c-page" bgcolor="#0a0a0f" style="padding:14px 24px 0;background:#0a0a0f;font-size:13px;line-height:18px;">` +
-        `<a href="${ctaHref}" class="c-acc" style="color:#77c4d9;text-decoration:none;-webkit-text-decoration:none;">See all ${total} in Terminal &rarr;</a></td></tr>`
+        `<a href="${ctaHref}" class="c-acc" style="color:#77c4d9;text-decoration:none;-webkit-text-decoration:none;">See all ${total} updates &rarr;</a></td></tr>`
       : "";
 
   // ── footer ────────────────────────────────────────────────────────────────
@@ -979,15 +1049,16 @@ export function buildSampleDigestAlerts(
   count: number = DIGEST_TEST_DEFAULT_STORIES,
 ): DigestAlert[] {
   const base = siteUrl.replace(/\/+$/, "");
-  // The three legacy samples are kept byte-identical so the default 3-story
-  // digest (and its snapshots) is unchanged. Larger requests append
-  // deterministic, varied stories (see `sampleStory`).
+  // The first three samples drive the default 3-story digest. Headlines are
+  // realistic and varied in length (no "SAMPLE —" prefix; the subject `[TEST]`
+  // and the hero "SAMPLE DATA" note mark the set as fake). Larger requests
+  // append deterministic, varied stories (see `sampleStory`).
   const legacy: DigestAlert[] = [
     {
       entityName: "Acme Games",
       signalType: "acquisition",
       summary:
-        "SAMPLE — Acme Games acquires Pixel Forge for $120M in a cash-and-stock deal.",
+        "Acme Games acquires Pixel Forge for $120M in a cash deal that folds an indie studio into its publishing arm.",
       title: "Acme Games acquires Pixel Forge for $120M",
       score: 0.93,
       relevance: 93,
@@ -1002,7 +1073,7 @@ export function buildSampleDigestAlerts(
       entityName: "Northstar Interactive",
       signalType: "fundraising",
       summary:
-        "SAMPLE — Northstar Interactive raises a $45M Series B led by Horizon Ventures.",
+        "Northstar Interactive raises a $45M Series B led by Horizon Ventures to expand its live-service slate.",
       title: "Northstar Interactive raises $45M Series B",
       score: 0.88,
       relevance: 88,
@@ -1017,7 +1088,7 @@ export function buildSampleDigestAlerts(
       entityName: "Cobalt Studios",
       signalType: "layoffs",
       summary:
-        "SAMPLE — Cobalt Studios cuts 80 roles as its live-service project winds down.",
+        "Cobalt Studios cuts 80 roles as its live-service project winds down after a delayed launch.",
       title: "Cobalt Studios cuts 80 roles",
       score: 0.81,
       relevance: 81,
@@ -1047,7 +1118,7 @@ export function buildSampleDigestAlerts(
 //     so the 3-per-company cap and the `+N more` overflow row fire;
 //   • a mix of public (ticker) and private companies;
 //   • every signal type incl. the unknown/other fallbacks;
-//   • long (>110 char, triggers the clamp) and very short headlines;
+//   • long (>85 char, triggers the clamp) and very short headlines;
 //   • headlines with `&`, `"quotes"`, `<angle brackets>`, emoji and non-latin
 //     text — the escaping checks;
 //   • varied sources and dates spread across the past 7 days.
@@ -1159,24 +1230,24 @@ function sampleCompanyForIndex(i: number): string {
 function sampleSummary(i: number, company: string): string {
   switch (i % 8) {
     case 0:
-      return `SAMPLE — ${company} acquires a rival studio for $120M in a cash-and-stock deal.`;
+      return `${company} acquires a rival studio for $120M in a cash-and-stock deal.`;
     case 1:
-      return `SAMPLE — ${company} raises a $45M Series B led by Horizon Ventures.`;
+      return `${company} raises a $45M Series B led by Horizon Ventures.`;
     case 2:
-      return `SAMPLE — ${company} cuts 80 roles as its live-service project winds down.`;
+      return `${company} cuts 80 roles as its live-service project winds down.`;
     case 3:
-      return `SAMPLE — ${company} names a new CFO.`; // short
+      return `${company} names a new CFO.`; // very short
     case 4:
-      // >110 chars: exercises the word-boundary clamp + `…`.
-      return `SAMPLE — ${company} unveils a sweeping multi-year restructuring plan spanning three studios, two publishing labels and a cloud-platform partnership that analysts say could reshape its competitive position over the next 18 months`;
+      // ~109 chars: exercises the word-boundary clamp + `…`.
+      return `${company} unveils a sweeping multi-year restructuring plan spanning three studios and two publishing labels.`;
     case 5:
       // `"`, `&`, `<`, `>`: escaping checks.
-      return `SAMPLE — ${company} calls the $1.2B deal "transformative" & <non-binding> as regulators circle.`;
+      return `${company} calls the $1.2B deal "transformative" & <non-binding> as regulators circle.`;
     case 6:
       // emoji + non-latin: passthrough vs escaping checks.
-      return `SAMPLE — ${company} launches 新作 🎮 with a surprise cross-play beta 🌐✨`;
+      return `${company} launches 新作 🎮 with a surprise cross-play beta 🌐✨`;
     default:
-      return `SAMPLE — ${company} reports Q3 bookings up 12% & raises full-year guidance.`;
+      return `${company} reports Q3 bookings up 12% & raises full-year guidance.`;
   }
 }
 
@@ -1201,7 +1272,7 @@ function sampleStory(base: string, i: number): DigestAlert {
     entityName: company,
     signalType: SAMPLE_SIGNAL_TYPES[i % SAMPLE_SIGNAL_TYPES.length],
     summary,
-    title: summary.replace(/^SAMPLE — /, ""),
+    title: summary,
     score,
     relevance: Math.round(score * 100),
     url: `${base}/?sample=digest-${i + 1}`,
