@@ -26,7 +26,7 @@ vi.mock('@supabase/supabase-js', () => ({
   })),
 }));
 
-import { POST } from './route';
+import { POST, GET } from './route';
 import {
   DIGEST_TEST_RATE_LIMIT,
   describeDigestTestConfig,
@@ -616,5 +616,184 @@ describe('digest-test helpers', () => {
       unsubSecret: 'set',
       siteUrl: 'https://x.example', // trailing slash stripped
     });
+  });
+});
+
+// ── preview mode (GET / POST ?preview=1) ─────────────────────────────────────
+
+function get(query = '') {
+  return GET(
+    new Request(`http://localhost/api/admin/digest-test${query}`, {
+      method: 'GET',
+    }) as never,
+  );
+}
+
+function postJson(body: unknown) {
+  return POST(
+    new Request('http://localhost/api/admin/digest-test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }) as never,
+  );
+}
+
+describe('GET /api/admin/digest-test — HTML preview', () => {
+  it('returns 401 when the caller has no session', async () => {
+    mockRequireAdmin.mockResolvedValue(
+      NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    );
+    const res = await get('?preview=1');
+    expect(res.status).toBe(401);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when the caller is not an admin', async () => {
+    mockRequireAdmin.mockResolvedValue(
+      NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+    );
+    const res = await get('?preview=1&stories=25');
+    expect(res.status).toBe(403);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('renders the real template as text/html and sends nothing', async () => {
+    mockRequireAdmin.mockResolvedValue({ userId: 'admin-preview' });
+    const res = await get('?preview=1&stories=25');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    expect(res.headers.get('x-digest-stories')).toBe('25');
+
+    const html = await res.text();
+    expect(html).toContain('<!doctype html>');
+    expect(html).toContain('SAMPLE');
+    expect(html).toContain('RANKED BY RELEVANCE'); // 25 > 8 → Variant B
+    expect(html).toContain('See all 25 in Terminal');
+    // No email transport, no database, no writes.
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('works with no email/DB env configured (pure template render)', async () => {
+    mockRequireAdmin.mockResolvedValue({ userId: 'admin-preview-bare' });
+    const res = await get('?preview=1&stories=3');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    expect(await res.text()).toContain('SAMPLE');
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('clamps/defaults stories (1..40, default 3) in the preview', async () => {
+    mockRequireAdmin.mockResolvedValue({ userId: 'admin-preview-clamp' });
+    expect((await get('?preview=1')).headers.get('x-digest-stories')).toBe('3');
+    expect((await get('?preview=1&stories=abc')).headers.get('x-digest-stories')).toBe('3');
+    expect((await get('?preview=1&stories=0')).headers.get('x-digest-stories')).toBe('1');
+    expect((await get('?preview=1&stories=999')).headers.get('x-digest-stories')).toBe('40');
+  });
+
+  it('switches on the layout: Variant A + overflow at 8, Variant B at 9', async () => {
+    mockRequireAdmin.mockResolvedValue({ userId: 'admin-preview-variant' });
+    const eight = await (await get('?preview=1&stories=8')).text();
+    const nine = await (await get('?preview=1&stories=9')).text();
+    expect(eight).not.toContain('RANKED BY RELEVANCE');
+    expect(eight).toContain('+1 more Acme Games update in Terminal');
+    expect(nine).toContain('RANKED BY RELEVANCE');
+  });
+
+  it('is deterministic — two identical previews render byte-for-byte the same', async () => {
+    mockRequireAdmin.mockResolvedValue({ userId: 'admin-preview-det' });
+    process.env.DIGEST_UNSUB_SECRET = 'unsub-secret'; // determinise the unsub token
+    const a = await (await get('?preview=1&stories=25')).text();
+    const b = await (await get('?preview=1&stories=25')).text();
+    expect(a).toBe(b);
+    delete process.env.DIGEST_UNSUB_SECRET;
+  });
+
+  it('escapes the nasty sample headlines', async () => {
+    mockRequireAdmin.mockResolvedValue({ userId: 'admin-preview-escape' });
+    const html = await (await get('?preview=1&stories=40')).text();
+    expect(html).toContain('&lt;non-binding&gt;');
+    expect(html).not.toContain('<non-binding>');
+    expect(html).not.toMatch(/<script/i);
+  });
+
+  it('does not consume the 5/hour send budget (10 previews, then a send still works)', async () => {
+    const userId = 'admin-preview-free';
+    mockRequireAdmin.mockResolvedValue({ userId });
+    for (let i = 0; i < 10; i++) {
+      expect((await get('?preview=1&stories=9')).status).toBe(200);
+    }
+    // A real send immediately after still has its full budget.
+    configureEnv();
+    armHappyPath(userId);
+    queueFrom({ data: { digest_unsub_token: 'a'.repeat(64) }, error: null });
+    const res = await postJson({ stories: 9 });
+    expect(res.status).toBe(200);
+    expect((await res.json()).sent).toBe(true);
+  });
+});
+
+describe('POST /api/admin/digest-test — preview + stories', () => {
+  it('returns HTML for preview:true and never calls the email sender', async () => {
+    mockRequireAdmin.mockResolvedValue({ userId: 'admin-post-preview' });
+    const res = await postJson({ preview: true, stories: 9 });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    expect(await res.text()).toContain('RANKED BY RELEVANCE');
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('sends that many SAMPLE stories (count in subject) when stories is provided', async () => {
+    configureEnv();
+    armHappyPath('admin-stories-send');
+    mockSendEmail.mockResolvedValue({ ok: true, id: 'resend-stories' });
+    // stories provided → no alert_events read; only the user_preferences token read.
+    queueFrom({ data: { digest_unsub_token: 'b'.repeat(64) }, error: null });
+
+    const res = await postJson({ stories: 15 });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.sent).toBe(true);
+    expect(body.sample).toBe(true);
+    expect(body.alert_count).toBe(15);
+    expect(body.stories).toBe(15);
+
+    const sent = mockSendEmail.mock.calls[0][0] as { subject: string; html: string };
+    expect(sent.subject).toContain('15 updates');
+    expect((sent.html.match(/SAMPLE/g) ?? []).length).toBeGreaterThanOrEqual(15);
+    // No alert_events query ran (stories short-circuits the real-alert read).
+    expect(mockFrom).not.toHaveBeenCalledWith('alert_events');
+  });
+
+  it('accepts stories via the query string on a send', async () => {
+    configureEnv();
+    armHappyPath('admin-stories-query');
+    mockSendEmail.mockResolvedValue({ ok: true, id: 'resend-q' });
+    queueFrom({ data: { digest_unsub_token: 'c'.repeat(64) }, error: null });
+
+    const res = await POST(
+      new Request('http://localhost/api/admin/digest-test?stories=8', {
+        method: 'POST',
+      }) as never,
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).alert_count).toBe(8);
+  });
+
+  it('keeps the original real→sample fallback when stories is omitted', async () => {
+    configureEnv();
+    armHappyPath('admin-no-stories');
+    queueFrom({ data: [], error: null }); // no pending alerts
+    queueFrom({ data: { digest_unsub_token: 'd'.repeat(64) }, error: null });
+
+    const res = await post(); // no body → default path
+    const body = await res.json();
+    expect(body.sample).toBe(true);
+    expect(body.alert_count).toBe(3);
   });
 });

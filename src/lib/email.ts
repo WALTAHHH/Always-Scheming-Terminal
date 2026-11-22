@@ -889,6 +889,32 @@ export const DIGEST_TEST_RATE_LIMIT = { windowMs: 60 * 60 * 1000, maxRequests: 5
 export const DIGEST_TEST_LOOKBACK_DAYS = 7;
 /** Cap on the real alerts rendered into a single test digest. */
 export const DIGEST_TEST_MAX_ALERTS = 20;
+/** Default number of sample stories a test digest renders. */
+export const DIGEST_TEST_DEFAULT_STORIES = 3;
+/** Hard cap on the `stories` request param (clamp 1..40). */
+export const DIGEST_TEST_MAX_STORIES = 40;
+
+/**
+ * Coerce an untrusted `stories` value (JSON body number, numeric string from a
+ * query string, `null`, garbage …) into an integer in `[1, 40]`.
+ *
+ * Returns `defaultValue` (itself clamped) when the value is missing or not a
+ * finite number, so a malformed request degrades to the default rather than
+ * throwing or rendering 0/NaN stories.
+ */
+export function clampStoryCount(
+  raw: unknown,
+  defaultValue = DIGEST_TEST_DEFAULT_STORIES,
+): number {
+  const fallback = Math.min(
+    DIGEST_TEST_MAX_STORIES,
+    Math.max(1, Math.trunc(Number(defaultValue)) || 1),
+  );
+  if (raw === null || raw === undefined || raw === "") return fallback;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(DIGEST_TEST_MAX_STORIES, Math.max(1, Math.trunc(n)));
+}
 
 export type SetOrMissing = "set" | "missing";
 
@@ -948,9 +974,15 @@ export function maskEmail(email: string): string {
  * email; the `sourceName`/`createdAt` values render a representative meta line
  * (e.g. `The Game Business · Nov 17`).
  */
-export function buildSampleDigestAlerts(siteUrl: string): DigestAlert[] {
+export function buildSampleDigestAlerts(
+  siteUrl: string,
+  count: number = DIGEST_TEST_DEFAULT_STORIES,
+): DigestAlert[] {
   const base = siteUrl.replace(/\/+$/, "");
-  return [
+  // The three legacy samples are kept byte-identical so the default 3-story
+  // digest (and its snapshots) is unchanged. Larger requests append
+  // deterministic, varied stories (see `sampleStory`).
+  const legacy: DigestAlert[] = [
     {
       entityName: "Acme Games",
       signalType: "acquisition",
@@ -997,4 +1029,186 @@ export function buildSampleDigestAlerts(siteUrl: string): DigestAlert[] {
       isPublic: true,
     },
   ];
+
+  const n = clampStoryCount(count);
+  if (n <= legacy.length) return legacy.slice(0, n);
+
+  const extra: DigestAlert[] = [];
+  for (let i = legacy.length; i < n; i++) extra.push(sampleStory(base, i));
+  return [...legacy, ...extra];
+}
+
+// ── larger-set sample generation ───────────────────────────────────────────
+//
+// Everything below is pure and independent of the clock/env, so the same
+// `stories` request always renders the same digest (QA and snapshots rely on
+// this). The design exercises the template's real edge cases:
+//   • ~40% of stories sit under three "shared" companies in chunks of up to 5,
+//     so the 3-per-company cap and the `+N more` overflow row fire;
+//   • a mix of public (ticker) and private companies;
+//   • every signal type incl. the unknown/other fallbacks;
+//   • long (>110 char, triggers the clamp) and very short headlines;
+//   • headlines with `&`, `"quotes"`, `<angle brackets>`, emoji and non-latin
+//     text — the escaping checks;
+//   • varied sources and dates spread across the past 7 days.
+
+/**
+ * Fixed 10-slot company pattern for story index `i`. Slots 0/1/2 match the
+ * legacy trio, and ~40% of slots are the shared companies — with "Acme Games"
+ * recurring early enough that an 8-story (Variant A) digest exceeds the
+ * 3-per-company cap and renders a `+N more` overflow row. Because the pattern
+ * is index-based (not count-based), a story's company never changes as `n`
+ * grows, so the same index always renders identically at every size.
+ *
+ * The remaining slots are one-off companies, including a name with `&`
+ * ("Kite & Reel") and a non-latin name ("九龍互動") for escaping checks.
+ */
+const SAMPLE_COMPANY_PATTERN = [
+  "Acme Games", // 0  (legacy)
+  "Northstar Interactive", // 1  (legacy)
+  "Cobalt Studios", // 2  (legacy)
+  "Acme Games", // 3
+  "Acme Games", // 4
+  "Orbital Forge", // 5
+  "Acme Games", // 6  -> Acme reaches 4 by i=6
+  "Vega Interactive", // 7
+  "Kite & Reel", // 8
+  "Northstar Interactive", // 9
+  "Helios Media", // 10
+  "Cobalt Studios", // 11
+  "Lumen Works", // 12
+  "Pixel Forge", // 13
+  "九龍互動", // 14
+  "Nova Arcade", // 15
+  "Northstar Interactive", // 16
+  "Meridian Systems", // 17
+  "Acme Games", // 18
+  "Harbor Light Games", // 19
+  "Aurora Labs", // 20
+  "Sandpiper Studio", // 21
+];
+
+/** Every signal type the app knows, plus the unknown/other fallbacks. */
+const SAMPLE_SIGNAL_TYPES = [
+  "acquisition",
+  "fundraising",
+  "earnings",
+  "layoffs",
+  "leadership",
+  "product_launch",
+  "regulatory",
+  "platform_change",
+  "macro",
+  "unknown",
+  "other",
+];
+
+const SAMPLE_SOURCES = [
+  "The Game Business",
+  "PocketGamer.biz",
+  "GamesIndustry.biz",
+  "Business Wire",
+  "Eurogamer",
+  "Financial Times",
+  "TechRadar",
+  "九龍日報",
+  "VentureBeat",
+];
+
+/** Ticker/isPublic metadata for a sample company (private when unlisted). */
+function sampleCompanyMeta(name: string): { ticker: string | null; isPublic: boolean } {
+  switch (name) {
+    case "Acme Games":
+      return { ticker: "ACME", isPublic: true };
+    case "Cobalt Studios":
+      return { ticker: "CBLT", isPublic: true };
+    case "Helios Media":
+      return { ticker: "HLIO", isPublic: true };
+    case "Orbital Forge":
+      return { ticker: "ORBF", isPublic: true };
+    case "Nova Arcade":
+      return { ticker: "NOVA", isPublic: true };
+    case "Pixel Forge":
+      return { ticker: "PXFG", isPublic: true };
+    case "Meridian Systems":
+      return { ticker: "MRDN", isPublic: true };
+    case "Northstar Interactive":
+    case "Vega Interactive":
+    case "Lumen Works":
+    case "Kite & Reel":
+    case "Harbor Light Games":
+    case "九龍互動":
+    case "Aurora Labs":
+    case "Sandpiper Studio":
+      return { ticker: null, isPublic: false };
+    default:
+      return { ticker: null, isPublic: false };
+  }
+}
+
+/**
+ * Company for story `i` of `n`. Index-based via {@link SAMPLE_COMPANY_PATTERN},
+ * so the same index always maps to the same company regardless of `n` (the
+ * legacy trio occupies the first three slots; extras follow the pattern).
+ */
+function sampleCompanyForIndex(i: number): string {
+  return SAMPLE_COMPANY_PATTERN[i % SAMPLE_COMPANY_PATTERN.length];
+}
+
+/** A deterministic, varied headline for extra story `i` (raw, unescaped). */
+function sampleSummary(i: number, company: string): string {
+  switch (i % 8) {
+    case 0:
+      return `SAMPLE — ${company} acquires a rival studio for $120M in a cash-and-stock deal.`;
+    case 1:
+      return `SAMPLE — ${company} raises a $45M Series B led by Horizon Ventures.`;
+    case 2:
+      return `SAMPLE — ${company} cuts 80 roles as its live-service project winds down.`;
+    case 3:
+      return `SAMPLE — ${company} names a new CFO.`; // short
+    case 4:
+      // >110 chars: exercises the word-boundary clamp + `…`.
+      return `SAMPLE — ${company} unveils a sweeping multi-year restructuring plan spanning three studios, two publishing labels and a cloud-platform partnership that analysts say could reshape its competitive position over the next 18 months`;
+    case 5:
+      // `"`, `&`, `<`, `>`: escaping checks.
+      return `SAMPLE — ${company} calls the $1.2B deal "transformative" & <non-binding> as regulators circle.`;
+    case 6:
+      // emoji + non-latin: passthrough vs escaping checks.
+      return `SAMPLE — ${company} launches 新作 🎮 with a surprise cross-play beta 🌐✨`;
+    default:
+      return `SAMPLE — ${company} reports Q3 bookings up 12% & raises full-year guidance.`;
+  }
+}
+
+/** A fixed-week timestamp pair for extra story `i` (deterministic, UTC). */
+function sampleTimestamp(i: number): { createdAt: string; publishedAt: string } {
+  // Anchor at the newest sample day; step back 4h per story so ~40 stories span
+  // the past week. Fixed literal → no clock/env dependence.
+  const anchor = Date.UTC(2026, 10, 21, 9, 0, 0); // 2026-11-21T09:00Z
+  const created = new Date(anchor - i * 4 * 60 * 60 * 1000);
+  const published = new Date(created.getTime() - 30 * 60 * 1000);
+  return { createdAt: created.toISOString(), publishedAt: published.toISOString() };
+}
+
+/** One deterministic, varied extra sample story (index `i`). */
+function sampleStory(base: string, i: number): DigestAlert {
+  const company = sampleCompanyForIndex(i);
+  const meta = sampleCompanyMeta(company);
+  const summary = sampleSummary(i, company);
+  const score = Math.max(0.4, Math.round((0.95 - i * 0.015) * 100) / 100);
+  const { createdAt, publishedAt } = sampleTimestamp(i);
+  return {
+    entityName: company,
+    signalType: SAMPLE_SIGNAL_TYPES[i % SAMPLE_SIGNAL_TYPES.length],
+    summary,
+    title: summary.replace(/^SAMPLE — /, ""),
+    score,
+    relevance: Math.round(score * 100),
+    url: `${base}/?sample=digest-${i + 1}`,
+    createdAt,
+    publishedAt,
+    sourceName: SAMPLE_SOURCES[i % SAMPLE_SOURCES.length],
+    ticker: meta.ticker,
+    isPublic: meta.isPublic,
+  };
 }

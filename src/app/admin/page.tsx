@@ -666,12 +666,19 @@ function ExtractSignalsButton({ onDone }: { onDone: () => void }) {
 function DigestTestButton() {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [stories, setStories] = useState(3);
+
+  const STORY_OPTIONS = [3, 8, 9, 15, 25];
 
   async function handleSend() {
     setSending(true);
     setResult(null);
     try {
-      const res = await fetch("/api/admin/digest-test", { method: "POST" });
+      const res = await fetch("/api/admin/digest-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stories }),
+      });
       const data = await res.json();
       setResult({ http_status: res.status, ...data });
     } catch (err: unknown) {
@@ -679,6 +686,14 @@ function DigestTestButton() {
     } finally {
       setSending(false);
     }
+  }
+
+  function handlePreview() {
+    // Read-only HTML preview of the real template with the SAMPLE set at the
+    // chosen size. Opens in a new tab so the admin page stays put; sends
+    // nothing and is not rate-limited.
+    const url = `/api/admin/digest-test?preview=1&stories=${stories}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -689,23 +704,51 @@ function DigestTestButton() {
             Email Digest
           </h3>
           <p className="text-[10px] text-ast-muted mt-0.5">
-            Sends one test digest to your own address. No alert or cadence state is changed.
+            Sends one test digest to your own address, or previews it in a browser. No alert or cadence state is changed.
           </p>
         </div>
-        <button
-          onClick={handleSend}
-          disabled={sending}
-          className="px-3 py-1.5 text-xs font-medium rounded border border-ast-accent/40 text-ast-accent hover:bg-ast-accent/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-        >
-          {sending ? (
-            <>
-              <span className="inline-block w-3 h-3 border-2 border-ast-accent/30 border-t-ast-accent rounded-full animate-spin" />
-              Sending…
-            </>
-          ) : (
-            "✉ Send test digest"
-          )}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <label
+            htmlFor="digest-test-stories"
+            className="text-[10px] uppercase tracking-wider text-ast-muted"
+          >
+            Stories
+          </label>
+          <select
+            id="digest-test-stories"
+            value={stories}
+            onChange={(e) => setStories(Number(e.target.value))}
+            disabled={sending}
+            className="px-2 py-1.5 text-xs rounded border border-ast-border bg-ast-bg text-ast-text focus:outline-none focus:border-ast-accent/60 disabled:opacity-50"
+          >
+            {STORY_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handlePreview}
+            disabled={sending}
+            className="px-3 py-1.5 text-xs font-medium rounded border border-ast-border text-ast-text hover:bg-ast-border/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            ⧉ Preview in browser
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending}
+            className="px-3 py-1.5 text-xs font-medium rounded border border-ast-accent/40 text-ast-accent hover:bg-ast-accent/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+          >
+            {sending ? (
+              <>
+                <span className="inline-block w-3 h-3 border-2 border-ast-accent/30 border-t-ast-accent rounded-full animate-spin" />
+                Sending…
+              </>
+            ) : (
+              "✉ Send test digest"
+            )}
+          </button>
+        </div>
       </div>
       {result && (
         <pre className="mt-2 p-2 rounded bg-ast-bg border border-ast-border text-[10px] text-ast-text overflow-x-auto whitespace-pre-wrap">
