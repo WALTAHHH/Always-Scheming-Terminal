@@ -35,6 +35,26 @@ type Tab = "sources" | "health" | "pipeline" | "entities" | "invites";
 type SortField = "name" | "type" | "articles" | "last_fetch" | "latest_article" | "status" | "errors";
 type SortDir = "asc" | "desc";
 
+// ── /api/admin/entities cache ──────────────────────────────────────
+// The Pipeline tab needs entity names (to offer "link this tag to an entity")
+// and the Entities tab needs the full payload. Both used to fire their own
+// request on mount. One module-level cache with a 60 s stale-while-revalidate
+// window means the second consumer reuses the first response instead of paying
+// for another heavy aggregation.
+const ENTITIES_CACHE_TTL_MS = 60_000;
+let entitiesCache: { data: any; at: number } | null = null;
+
+async function fetchEntitiesCached(): Promise<any> {
+  if (entitiesCache && Date.now() - entitiesCache.at < ENTITIES_CACHE_TTL_MS) {
+    return entitiesCache.data;
+  }
+  const res = await fetch("/api/admin/entities");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  entitiesCache = { data, at: Date.now() };
+  return data;
+}
+
 // Skeleton loading component
 function AdminSkeleton() {
   return (
@@ -975,11 +995,7 @@ function EntitiesDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/entities");
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await fetchEntitiesCached();
       setEntities(data.entities || []);
       setTagTimeSeries(data.tagTimeSeries || []);
     } catch (err) {
@@ -1501,12 +1517,9 @@ function PipelineDashboard() {
 
   const fetchEntityNames = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/entities");
-      if (res.ok) {
-        const data = await res.json();
-        const names = data.entities.map((e: any) => e.canonical_name);
-        setEntityNames(names);
-      }
+      const data = await fetchEntitiesCached();
+      const names = (data.entities || []).map((e: any) => e.canonical_name);
+      setEntityNames(names);
     } catch (err) {
       console.error("Failed to fetch entity names", err);
     }
@@ -1999,7 +2012,10 @@ export default function AdminPage() {
   const router = useRouter();
   const [sources, setSources] = useState<SourceRow[]>([]);
   const [logs, setLogs] = useState<IngestionLogRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Per-dataset load flags: only the tabs that actually render sources/logs
+  // wait on them. The default Pipeline tab no longer blocks on /api/sources.
+  const [sourcesLoaded, setSourcesLoaded] = useState(false);
+  const [logsLoaded, setLogsLoaded] = useState(false);
   const [tab, setTab] = useState<Tab>("pipeline");
   const [sortField, setSortField] = useState<SortField>("articles");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -2014,7 +2030,7 @@ export default function AdminPage() {
     } catch (err) {
       console.error("Failed to fetch sources:", err);
     } finally {
-      setLoading(false);
+      setSourcesLoaded(true);
     }
   }, []);
 
@@ -2025,6 +2041,8 @@ export default function AdminPage() {
       setLogs(data.logs || []);
     } catch (err) {
       console.error("Failed to fetch logs:", err);
+    } finally {
+      setLogsLoaded(true);
     }
   }, []);
 
@@ -2044,10 +2062,19 @@ export default function AdminPage() {
         }
       })
       .catch(() => {});
+  }, [router]);
 
-    fetchSources();
-    fetchLogs();
-  }, [fetchSources, fetchLogs, router]);
+  // Fetch sources/logs lazily — only when a tab that renders them is active.
+  // The default Pipeline tab needs neither, so its first paint no longer waits
+  // on /api/sources (measured ~1 s warm / ~6 s cold).
+  useEffect(() => {
+    if ((tab === "sources" || tab === "health") && !sourcesLoaded) {
+      fetchSources();
+    }
+    if (tab === "health" && !logsLoaded) {
+      fetchLogs();
+    }
+  }, [tab, sourcesLoaded, logsLoaded, fetchSources, fetchLogs]);
 
   function handleSort(field: SortField) {
     if (field === sortField) {
@@ -2199,9 +2226,10 @@ export default function AdminPage() {
 
       {/* Content */}
       <main className="max-w-5xl mx-auto px-4 py-6">
-        {loading ? (
-          <AdminSkeleton />
-        ) : tab === "sources" ? (
+        {tab === "sources" ? (
+          !sourcesLoaded ? (
+            <AdminSkeleton />
+          ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-ast-text">
@@ -2255,8 +2283,13 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+          )
         ) : tab === "health" ? (
-          <HealthDashboard sources={sources} logs={logs} onRefresh={() => { fetchSources(); fetchLogs(); }} />
+          !sourcesLoaded || !logsLoaded ? (
+            <AdminSkeleton />
+          ) : (
+            <HealthDashboard sources={sources} logs={logs} onRefresh={() => { fetchSources(); fetchLogs(); }} />
+          )
         ) : tab === "entities" ? (
           <EntitiesDashboard />
         ) : tab === "invites" ? (
