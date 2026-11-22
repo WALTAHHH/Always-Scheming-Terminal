@@ -311,7 +311,11 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-ast-bg">
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      {/* pb-24 on <640px reserves room for the global FeedbackButton
+          (fixed bottom-6 right-6) so the last card (Sign Out) is fully
+          reachable at 390px; reclaims the normal 2rem on sm+ where the
+          button does not overlap the single column. */}
+      <div className="max-w-3xl mx-auto px-4 pt-8 pb-24 sm:pb-8">
         <button
           onClick={() => router.push("/")}
           className="inline-flex items-center gap-2 px-3 py-1.5 mb-6 rounded border border-ast-border text-sm text-ast-text hover:border-ast-accent hover:text-ast-accent transition-colors"
@@ -433,8 +437,12 @@ export default function ProfilePage() {
               ))}
             </div>
 
-            {/* Explicit save trigger for segments (issue #112) */}
-            <div className="sticky bottom-4 z-10 mt-4 pt-4 border-t border-ast-border flex items-center gap-3 bg-ast-surface/95 backdrop-blur-sm rounded-b">
+            {/* Explicit save trigger for segments (issue #112).
+                Kept as an explicit button (do not change the save model).
+                Rendered in normal flow directly under the segment list —
+                deliberately NOT sticky/positioned — so it can never overlay
+                the first segment row on desktop or mobile. */}
+            <div className="mt-4 pt-4 border-t border-ast-border flex items-center gap-3">
               <button
                 onClick={handleSaveSegments}
                 disabled={!segmentsDirty || segmentStatus === "saving"}

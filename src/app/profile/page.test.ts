@@ -210,3 +210,57 @@ describe('Profile segment descriptions — Niantic rename', () => {
   })
 })
 
+// Card t_11475758: the segments "Save preferences" bar was `sticky bottom-4
+// z-10 ... bg-ast-surface/95 backdrop-blur-sm` inside the card and, in the
+// rendered page, overlaid the first segment row on desktop AND mobile. The
+// fix keeps the explicit save button (#112 model unchanged) but renders it in
+// normal flow directly under the list, and reserves bottom padding on the
+// page container so the global fixed FeedbackButton never covers content at
+// 390px. These are source assertions: they pin the chosen approach.
+describe('Profile segments save bar — no overlap (card t_11475758)', () => {
+  const filePath = path.resolve(__dirname, 'page.tsx')
+  const content = fs.readFileSync(filePath, 'utf-8')
+
+  // Isolate the segments section so the assertions cannot be satisfied by an
+  // unrelated sticky element elsewhere on the page.
+  const segStart = content.indexOf('{/* 3. Segments */}')
+  const segEnd = content.indexOf('{/* 4. Following (watched companies)')
+  const segments =
+    segStart > -1 && segEnd > segStart ? content.slice(segStart, segEnd) : ''
+
+  test('the segments section is locatable', () => {
+    expect(segStart).toBeGreaterThan(-1)
+    expect(segEnd).toBeGreaterThan(segStart)
+  })
+
+  test('the save bar is no longer sticky/positioned over the list', () => {
+    // The exact overlay recipe that caused the bug must be gone.
+    expect(content).not.toContain('sticky bottom-4')
+    expect(segments).not.toContain('sticky bottom-4')
+    // And no stray sticky/absolute positioning class is reintroduced in the
+    // section (the prose comments may mention the words; classes may not).
+    expect(segments).not.toMatch(/className="[^"]*\bsticky\b/)
+    expect(segments).not.toMatch(/className="[^"]*\babsolute\b/)
+  })
+
+  test('the save bar keeps its explicit button (#112 model unchanged)', () => {
+    expect(segments).toContain('Save preferences')
+    expect(segments).toContain('onClick={handleSaveSegments}')
+    expect(segments).toContain('disabled={!segmentsDirty')
+  })
+
+  test('the save bar sits in normal flow directly under the segment list', () => {
+    // Bordered footer row inside the card, not detached/translucent overlay.
+    expect(segments).toMatch(
+      /className="mt-4 pt-4 border-t border-ast-border flex items-center gap-3"/
+    )
+    // The translucent + blur overlay background is gone.
+    expect(segments).not.toContain('backdrop-blur-sm')
+  })
+
+  test('the page container reserves bottom padding for the FeedbackButton', () => {
+    // pb-24 on <640px, normal 2rem on sm+.
+    expect(content).toContain('px-4 pt-8 pb-24 sm:pb-8')
+  })
+})
+
